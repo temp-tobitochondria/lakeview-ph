@@ -1,3 +1,5 @@
+/* ------------------------------- */
+/* Global Reset & Typography */
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -13,6 +15,8 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ------------------------------- */
+/* Links */
 a {
   font-weight: 500;
   color: #646cff;
@@ -22,6 +26,8 @@ a:hover {
   color: #535bf2;
 }
 
+/* ------------------------------- */
+/* Body Layout */
 body {
   margin: 0;
   display: flex;
@@ -30,11 +36,15 @@ body {
   min-height: 100vh;
 }
 
+/* ------------------------------- */
+/* Headings */
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
 }
 
+/* ------------------------------- */
+/* Buttons (Default) */
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -54,6 +64,8 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+/* ------------------------------- */
+/* Light Theme Overrides */
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
@@ -65,4 +77,359 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+/* ------------------------------- */
+/* Search Bar */
+.search-bar {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 999px;
+  padding: 4px 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  z-index: 1100;
+}
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #333;
+  background: transparent;
+  padding: 6px 8px;
+  min-width: 160px;
+}
+.search-bar input::placeholder {
+  color: #888;
+}
+.search-bar .btn-floating {
+  width: 36px;
+  height: 36px;
+  margin-left: 6px;
+  background: white;
+  border: 1px solid #ccc;
+  color: #439e9d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.search-bar .btn-floating:hover {
+  background: #f1f1f1;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.search-bar .icon-layer {
+  font-size: 18px;
+}
+
+/* ------------------------------- */
+/* Floating Buttons (Unified Style) */
+.btn-floating,
+.icon-btn {
+  background-color: #fff !important;
+  border-radius: 50% !important;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+/* Icon Styling */
+.icon-layer {
+  color: #439e9d;
+  font-size: 22px;
+  transition: color 0.2s ease;
+}
+/* Hover Effect */
+.btn-floating:hover,
+.icon-btn:hover {
+  background-color: #f5f5f5 !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+.btn-floating:hover .icon-layer,
+.icon-btn:hover .icon-layer {
+  color: #2d6f6e;
+}
+/* Active (Pressed) Effect */
+.btn-floating:active,
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* ------------------------------- */
+/* Layer Control */
+.layer-control {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+.layer-panel {
+  position: absolute;
+  top: 60px;
+  right: 0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 16px;
+  width: 200px;
+  border: 1px solid #ccc;
+}
+.layer-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: #000;
+}
+.layer-panel label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  margin: 6px 0;
+  color: #000;
+}
+.layer-panel input[type="radio"] {
+  margin-right: 8px;
+  transform: scale(1.2);
+}
+
+/* ------------------------------- */
+/* Universal Apple Liquid Glass Panel */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+/* ✅ Light maps: OSM, topo, street */
+.map-light .glass-panel {
+  color: #222;
+}
+.map-light .glass-panel .coords-icon,
+.map-light .glass-panel .context-icon {
+  color: #222;
+}
+.map-light .scale-line {
+  background: rgba(0,0,0,0.6);
+}
+.map-light .scale-label {
+  color: #222;
+}
+
+/* ✅ Dark maps: Satellite */
+.map-dark .glass-panel {
+  color: #fff;
+}
+.map-dark .glass-panel .coords-icon,
+.map-dark .glass-panel .context-icon {
+  color: #fff;
+}
+.map-dark .scale-line {
+  background: rgba(255,255,255,0.9);
+}
+.map-dark .scale-label {
+  color: #fff;
+}
+
+
+/* ------------------------------- */
+/* Coordinates Scale (layout only) */
+.coordinates-scale {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  padding: 10px 14px;
+  z-index: 1000;
+  cursor: pointer;
+  user-select: none;
+}
+
+.coords-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.scale-bar {
+  text-align: center;
+}
+.scale-line {
+  height: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  margin: 0 auto;
+  transition: width 0.2s ease;
+  border-radius: 2px;
+}
+.scale-label {
+  font-size: 12px;
+  color: #222;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+/* ------------------------------- */
+/* Context Menu (layout only) */
+.context-menu {
+  min-width: 150px;
+  max-width: 180px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  z-index: 2000;
+  pointer-events: auto !important;  /* ✅ allow clicks */
+}
+
+.context-item {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent !important;
+  transition: background 0.2s, color 0.2s;
+}
+
+.context-icon {
+  font-size: 14px;
+  min-width: 14px;
+  transition: color 0.2s ease;
+}
+
+/* ✅ Hover highlight adaptive */
+.map-light .context-item:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+  color: #0077ff !important;
+}
+.map-light .context-item:hover .context-icon {
+  color: #0077ff !important;
+}
+
+.map-dark .context-item:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #00e5ff !important;
+}
+.map-dark .context-item:hover .context-icon {
+  color: #00e5ff !important;
+}
+
+/* ------------------------------- */
+/* Map Controls (Center-Right) */
+.map-controls {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+}
+.screenshot-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+.btn-floating {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #439e9d;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.btn-floating:hover {
+  background: #367c7a;
+}
+.icon-layer {
+  font-size: 20px;
+}
+
+/* ------------------------------- */
+/* Sidebar */
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: -260px; /* hidden by default */
+  width: 260px;
+  height: 100%;
+  background: #fff;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  z-index: 1200;
+  transition: left 0.3s ease; /* smooth slide */
+}
+.sidebar.open {
+  left: 0; /* slide in */
+}
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #ddd;
+}
+.sidebar-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: #00695c;
+}
+.sidebar-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.sidebar-minimap {
+  width: 100%;
+  border-bottom: 1px solid #ddd;
+}
+.sidebar-menu,
+.sidebar-bottom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sidebar-menu li,
+.sidebar-bottom li {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #333;
+}
+.sidebar-menu li:hover,
+.sidebar-bottom li:hover {
+  background: #f5f5f5;
+}
+.sidebar-icon {
+  font-size: 18px;
+  color: #439e9d;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  border-top: 1px solid #ddd;
 }
