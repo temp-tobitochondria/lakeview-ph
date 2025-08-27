@@ -1,6 +1,6 @@
 // src/components/MapControls.jsx
 import React, { useState } from "react";
-import { useMap, Marker, Popup } from "react-leaflet";
+import { useMap, Marker, Tooltip } from "react-leaflet"; // ✅ use Tooltip instead of Popup
 import { FiBarChart2, FiCrosshair, FiPlus, FiMinus } from "react-icons/fi";
 import { FaLocationDot } from "react-icons/fa6"; // filled location dot
 import L from "leaflet";
@@ -55,16 +55,35 @@ function MapControls() {
     <>
       {/* Floating Controls */}
       <div className="map-controls">
-        <button className="btn-floating"><FiBarChart2 className="icon-layer" /></button>
-        <button className="btn-floating" onClick={handleGeolocation}><FiCrosshair className="icon-layer" /></button>
-        <button className="btn-floating" onClick={handleZoomIn}><FiPlus className="icon-layer" /></button>
-        <button className="btn-floating" onClick={handleZoomOut}><FiMinus className="icon-layer" /></button>
+        <button className="btn-floating">
+          <FiBarChart2 className="icon-layer" />
+        </button>
+        <button className="btn-floating" onClick={handleGeolocation}>
+          <FiCrosshair className="icon-layer" />
+        </button>
+        <button className="btn-floating" onClick={handleZoomIn}>
+          <FiPlus className="icon-layer" />
+        </button>
+        <button className="btn-floating" onClick={handleZoomOut}>
+          <FiMinus className="icon-layer" />
+        </button>
       </div>
 
-      {/* Location Marker */}
+      {/* Location Marker with liquid-glass tooltip */}
       {position && (
         <Marker position={position} icon={locationIcon}>
-          <Popup>You are here</Popup>
+          <Tooltip
+            className="glass-panel"
+            direction="top"
+            offset={[0, -35]}
+            permanent
+          >
+            <FaLocationDot
+              className="popup-icon"
+              style={{ marginRight: 4, color: "#e53935" }}
+            />
+            <span>You are here</span>
+          </Tooltip>
         </Marker>
       )}
     </>

@@ -9,11 +9,13 @@ import {
   FiDatabase,
   FiSettings,
   FiLogIn,
+  FiMapPin,
 } from "react-icons/fi";
 import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
+import { Link } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 
-// MiniMap that stays perfectly centered and updates live
+// MiniMap that stays centered and updates live
 function MiniMap({ parentMap }) {
   const [bounds, setBounds] = useState(parentMap.getBounds());
   const [center, setCenter] = useState(parentMap.getCenter());
@@ -25,7 +27,7 @@ function MiniMap({ parentMap }) {
       setBounds(parentMap.getBounds());
       setCenter(parentMap.getCenter());
       setZoom(parentMap.getZoom());
-      // Also update minimap view
+
       const mini = minimapRef.current;
       if (mini) {
         mini.setView(parentMap.getCenter(), Math.max(parentMap.getZoom() - 3, 1));
@@ -49,7 +51,7 @@ function MiniMap({ parentMap }) {
       scrollWheelZoom={false}
       doubleClickZoom={false}
       attributionControl={false}
-      style={{ height: "250px", width: "100%" }}   // ✅ Resized minimap
+      style={{ height: "250px", width: "100%" }}
       ref={minimapRef}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -63,31 +65,94 @@ function MiniMapWrapper() {
   return <MiniMap parentMap={map} />;
 }
 
-function Sidebar({ isOpen, onClose }) {
+function Sidebar({ isOpen, onClose, pinned, setPinned }) {
   return (
-    <div className={`sidebar ${isOpen ? "open" : ""}`}>
+    <div className={`sidebar ${isOpen ? "open" : ""} ${pinned ? "pinned" : ""}`}>
+      {/* Header */}
       <div className="sidebar-header">
         <h2 className="sidebar-title">LakeView PH</h2>
-        <button className="sidebar-close-btn" onClick={onClose}>
-          <FiX size={20} />
-        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {/* Pin button */}
+          <button
+            className={`sidebar-icon-btn ${pinned ? "active" : ""}`}
+            onClick={() => setPinned(!pinned)}
+            title={pinned ? "Unpin Sidebar" : "Pin Sidebar"}
+          >
+            <FiMapPin size={18} />
+          </button>
+
+          {/* Close button (hidden if pinned) */}
+          {!pinned && (
+            <button
+              className="sidebar-icon-btn"
+              onClick={onClose}
+              title="Close Sidebar"
+            >
+              <FiX size={20} />
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* MiniMap */}
       <div className="sidebar-minimap">
         <MiniMapWrapper />
       </div>
 
+      {/* Menu Links */}
       <ul className="sidebar-menu">
-        <li><FiInfo className="sidebar-icon" /> <span>About LakeView PH</span></li>
-        <li><FiBookOpen className="sidebar-icon" /> <span>How to use LakeView?</span></li>
-        <li><FiSend className="sidebar-icon" /> <span>Submit Feedback</span></li>
-        <li><FiGithub className="sidebar-icon" /> <span>GitHub Page</span></li>
-        <li><FiDatabase className="sidebar-icon" /> <span>About the Data</span></li>
+        <li>
+          <FiInfo className="sidebar-icon" />{" "}
+          <Link to="/about" onClick={!pinned ? onClose : undefined}>
+            About LakeView PH
+          </Link>
+        </li>
+        <li>
+          <FiBookOpen className="sidebar-icon" />{" "}
+          <Link to="/manual" onClick={!pinned ? onClose : undefined}>
+            How to use LakeView?
+          </Link>
+        </li>
+        <li>
+          <FiSend className="sidebar-icon" />{" "}
+          <Link to="/feedback" onClick={!pinned ? onClose : undefined}>
+            Submit Feedback
+          </Link>
+        </li>
+        <li>
+          <FiGithub className="sidebar-icon" />{" "}
+          <a
+            href="https://github.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={!pinned ? onClose : undefined}
+          >
+            GitHub Page
+          </a>
+        </li>
+        <li>
+          <FiDatabase className="sidebar-icon" />{" "}
+          <Link to="/data" onClick={!pinned ? onClose : undefined}>
+            About the Data
+          </Link>
+        </li>
       </ul>
 
+      {/* Bottom Menu */}
       <ul className="sidebar-bottom">
-        <li><FiSettings className="sidebar-icon" /> <span>Settings</span></li>
-        <li><FiLogIn className="sidebar-icon" /> <span>Sign-in</span></li>
+        <li>
+          <FiSettings className="sidebar-icon" />{" "}
+          <Link to="/settings" onClick={!pinned ? onClose : undefined}>
+            Settings
+          </Link>
+        </li>
+        <li>
+          <FiLogIn className="sidebar-icon" />{" "}
+          <Link to="/signin" onClick={!pinned ? onClose : undefined}>
+            Sign-in
+          </Link>
+        </li>
       </ul>
     </div>
   );

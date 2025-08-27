@@ -9,9 +9,9 @@ import MapControls from "../components/MapControls";
 import ScreenshotButton from "../components/ScreenshotButton";
 import Sidebar from "../components/Sidebar";
 import ContextMenu from "../components/ContextMenu";
+import MeasureTool from "../components/MeasureTool"; // ✅ unified tool
 
-
-// Helper wrapper to expose Leaflet map instance
+// Utility wrapper for context menu integration
 function MapWithContextMenu({ children }) {
   const map = useMap();
   return children(map);
@@ -20,6 +20,11 @@ function MapWithContextMenu({ children }) {
 function MapPage() {
   const [selectedView, setSelectedView] = useState("satellite");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+
+  // ✅ measuring tool state
+  const [measureActive, setMeasureActive] = useState(false);
+  const [measureMode, setMeasureMode] = useState("distance"); // "distance" | "area"
 
   const basemaps = {
     satellite:
@@ -58,26 +63,61 @@ function MapPage() {
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
       >
-        <TileLayer
-          url={basemaps[selectedView]}
-          attribution={attribution}
-          noWrap={true}
-        />
+        {/* Base map */}
+        <TileLayer url={basemaps[selectedView]} attribution={attribution} noWrap={true} />
+
+        {/* Map utilities */}
         <CoordinatesScale />
         <MapControls />
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        {/* ✅ Pass map instance to ContextMenu */}
+        {/* Sidebar */}
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          pinned={sidebarPinned}
+          setPinned={setSidebarPinned}
+        />
+
+        {/* Context Menu */}
         <MapWithContextMenu>
-          {(map) => <ContextMenu map={map} />}
+          {(map) => {
+            map.on("click", () => {
+              if (!sidebarPinned) setSidebarOpen(false);
+            });
+            map.on("dragstart", () => {
+              if (!sidebarPinned) setSidebarOpen(false);
+            });
+            return (
+              <ContextMenu
+                map={map}
+                onMeasureDistance={() => {
+                  setMeasureMode("distance");
+                  setMeasureActive(true);
+                }}
+                onMeasureArea={() => {
+                  setMeasureMode("area");
+                  setMeasureActive(true);
+                }}
+              />
+            );
+          }}
         </MapWithContextMenu>
+
+        {/* ✅ Mount unified measuring tool */}
+        <MeasureTool
+          active={measureActive}
+          mode={measureMode}
+          onFinish={() => setMeasureActive(false)}
+        />
       </MapContainer>
 
+      {/* Top-left search */}
       <SearchBar onMenuClick={() => setSidebarOpen(true)} />
-      <LayerControl
-        selectedView={selectedView}
-        setSelectedView={setSelectedView}
-      />
+
+      {/* Basemap switcher */}
+      <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />
+
+      {/* Screenshot button */}
       <ScreenshotButton />
     </div>
   );
