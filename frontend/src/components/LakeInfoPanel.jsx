@@ -2,25 +2,15 @@
 import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 
-function LakeInfoPanel({ isOpen, onClose, lake, onToggleHeatmap }) {
+function LakeInfoPanel({ isOpen, onClose, lake, onToggleHeatmap, populationSum }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [distance, setDistance] = useState(2); // km filter
-  const [estimatedPop, setEstimatedPop] = useState(0); // new state
   const [closing, setClosing] = useState(false);
 
   // Reset closing when panel re-opens
   useEffect(() => {
     if (isOpen) setClosing(false);
   }, [isOpen]);
-
-  // Mock population estimate (replace with real dataset later)
-  useEffect(() => {
-    if (activeTab === "population") {
-      // Example formula: base 15,000 + (distance * 20,000)
-      const fakeEstimate = Math.round(15000 + distance * 20000);
-      setEstimatedPop(fakeEstimate);
-    }
-  }, [distance, activeTab]);
 
   // Prevent render if nothing to show
   if (!lake && !isOpen) return null;
@@ -132,12 +122,15 @@ function LakeInfoPanel({ isOpen, onClose, lake, onToggleHeatmap }) {
               />
             </div>
 
-            {/* Estimated population insight */}
+            {/* Real Estimated Population (from PopulationHeatmap) */}
             <div className="insight-card">
               <h4>Estimated Population</h4>
               <p>
-                ~ <strong>{estimatedPop.toLocaleString()}</strong> people
-                within {distance} km of the shoreline
+                ~{" "}
+                <strong>
+                  {(populationSum ?? 0).toLocaleString()}
+                </strong>{" "}
+                people within {distance} km of the shoreline
               </p>
             </div>
           </>

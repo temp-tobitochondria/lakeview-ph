@@ -1,21 +1,12 @@
 // src/pages/MapPage.jsx
-// ----------------------------------------------------
-// Main Map Page Component for LakeView PH
-// ----------------------------------------------------
-// Responsibilities:
-// - Render the interactive map with basemap layers
-// - Integrate sidebar, context menu, and map utilities
-// - Handle measurement tools (distance & area)
-// - Provide layout for search, layer control, and screenshots
-//
-// Notes:
-// - Built with react-leaflet
-// - Uses state hooks for sidebar, basemap, and measurement control
-// - Map utilities are modular components imported from /components
-// ----------------------------------------------------
-
-import React, { useState } from "react";
-import { MapContainer, TileLayer, useMap, Marker, Tooltip } from "react-leaflet";
+import React, { useState, useEffect } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON,
+  useMap,
+  Tooltip,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Local Components
@@ -26,55 +17,56 @@ import MapControls from "../components/MapControls";
 import ScreenshotButton from "../components/ScreenshotButton";
 import Sidebar from "../components/Sidebar";
 import ContextMenu from "../components/ContextMenu";
-import MeasureTool from "../components/MeasureTool"; 
-import LakeInfoPanel from "../components/LakeInfoPanel";// Unified measuring tool
+import MeasureTool from "../components/MeasureTool";
+import LakeInfoPanel from "../components/LakeInfoPanel";
+import PopulationHeatmap from "../components/PopulationHeatmap";
 
-// ----------------------------------------------------
-// Utility: Context Menu Wrapper
-// Passes map instance to children so they can bind events
-// ----------------------------------------------------
 function MapWithContextMenu({ children }) {
   const map = useMap();
   return children(map);
 }
 
 function MapPage() {
-  // ----------------------------------------------------
-  // State Management
-  // ----------------------------------------------------
-
-  // Selected basemap view: "satellite", "street", "topographic", "osm"
   const [selectedView, setSelectedView] = useState("satellite");
-
-  // Sidebar toggle and pinned state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
 
-  // Sidebar toggle for lake information panel
   const [selectedLake, setSelectedLake] = useState(null);
   const [lakePanelOpen, setLakePanelOpen] = useState(false);
-  
-  /* Dummy Data */}
-  const lakeBunot = {
-    name: "Lake Bunot",
-    location: "San Pablo City, Laguna, Philippines",
-    area: "30.5 hectares",
-    depth: "Average 23 m",
-    description:
-      "Lake Bunot is one of the Seven Lakes of San Pablo in Laguna. It is known for its deep waters and for tilapia and fish farming. The lake is a popular local fishing and sightseeing spot.",
-    image:
-      "https://upload.wikimedia.org/wikipedia/commons/7/76/Lake_Bunot.jpg" // ✅ static picture
-  };
 
+  // Heatmap state
+  const [heatmapVisible, setHeatmapVisible] = useState(false);
+  const [heatmapDistance, setHeatmapDistance] = useState(2);
+  const [populationSum, setPopulationSum] = useState(null);
 
+  // 🟢 Load GeoJSON lakes from /public/data
+  const [lakes, setLakes] = useState([]);
 
-  // Measurement tool (distance / area)
+  useEffect(() => {
+    const lakeFiles = [
+      "LagunadeBay.geojson",
+      "LakeBunot.geojson",
+      "LakeCalibato.geojson",
+      "LakeMohicap.geojson",
+      "LakePalakpakin.geojson",
+      "LakePandin.geojson",
+      "LakeSampaloc.geojson",
+      "LakeYambo.geojson",
+    ];
+
+    Promise.all(
+      lakeFiles.map((file) =>
+        fetch(`/data/${file}`).then((res) => res.json())
+      )
+    ).then((geojsons) => {
+      setLakes(geojsons);
+    });
+  }, []);
+
+  // Measurement tool
   const [measureActive, setMeasureActive] = useState(false);
-  const [measureMode, setMeasureMode] = useState("distance"); // "distance" | "area"
+  const [measureMode, setMeasureMode] = useState("distance");
 
-  // ----------------------------------------------------
-  // Map Layer Configurations
-  // ----------------------------------------------------
   const basemaps = {
     satellite:
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -90,61 +82,70 @@ function MapPage() {
     "Earthstar Geographics, GIS User Community, " +
     '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors';
 
-  // Map bounds (world extent)
   const worldBounds = [
     [-85, -180],
     [85, 180],
   ];
 
-  // Theme class toggled depending on basemap
   const themeClass = selectedView === "satellite" ? "map-dark" : "map-light";
 
-  // ----------------------------------------------------
-  // Component Render
-  // ----------------------------------------------------
+  function togglePopulationHeatmap(on, distanceKm) {
+    setHeatmapVisible(on);
+    setHeatmapDistance(distanceKm);
+  }
+
   return (
     <div
       className={themeClass}
       style={{ height: "100vh", width: "100vw", margin: 0, padding: 0 }}
     >
-      {/* Main Map Container */}
       <MapContainer
-        center={[14.3409, 121.23477]} // Default center (Laguna de Bay area?)
-        zoom={11}
+        center={[14.3409, 121.23477]}
+        zoom={10}
         maxBounds={worldBounds}
         maxBoundsViscosity={1.0}
         maxZoom={18}
         minZoom={3}
-        zoomControl={false} // We provide custom controls
+        zoomControl={false}
         style={{ height: "100%", width: "100%" }}
       >
-        {/* Basemap Layer */}
+        {/* Basemap */}
         <TileLayer
           url={basemaps[selectedView]}
           attribution={attribution}
           noWrap={true}
         />
-        {/* Dummy Marker */}
-        {/* Lake Bunot marker */}
-        <Marker
-          position={[14.08111, 121.34389]}
-          eventHandlers={{
-            click: () => {
-              setSelectedLake(lakeBunot);
-              setLakePanelOpen(true);
-            }
-          }}
-        >
-          <Tooltip direction="top" offset={[0, -20]} permanent>
-            Lake Bunot
-          </Tooltip>
-        </Marker>
 
+        {/* Render all GeoJSON lakes */}
+        {lakes.map((lake, idx) => (
+          <GeoJSON
+            key={idx}
+            data={lake}
+            style={{ color: "blue", weight: 2, fillOpacity: 0.4 }}
+            eventHandlers={{
+              click: () => {
+                setSelectedLake({
+                  name: lake.name || lake.features[0]?.properties?.name,
+                  description: "Lake loaded from GeoJSON",
+                  geometry: lake.features[0]?.geometry,
+                });
+                setLakePanelOpen(true);
+              },
+              add: (e) => {
+                // Prevent default Leaflet "selection" outline
+                e.target.eachLayer((layer) => {
+                  layer.options.interactive = true; // still clickable
+                  layer.options.fillOpacity = 0.4;
+                });
+              },
+            }}
+          />
+        ))}
         {/* Map Utilities */}
-        <CoordinatesScale /> {/* Shows coordinates + scale */}
-        <MapControls /> {/* Zoom, reset view, etc. */}
+        <CoordinatesScale />
+        <MapControls />
 
-        {/* Sidebar (with minimap + links) */}
+        {/* Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
@@ -152,18 +153,15 @@ function MapPage() {
           setPinned={setSidebarPinned}
         />
 
-        {/* Context Menu (right-click actions) */}
+        {/* Context Menu */}
         <MapWithContextMenu>
           {(map) => {
-            // Auto-close sidebar when clicking/dragging if not pinned
             map.on("click", () => {
               if (!sidebarPinned) setSidebarOpen(false);
             });
             map.on("dragstart", () => {
               if (!sidebarPinned) setSidebarOpen(false);
             });
-
-            // Inject Context Menu component
             return (
               <ContextMenu
                 map={map}
@@ -180,26 +178,39 @@ function MapPage() {
           }}
         </MapWithContextMenu>
 
-        {/* Measurement Tool Overlay (distance/area) */}
+        {/* Measurement Tool */}
         <MeasureTool
           active={measureActive}
           mode={measureMode}
           onFinish={() => setMeasureActive(false)}
         />
+
+        {/* Population Heatmap */}
+        <PopulationHeatmap
+          csvUrl="/data/worldpop.csv"
+          lake={selectedLake}
+          distanceKm={heatmapDistance}
+          visible={heatmapVisible}
+          onPopulationSum={setPopulationSum}
+        />
       </MapContainer>
+
+      {/* Lake Info Panel */}
       <LakeInfoPanel
         isOpen={lakePanelOpen}
         onClose={() => setLakePanelOpen(false)}
         lake={selectedLake}
-        onToggleHeatmap={(on, distanceKm) => {
-          // implement in MapPage: toggles your heatmap layer (see below)
-          togglePopulationHeatmap(on, distanceKm);
-        }}
+        onToggleHeatmap={togglePopulationHeatmap}
+        populationSum={populationSum}
       />
-      {/* UI Overlays outside MapContainer */}
-      <SearchBar onMenuClick={() => setSidebarOpen(true)} /> {/* Top-left search */}
-      <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} /> {/* Basemap switcher */}
-      <ScreenshotButton /> {/* Bottom-center screenshot */}
+
+      {/* UI Overlays */}
+      <SearchBar onMenuClick={() => setSidebarOpen(true)} />
+      <LayerControl
+        selectedView={selectedView}
+        setSelectedView={setSelectedView}
+      />
+      <ScreenshotButton />
     </div>
   );
 }
