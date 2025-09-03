@@ -1,9 +1,14 @@
-// src/Login.jsx
+// src/pages/Login.jsx
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 function Login() {
   const navigate = useNavigate();
+
+  const handleSubmit = (e) => {
+    // ✅ For now, skip authentication
+    navigate("/admin-dashboard");
+  };
 
   return (
     <div className="auth-page">
@@ -16,7 +21,7 @@ function Login() {
           <img src="/logo.png" alt="LakeView Logo" />
         </div>
 
-        <form>
+        <form onSubmit={handleSubmit}>
           <input type="text" placeholder="Username" />
           <input type="password" placeholder="Password" />
 

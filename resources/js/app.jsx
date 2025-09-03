@@ -10,6 +10,7 @@ import AboutData from "./pages/AboutData";
 import Settings from "./pages/Settings";
 import Register from './pages/Register';
 import Login from './pages/Login';
+import AdminDashboard from './pages/AdminDashboard';
 import '../css/index.css';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
         <Route path="/feedback" element={<SubmitFeedback />} />
         <Route path="/data" element={<AboutData />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/admin-dashboard/*" element={<AdminDashboard />} />
 
         <Route path="/signin" element={<Login />} />
         <Route path="/register" element={<Register />} />
