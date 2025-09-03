@@ -8,6 +8,8 @@ import UserManual from "./pages/UserManual";
 import SubmitFeedback from "./pages/SubmitFeedback";
 import AboutData from "./pages/AboutData";
 import Settings from "./pages/Settings";
+import Register from './pages/Register';
+import Login from './pages/Login';
 import '../css/index.css';
 
 function App() {
@@ -24,16 +26,9 @@ function App() {
         <Route path="/data" element={<AboutData />} />
         <Route path="/settings" element={<Settings />} />
 
-        {/* Optional: placeholder Sign-in page */}
-        <Route
-          path="/signin"
-          element={
-            <div style={{ padding: "20px" }}>
-              <h1>Sign-in</h1>
-              <p>This is a placeholder for the sign-in page.</p>
-            </div>
-          }
-        />
+        <Route path="/signin" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+
       </Routes>
     </Router>
   );

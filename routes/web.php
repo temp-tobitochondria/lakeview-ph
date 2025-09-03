@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('app');
-});
+Route::get('/{any}', function () {
+    return view('app'); // your main blade file that mounts React
+})->where('any', '.*');
+
