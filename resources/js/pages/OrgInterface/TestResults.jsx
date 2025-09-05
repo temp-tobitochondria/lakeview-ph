@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import "../../../css/index.css";
 
 /* --- Leaflet icon fix --- */
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";

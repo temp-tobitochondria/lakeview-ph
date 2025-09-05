@@ -1,0 +1,70 @@
+/* resources/css/components/map-controls.css */
+
+/* ====================================================================== */
+/* 🎛 MAP CONTROLS */
+/* ====================================================================== */
+
+/* Floating Buttons (Unified Style) */
+.btn-floating,
+.icon-btn {
+  background-color: #fff !important;
+  border-radius: 50% !important;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+.icon-layer {
+  color: #439e9d;
+  font-size: 22px;
+  transition: color 0.2s ease;
+}
+.btn-floating:hover,
+.icon-btn:hover {
+  background-color: #f5f5f5 !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+.btn-floating:hover .icon-layer,
+.icon-btn:hover .icon-layer {
+  color: #2d6f6e;
+}
+.btn-floating:active,
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* Map Controls Position */
+.map-controls {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+}
+
+/* ⚠ Global .btn-floating + .icon-layer overrides (keep order): */
+.btn-floating {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #439e9d;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.btn-floating:hover {
+  background: #367c7a;
+}
+.icon-layer {
+  font-size: 20px; /* overrides earlier 22px */
+}

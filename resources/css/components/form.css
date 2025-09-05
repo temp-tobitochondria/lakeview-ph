@@ -1,0 +1,119 @@
+/* resources/css/components/form.css */
+/* ====================================================================== */
+/* 🧪 TEST RESULTS FORM (Enhanced, Professional, Blank-Slate Friendly)    */
+/* ====================================================================== */
+
+/* --- Existing base card/typography (unchanged) --- */
+.form-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+.form-section-title {
+  margin-top: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+/* --- Grid system (unchanged base) --- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin: 12px 0;
+}
+
+/* depth rows (unchanged base) */
+.form-grid.small-grid {
+  grid-template-columns: 140px 1fr auto; /* depth | value | remove btn */
+  gap: 12px;
+  align-items: center;
+}
+
+/* --- Field base (unchanged) --- */
+.form-card label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  display: block;
+  margin-bottom: 4px;
+}
+.form-card input,
+.form-card select,
+.form-card textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  outline: none;
+  transition: border 0.2s, box-shadow 0.2s, background 0.2s;
+  background: #fff;
+  color: #111827;
+}
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+.form-card textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+/* --- Buttons (existing + refinements) --- */
+.btn-add {
+  margin-top: 6px;
+  background: #f1f5f9;
+  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.05s;
+}
+.btn-add:hover { background: #e2e8f0; }
+.btn-add:active { transform: translateY(1px); }
+
+.btn-remove {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+  font-size: 13px;
+  background: #fef2f2;
+  color: #b91c1c;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.05s;
+}
+.btn-remove:hover { background: #fee2e2; }
+.btn-remove:active { transform: translateY(1px); }
+
+.btn-primary {
+  margin-top: 4px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.05s;
+}
+.btn-primary:hover { background: #2563eb; }
+.btn-primary:active { transform: translateY(1px); }
+
+/* --- Subsection heading (unchanged) --- */
+h4.subsection {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #334155;
+}

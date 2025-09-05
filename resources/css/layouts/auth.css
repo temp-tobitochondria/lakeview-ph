@@ -1,0 +1,134 @@
+/* resources/css/layouts/auth.css */
+/* Full-page background */
+.auth-page {
+  height: 100vh;
+  width: 100vw;
+  background: #fff; /* white backdrop */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: "Arial", sans-serif;
+}
+
+/* Main card container (split layout) */
+.auth-box {
+  background: rgba(30, 41, 59, 1); /* translucent blue, same as sidebar */
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  color: #fff;
+  border-radius: 16px;
+  width: 800px;
+  max-width: 95%;
+  min-height: 450px;
+  display: flex;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Left side illustration */
+.auth-illustration {
+  flex: 1;
+  background: url("/login-illustration.png") center center no-repeat;
+  background-size: cover;
+  display: none; /* hidden on mobile */
+}
+
+@media (min-width: 768px) {
+  .auth-illustration {
+    display: block;
+  }
+}
+
+/* Right side form */
+.auth-form {
+  flex: 1;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Headings */
+.auth-form h2 {
+  margin-bottom: 10px;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  margin-bottom: 20px;
+  color: #e0e0e0;
+}
+
+/* Inputs */
+.auth-form input,
+.auth-form select {
+  width: 90%;
+  padding: 12px;
+  margin: 10px 10px 10px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}
+
+/* Checkbox */
+.auth-checkbox {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  margin: 10px 0;
+  color: #e0e0e0;
+  gap: 8px;
+}
+
+/* Buttons */
+.auth-btn {
+  width: 100%;
+  padding: 12px;
+  background: #63d2e3;
+  border: none;
+  border-radius: 10px;
+  margin-top: 15px;
+  font-weight: bold;
+  color: #0c3d72;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.auth-btn:hover {
+  background: #4fc4d6;
+}
+
+/* Links */
+.auth-switch {
+  margin-top: 20px;
+  font-size: 13px;
+  color: #ddd;
+}
+
+.auth-link {
+  color: #63d2e3;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
+/* Forgot password */
+.auth-forgot {
+  text-align: right;
+  font-size: 12px;
+  color: #ccc;
+  margin: 5px 0 10px;
+  cursor: pointer;
+}
+
+.auth-forgot:hover {
+  text-decoration: underline;
+}

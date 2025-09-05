@@ -1,3 +1,6 @@
+/* resources/css/app.css */
+
+/* Tailwind (keep exactly as you had it) */
 @import 'tailwindcss';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
@@ -6,6 +9,35 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+  'Segoe UI Emoji','Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* === Modular CSS (empty stubs at first — safe to import) === */
+/* Base */
+@import './base/globals.css';
+@import './base/themes.css';
+
+/* Layouts */
+@import './layouts/auth.css';
+@import './layouts/dashboard.css';
+
+/* Components
+   NOTE: Keep this order. `screenshot-button.css` is before `map-controls.css`
+   because `map-controls.css` contains global .btn-floating overrides that
+   should come after the screenshot button rules, just like in your original file. */
+@import './components/search-bar.css';
+@import './components/screenshot-button.css';
+@import './components/map-controls.css';
+@import './components/layer-control.css';
+@import './components/context-menu.css';
+@import './components/coordinates-scale.css';
+@import './components/sidebar.css';
+@import './components/lake-info-panel.css';
+@import './components/table.css';
+@import './components/form.css';
+
+/* Pages */
+@import './pages/admin-dashboard.css';
+@import './pages/org-test-results.css';
+

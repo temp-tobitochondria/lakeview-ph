@@ -1,0 +1,31 @@
+/* resources/css/components/coordinates-scale.css */
+/* ====================================================================== */
+/* 📏 COORDINATES SCALE */
+/* ====================================================================== */
+.coordinates-scale {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  padding: 6px 10px;
+  z-index: 1000;
+  cursor: pointer;
+  user-select: none;
+}
+.coords-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.scale-bar { text-align: center; }
+.scale-line {
+  height: 3px;
+  margin: 0 auto;
+  transition: width 0.2s ease;
+  border-radius: 2px;
+}
+.scale-label {
+  font-size: 12px;
+  margin-top: 2px;
+  opacity: 0.9;
+}

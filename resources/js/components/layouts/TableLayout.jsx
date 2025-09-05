@@ -1,6 +1,5 @@
 // resources/js/components/Table.jsx
 import React, { useState } from "react";
-import "../../../css/index.css";
 
 export default function Table({ columns, data, pageSize = 10, actions }) {
   const [page, setPage] = useState(1);

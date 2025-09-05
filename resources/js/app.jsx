@@ -18,7 +18,7 @@ import OrgDashboard from "./pages/OrgInterface/OrgDashboard";
 // import UserDashboard from "./pages/user/UserDashboard"; // add later if needed
 
 // 🎨 Global Styles
-import "../css/index.css";
+import "../css/app.css";
 
 function App() {
   return (

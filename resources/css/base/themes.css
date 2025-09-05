@@ -1,0 +1,18 @@
+/* resources/css/base/themes.css */
+/* ====================================================================== */
+/* 🌗 MAP THEMES: Light vs Dark */
+/* ====================================================================== */
+
+/* ✅ Light maps */
+.map-light .glass-panel { color: #222; }
+.map-light .glass-panel .coords-icon,
+.map-light .glass-panel .context-icon { color: #222; }
+.map-light .scale-line { background: rgba(0,0,0,0.6); }
+.map-light .scale-label { color: #222; }
+
+/* ✅ Dark maps */
+.map-dark .glass-panel { color: #fff; }
+.map-dark .glass-panel .coords-icon,
+.map-dark .glass-panel .context-icon { color: #fff; }
+.map-dark .scale-line { background: rgba(255,255,255,0.9); }
+.map-dark .scale-label { color: #fff; }
