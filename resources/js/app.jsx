@@ -1,21 +1,20 @@
-import "./pages/bootstrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 // 🌍 Public Pages
-import MapPage from "./pages/MapPage";
-import AboutPage from "./pages/AboutPage";
-import UserManual from "./pages/UserManual";
-import SubmitFeedback from "./pages/SubmitFeedback";
-import AboutData from "./pages/AboutData";
-import Settings from "./pages/Settings";
-import Register from "./pages/Register";
-import Login from "./pages/Login";
+import AboutData from  "./pages/PublicInterface/AboutData";
+import AboutPage from "./pages/PublicInterface/AboutPage";
+import LoginPage from "./pages/PublicInterface/LoginPage";
+import MapPage from "./pages/PublicInterface/MapPage";
+import RegistrationPage from "./pages/PublicInterface/RegistrationPage";
+import Settings from "./pages/PublicInterface/Settings.jsx";
+import SubmitFeedback from "./pages/PublicInterface/SubmitFeedback.jsx";
+import UserManual from "./pages/PublicInterface/UserManual";
 
 // 📊 Dashboards (Role-based)
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import OrgDashboard from "./pages/org/OrgDashboard";
+import AdminDashboard from "./pages/AdminInterface/AdminDashboard";
+import OrgDashboard from "./pages/OrgInterface/OrgDashboard";
 // import UserDashboard from "./pages/user/UserDashboard"; // add later if needed
 
 // 🎨 Global Styles
@@ -32,13 +31,12 @@ function App() {
         <Route path="/feedback" element={<SubmitFeedback />} />
         <Route path="/data" element={<AboutData />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/signin" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/signin" element={<LoginPage />} />
+        <Route path="/register" element={<RegistrationPage />} />
 
         {/* 📊 Dashboards */}
         <Route path="/admin-dashboard/*" element={<AdminDashboard />} />
         <Route path="/org-dashboard/*" element={<OrgDashboard />} />
-        {/* <Route path="/user-dashboard/*" element={<UserDashboard />} /> */}
       </Routes>
     </Router>
   );

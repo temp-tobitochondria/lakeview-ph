@@ -6,6 +6,7 @@ import { FaLocationDot } from "react-icons/fa6"; // filled location dot
 import L from "leaflet";
 import ReactDOMServer from "react-dom/server";
 
+
 // Filled location icon
 const locationIcon = new L.DivIcon({
   className: "custom-location-icon",

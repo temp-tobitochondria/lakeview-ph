@@ -1,12 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import {
-  FiHome,
-  FiUsers,
-  FiDatabase,
-  FiMap,
-  FiActivity,
-  FiSettings,
   FiLogOut,
   FiUser,
 } from "react-icons/fi";

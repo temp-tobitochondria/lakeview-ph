@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useMap } from "react-leaflet";
 import { FaCrosshairs, FaMapMarkerAlt } from "react-icons/fa"; // two icons
 
+
 const CoordinatesScale = () => {
   const map = useMap();
   const [coords, setCoords] = useState({ lat: 0, lng: 0 });
