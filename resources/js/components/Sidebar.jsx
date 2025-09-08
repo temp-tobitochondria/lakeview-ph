@@ -1,4 +1,3 @@
-// src/components/Sidebar.jsx
 import React, { useEffect, useState, useRef } from "react";
 import {
   FiX,
@@ -70,7 +69,10 @@ function Sidebar({ isOpen, onClose, pinned, setPinned }) {
     <div className={`sidebar ${isOpen ? "open" : ""} ${pinned ? "pinned" : ""}`}>
       {/* Header */}
       <div className="sidebar-header">
-        <h2 className="sidebar-title">LakeView PH</h2>
+        <div className="sidebar-logo">
+          <img src="/lakeview-logo-alt.png" alt="LakeView PH Logo" />
+          <h2 className="sidebar-title">LakeView PH</h2>
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           {/* Pin button */}

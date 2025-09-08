@@ -36,8 +36,7 @@
 @import './components/lake-info-panel.css';
 @import './components/table.css';
 @import './components/form.css';
+@import './components/wizard.css'
 
 /* Pages */
-@import './pages/admin-dashboard.css';
-@import './pages/org-test-results.css';
 

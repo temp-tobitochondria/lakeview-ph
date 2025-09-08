@@ -1,19 +1,9 @@
+// resources/js/components/TableLayout.jsx
 import React, { useMemo, useState } from "react";
-import {
-  FiChevronLeft,
-  FiChevronRight,
-} from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
-/**
- * TableLayout
- * - Dark-mode friendly text colors
- * - Ellipsis for long cells + full value on hover (title)
- * - Action buttons show ICON + TEXT
- * - Optional column.render(row) for custom cells
- */
 export default function TableLayout({ columns, data = [], pageSize = 10, actions }) {
   const [page, setPage] = useState(1);
-
   const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
   const boundedPage = Math.min(Math.max(1, page), totalPages);
   const startIndex = (boundedPage - 1) * pageSize;
@@ -23,13 +13,16 @@ export default function TableLayout({ columns, data = [], pageSize = 10, actions
     [data, startIndex, pageSize]
   );
 
+  const headerText = (col) =>
+    col.label ?? (typeof col.header === "string" ? col.header : "");
+
   return (
     <div className="table-wrapper">
       <table className="custom-table">
         <thead>
           <tr>
             {columns.map((col, idx) => (
-              <th key={idx} style={{ width: col.width }}>
+              <th key={idx} style={{ width: col.width }} className={col.className}>
                 {col.header}
               </th>
             ))}
@@ -49,17 +42,22 @@ export default function TableLayout({ columns, data = [], pageSize = 10, actions
                       : row[col.accessor];
 
                   const text = value ?? "—";
+                  const label = headerText(col);
+
                   return (
-                    <td key={cIdx} title={typeof text === "string" ? text : undefined}>
-                      <div className="cell-ellipsis">
-                        {text}
-                      </div>
+                    <td
+                      key={cIdx}
+                      title={typeof text === "string" ? text : undefined}
+                      className={col.className}
+                      data-label={label}
+                    >
+                      <div className="cell-ellipsis">{text}</div>
                     </td>
                   );
                 })}
 
                 {actions && (
-                  <td className="table-actions">
+                  <td className="table-actions" data-label="Actions">
                     <div className="actions-row">
                       {actions.map((action, aIdx) => (
                         <button
@@ -97,12 +95,10 @@ export default function TableLayout({ columns, data = [], pageSize = 10, actions
           onClick={() => setPage((p) => Math.max(1, p - 1))}
         >
           <FiChevronLeft />
-          <span>Prev</span>
+          <span className="hide-xs">Prev</span>
         </button>
 
-        <span className="page-indicator">
-          Page {boundedPage} of {totalPages}
-        </span>
+        <span className="page-indicator">Page {boundedPage} of {totalPages}</span>
 
         <button
           type="button"
@@ -110,7 +106,7 @@ export default function TableLayout({ columns, data = [], pageSize = 10, actions
           disabled={boundedPage === totalPages}
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
         >
-          <span>Next</span>
+          <span className="hide-xs">Next</span>
           <FiChevronRight />
         </button>
       </div>

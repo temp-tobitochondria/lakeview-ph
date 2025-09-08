@@ -6,20 +6,20 @@ import {
   FiBriefcase,   // Organizations
   FiUsers,       // Users & Roles
   FiMap,         // Lake Catalog
-  FiLayers,      // System Default Layers
-  FiUploadCloud, // Data Ingestion & Jobs
+  FiLayers,      // Base Layers
   FiSliders,     // Parameters & Thresholds
-  FiGlobe,       // Population/External Data Config
   FiClipboard,   // Approvals & Publishing
   FiActivity,    // Audit Logs
   FiSettings,    // System Settings
 } from "react-icons/fi";
 
 import DashboardLayout from "../../layouts/DashboardLayout";
-import DashboardPage from "./DashboardPage";
-import ManageOrganizations from "./ManageOrganizations";
-import LakeCatalog from "./LakeCatalog";
-
+import AdminOverview from "./AdminOverview";
+import AdminOrganizations from "./AdminOrganizations";
+import AdminUsers from "./AdminUsers";
+import AdminWaterCat from "./adminWaterCat";
+import AdminLayers from "./adminLayers";
+import AdminParameters from "./adminParams";
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -31,26 +31,20 @@ export default function AdminDashboard() {
     // Organizations
     { path: "/admin-dashboard/organizations", label: "Organizations", icon: <FiBriefcase /> },
 
-    // Users & Roles
-    { path: "/admin-dashboard/users", label: "Users & Roles", icon: <FiUsers /> },
+    // Users
+    { path: "/admin-dashboard/users", label: "Users", icon: <FiUsers /> },
 
-    // Lake Catalog
-    { path: "/admin-dashboard/lakes", label: "Lakes", icon: <FiMap /> },
+    // Water Body Catalog
+    { path: "/admin-dashboard/lakes", label: "Water Bodies", icon: <FiMap /> },
 
-    // System Default Layers
-    { path: "/admin-dashboard/layers", label: "System Default Layers", icon: <FiLayers /> },
+    // Base Layers
+    { path: "/admin-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
 
-    // Data Ingestion & Jobs
-    { path: "/admin-dashboard/ingestion", label: "Data Ingestion & Jobs", icon: <FiUploadCloud /> },
+    // Parameters
+    { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
 
-    // Parameters & Thresholds
-    { path: "/admin-dashboard/parameters", label: "Parameters & Thresholds", icon: <FiSliders /> },
-
-    // Population/External Data Config
-    { path: "/admin-dashboard/external-data", label: "External Data Config", icon: <FiGlobe /> },
-
-    // Approvals & Publishing
-    { path: "/admin-dashboard/approvals", label: "Approvals & Publishing", icon: <FiClipboard /> },
+    // System Feedback
+    { path: "/admin-dashboard/feedback", label: "System Feedback", icon: <FiClipboard /> },
 
     // Audit Logs
     { path: "/admin-dashboard/audit", label: "Audit Logs", icon: <FiActivity /> },
@@ -62,34 +56,28 @@ export default function AdminDashboard() {
   const user = { name: "Rodrigo Giongco" };
 
   return (
-    <DashboardLayout logo={{ icon: "/logo192.png", text: "LakeView PH" }} links={links} user={user}>
+    <DashboardLayout links={links} user={user}>
       <Routes>
         {/* Overview */}
-        <Route index element={<DashboardPage />} />
+        <Route index element={<AdminOverview />} />
 
         {/* Organizations */}
-        <Route path="organizations" element={<ManageOrganizations />} />
+        <Route path="organizations" element={<AdminOrganizations />} />
 
-        {/* Users & Roles */}
-        <Route path="users" element={<Page title="Users & Roles" />} />
+        {/* Users */}
+        <Route path="users" element={<AdminUsers />} />
 
-        {/* Lake Catalog */}
-        <Route path="lakes" element={<LakeCatalog />} />
+        {/* Water Body Catalog */}
+        <Route path="lakes" element={<AdminWaterCat />} />
 
-        {/* System Default Layers */}
-        <Route path="layers" element={<Page title="System Default Layers" />} />
+        {/* Base Layers */}
+        <Route path="layers" element={<AdminLayers />} />
 
-        {/* Data Ingestion & Jobs */}
-        <Route path="ingestion" element={<Page title="Data Ingestion & Jobs" />} />
+        {/* Parameters */}
+        <Route path="parameters" element={<AdminParameters />} />
 
-        {/* Parameters & Thresholds */}
-        <Route path="parameters" element={<Page title="Parameters & Thresholds" />} />
-
-        {/* Population/External Data Config */}
-        <Route path="external-data" element={<Page title="Population / External Data Config" />} />
-
-        {/* Approvals & Publishing */}
-        <Route path="approvals" element={<Page title="Approvals & Publishing" />} />
+        {/* Feedback */}
+        <Route path="feedback" element={<Page title="System Feedback" />} />
 
         {/* Audit Logs */}
         <Route path="audit" element={<Page title="Audit Logs" />} />

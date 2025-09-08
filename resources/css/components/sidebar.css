@@ -1,4 +1,3 @@
-/* resources/css/components/sidebar.css */
 /* ====================================================================== */
 /* 📂 SIDEBAR (LEFT) */
 /* ====================================================================== */
@@ -18,6 +17,9 @@
   border-bottom-right-radius: 16px;
 }
 .sidebar.open { left: 0; }
+.sidebar.pinned { left: 0 !important; }
+
+/* Sidebar Header */
 .sidebar-header {
   display: flex;
   justify-content: space-between;
@@ -25,12 +27,24 @@
   padding: 12px 16px;
   border-bottom: 1px solid #ddd;
 }
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-logo img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
 .sidebar-title {
   margin: 0;
   font-size: 18px;
   font-weight: bold;
   color: #00695c;
 }
+
+/* Sidebar Buttons */
 .sidebar-icon-btn {
   background: none;
   border: none;
@@ -43,8 +57,16 @@
 }
 .sidebar-icon-btn:hover { background: rgba(0, 0, 0, 0.05); color: #00695c; }
 .sidebar-icon-btn.active { background: #439e9d; color: #fff; }
+
+/* Minimap */
 .sidebar-minimap { width: 100%; border-bottom: 1px solid #ddd; }
-.sidebar-menu, .sidebar-bottom { list-style: none; margin: 0; padding: 0; }
+
+/* Menu Items */
+.sidebar-menu, .sidebar-bottom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
 .sidebar-menu li, .sidebar-bottom li {
   padding: 12px 16px;
   display: flex;
@@ -55,9 +77,24 @@
   transition: background 0.2s;
   color: #333;
   border-bottom: 1px solid #bbb;
+  border-radius: 12px;   /* ✅ Rounded corners */
+  margin: 4px 8px;       /* ✅ Adds spacing so corners are visible */
 }
-.sidebar-menu li:hover, .sidebar-bottom li:hover { background: #f5f5f5; }
-.sidebar-menu li:last-child, .sidebar-bottom li:last-child { border-bottom: none; }
-.sidebar-icon { font-size: 18px; color: #439e9d; }
-.sidebar-bottom { margin-top: auto; border-top: 1px solid #ddd; }
-.sidebar.pinned { left: 0 !important; }
+.sidebar-menu li:hover, .sidebar-bottom li:hover {
+  background: #f5f5f5;
+}
+.sidebar-menu li:last-child, .sidebar-bottom li:last-child {
+  border-bottom: none;
+}
+
+/* Sidebar Icons */
+.sidebar-icon {
+  font-size: 18px;
+  color: #439e9d;
+}
+
+/* Bottom Section */
+.sidebar-bottom {
+  margin-top: auto;
+  border-top: 1px solid #ddd;
+}

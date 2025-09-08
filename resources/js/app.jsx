@@ -15,6 +15,7 @@ import UserManual from "./pages/PublicInterface/UserManual";
 // 📊 Dashboards (Role-based)
 import AdminDashboard from "./pages/AdminInterface/AdminDashboard";
 import OrgDashboard from "./pages/OrgInterface/OrgDashboard";
+import ContributorDashboard from "./pages/ContributorInterface/ContributorDashboard.jsx";
 // import UserDashboard from "./pages/user/UserDashboard"; // add later if needed
 
 // 🎨 Global Styles
@@ -37,6 +38,7 @@ function App() {
         {/* 📊 Dashboards */}
         <Route path="/admin-dashboard/*" element={<AdminDashboard />} />
         <Route path="/org-dashboard/*" element={<OrgDashboard />} />
+        <Route path="/contrib-dashboard/*" element={<ContributorDashboard />} />
       </Routes>
     </Router>
   );
