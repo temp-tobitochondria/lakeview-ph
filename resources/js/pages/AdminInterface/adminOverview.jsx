@@ -87,7 +87,7 @@ function OverviewMap() {
 function RecentLogs() {
   return (
     <div className="dashboard-card" style={{ marginTop: 24 }}>
-      <div className="dashboard-card-header">
+      <div className="dashboard-card-title">
         <FiActivity style={{ marginRight: 8 }} />
         <span>Recent Activity</span>
       </div>

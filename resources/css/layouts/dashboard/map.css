@@ -1,0 +1,12 @@
+/* resources/css/dashboard/map.css */
+/* ====================================================================== */
+/* 🗺️ MAP CONTAINER */
+/* ====================================================================== */
+.map-container {
+  height: 400px;  /* required for map to show */
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f3f4f6;            /* light neutral */
+  border: 1px solid #e5e7eb;
+}

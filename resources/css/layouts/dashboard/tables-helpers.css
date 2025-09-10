@@ -1,0 +1,22 @@
+/* resources/css/dashboard/tables-helpers.css */
+/* (Optional) If you add a toolbar row inside card headers */
+.dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Make icon+label sit on one line in table headers */
+.custom-table thead th .th-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;           /* prevents vertical drift */
+  vertical-align: middle;
+}
+
+/* Optional: normalize header height */
+.custom-table thead th {
+  height: 44px;             /* or whatever matches your row height */
+}

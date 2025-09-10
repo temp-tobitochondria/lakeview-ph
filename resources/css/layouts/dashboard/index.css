@@ -1,0 +1,11 @@
+/* resources/css/dashboard/index.css */
+@import "./_variables.css";       /* optional placeholder; safe even if empty */
+@import "./layout.css";
+@import "./dashboard-sidebar.css";
+@import "./header.css";
+@import "./card.css";
+@import "./kpi.css";
+@import "./map.css";
+@import "./forms.css";
+@import "./tables-helpers.css";
+@import "./responsive.css";

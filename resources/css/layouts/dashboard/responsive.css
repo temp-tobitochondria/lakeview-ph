@@ -1,0 +1,13 @@
+/* resources/css/dashboard/responsive.css */
+/* ====================================================================== */
+/* 📉 RESPONSIVE TWEAKS */
+/* ====================================================================== */
+@media (max-width: 960px) {
+  .dashboard-main { padding: 16px; }
+  .dashboard-content { padding: 16px; }
+}
+@media (max-width: 640px) {
+  .dashboard-page-header { padding: 10px 12px; }
+  .page-header-title { font-size: 18px; }
+  .btn-icon { width: 34px; height: 34px; }
+}

@@ -1,0 +1,46 @@
+/* resources/css/dashboard/card.css */
+/* ====================================================================== */
+/* 🧾 DASHBOARD CARD (Neutral) */
+/* ====================================================================== */
+.dashboard-card {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 3px 8px rgba(0,0,0,.06);
+  padding: 16px;
+}
+
+.dashboard-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* space for toolbars */
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dashboard-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.dashboard-card-body { padding-top: 4px; }
+
+/* Logs (neutral) */
+.recent-logs-list { list-style: none; margin: 0; padding: 0; }
+.recent-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #f3f4f6;
+}
+.recent-log-item:first-child { border-top: 0; }
+.log-badge { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.log-approved { background: #ecfdf5; color: #16a34a; }
+.log-rejected { background: #fef2f2; color: #dc2626; }
+.log-uploaded { background: #eff6ff; color: #2563eb; }
+.log-main { display: flex; flex-direction: column; gap: 4px; }
+.log-detail { font-weight: 600; color: #111827; }
+.log-meta { font-size: 12px; color: #6b7280; display: flex; gap: 6px; }

@@ -1,0 +1,236 @@
+/* resources/css/dashboard/sidebar.css */
+/* ====================================================================== */
+/* 🧭 SIDEBAR (Dark) */
+/* ====================================================================== */
+.dashboard-sidebar {
+  width: 260px;
+  background: #1e293b;
+  color: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: 16px;
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  transition: width 0.3s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  height: calc(100vh - 32px);
+  position: relative; /* ✅ allow drawer toggle positioning */
+}
+.dashboard-sidebar:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Sidebar: Logo */
+.dashboard-logo {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+}
+.dashboard-logo img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  margin-right: 12px;
+  transition: all 0.3s ease;
+}
+.dashboard-logo-text {
+  white-space: nowrap;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Drawer-style sidebar toggle */
+.sidebar-toggle.drawer {
+  position: absolute;
+  top: 50%;
+  right: -14px; /* like a handle outside */
+  transform: translateY(-50%);
+  background: #1e293b;
+  border: 2px solid #fff;
+  border-radius: 20px;   /* ✅ pill shape */
+  width: 32px;
+  height: 60px;          /* taller pill */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: background 0.2s ease, right 0.25s ease;
+  z-index: 10;
+}
+.sidebar-toggle.drawer:hover {
+  background: #334155;
+}
+
+/* Sidebar: Nav */
+.dashboard-nav-links {
+  list-style: none;
+  padding: 0 12px;
+  margin: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.dashboard-nav-links li a {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  color: #e2e8f0;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 10px;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.dashboard-nav-links li a svg {
+  flex-shrink: 0;
+  font-size: 20px;
+  margin-right: 12px;
+  transition: font-size 0.25s ease, margin 0.25s ease;
+}
+.dashboard-nav-links li a:hover {
+  background: #334155;
+  color: #60a5fa;
+}
+.dashboard-nav-links li a.active {
+  background: linear-gradient(90deg, #334155, #1e293b);
+  color: #3b82f6;
+  font-weight: 600;
+}
+.dashboard-nav-links li a.active::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 4px;
+  border-radius: 2px;
+  background: #3b82f6;
+}
+
+/* Sidebar: User section */
+.dashboard-user-section {
+  flex-shrink: 0;
+  border-top: 1px solid #334155;
+  padding: 16px 20px;
+  background: #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dashboard-user-info,
+.dashboard-signout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.dashboard-user-info {
+  color: #cbd5e1;
+}
+.dashboard-signout {
+  cursor: pointer;
+  color: #f87171;
+  transition: all 0.25s ease;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.dashboard-signout:hover {
+  background: rgba(248, 113, 113, 0.1);
+  color: #dc2626;
+}
+
+/* Collapsed */
+.dashboard-sidebar.collapsed {
+  width: 72px;
+}
+.dashboard-sidebar.collapsed .dashboard-logo {
+  justify-content: center;
+  padding: 16px 0;
+}
+.dashboard-sidebar.collapsed .dashboard-logo img {
+  margin: 0;
+  width: 40px;
+  height: 40px;
+}
+.dashboard-sidebar.collapsed .dashboard-logo-text,
+.dashboard-sidebar.collapsed .dashboard-user-info .user-name,
+.dashboard-sidebar.collapsed .dashboard-signout .signout-text,
+.dashboard-sidebar.collapsed .dashboard-nav-links li a .link-text {
+  display: none !important;
+}
+.dashboard-sidebar.collapsed .dashboard-nav-links li a {
+  justify-content: center;
+  padding: 14px 0;
+}
+.dashboard-sidebar.collapsed .dashboard-nav-links li a svg {
+  margin: 0;
+  font-size: 22px;
+}
+
+/* Scrollbars (WebKit) */
+.dashboard-nav-links::-webkit-scrollbar {
+  width: 8px;
+}
+.dashboard-nav-links::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 8px;
+}
+.dashboard-nav-links::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* === Additional fixes (keep identical order & cascade) === */
+/* === Logo fixes === */
+.dashboard-logo img {
+  width: 36px;          /* slightly smaller */
+  height: 36px;
+  object-fit: contain;  /* prevents distortion */
+  margin-right: 12px;   /* spacing for expanded */
+}
+.dashboard-sidebar.collapsed .dashboard-logo {
+  justify-content: center;
+  padding: 16px 0;       /* balanced top/bottom */
+}
+.dashboard-sidebar.collapsed .dashboard-logo img {
+  margin: 0;             /* remove side gap */
+  width: 40px;           /* make it slightly bigger when centered */
+  height: 40px;
+}
+
+/* === Toggle button fixes === */
+.sidebar-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* === Nav icons centering === */
+.dashboard-nav-links li a {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.dashboard-sidebar.collapsed .dashboard-nav-links li a {
+  justify-content: center; /* center icons in collapsed mode */
+  padding: 14px 0;
+}
+.dashboard-sidebar.collapsed .dashboard-nav-links li a svg {
+  margin: 0;
+  font-size: 22px; /* make icons a bit bigger */
+}
