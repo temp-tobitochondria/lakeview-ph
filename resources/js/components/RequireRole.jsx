@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../js/lib/api";
+import { api } from "../lib/api";
 
 export default function RequireRole({ allowed = [], children }) {
   const [checking, setChecking] = useState(true);

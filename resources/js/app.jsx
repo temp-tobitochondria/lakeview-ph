@@ -22,7 +22,7 @@ import ContributorDashboard from "./pages/ContributorInterface/ContributorDashbo
 import "../css/app.css";
 
 //Component
-import RequireRole from "../css/components/RequireRole.jsx";
+import RequireRole from "../js/components/RequireRole.jsx";
 
 function App() {
   return (
