@@ -53,10 +53,8 @@ export default function AdminDashboard() {
     { path: "/admin-dashboard/settings", label: "System Settings", icon: <FiSettings /> },
   ];
 
-  const user = { name: "Rodrigo Giongco" };
-
   return (
-    <DashboardLayout links={links} user={user}>
+    <DashboardLayout links={links}>
       <Routes>
         {/* Overview */}
         <Route index element={<AdminOverview />} />

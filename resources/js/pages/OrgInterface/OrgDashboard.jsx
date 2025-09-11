@@ -30,10 +30,8 @@ export default function OrgDashboard() {
     { path: "/org-dashboard/settings", label: "Settings", icon: <FiSettings /> },
   ];
 
-  const user = { name: "Org Manager" };
-
   return (
-    <DashboardLayout links={links} user={user}>
+    <DashboardLayout links={links}>
       <Routes>
         <Route index element={<OrgOverview />} />
         <Route path="members" element={<OrgMembers />} />

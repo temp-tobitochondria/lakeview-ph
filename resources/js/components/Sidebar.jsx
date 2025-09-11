@@ -8,10 +8,13 @@ import {
   FiDatabase,
   FiSettings,
   FiLogIn,
+  FiLogOut,
+  FiUser,
   FiMapPin,
 } from "react-icons/fi";
 import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { api, clearToken } from "../lib/api";
 import "leaflet/dist/leaflet.css";
 
 // MiniMap that stays centered and updates live
@@ -65,6 +68,22 @@ function MiniMapWrapper() {
 }
 
 function Sidebar({ isOpen, onClose, pinned, setPinned }) {
+  const [me, setMe] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const u = await api('/auth/me');
+        if (mounted) setMe(u);
+      } catch {
+        if (mounted) setMe(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <div className={`sidebar ${isOpen ? "open" : ""} ${pinned ? "pinned" : ""}`}>
       {/* Header */}
@@ -105,38 +124,39 @@ function Sidebar({ isOpen, onClose, pinned, setPinned }) {
       {/* Menu Links */}
       <ul className="sidebar-menu">
         <li>
-          <FiInfo className="sidebar-icon" />{" "}
-          <Link to="/about" onClick={!pinned ? onClose : undefined}>
-            About LakeView PH
+          <Link className="sidebar-row" to="/about" onClick={!pinned ? onClose : undefined}>
+            <FiInfo className="sidebar-icon" />
+            <span>About LakeView PH</span>
           </Link>
         </li>
         <li>
-          <FiBookOpen className="sidebar-icon" />{" "}
-          <Link to="/manual" onClick={!pinned ? onClose : undefined}>
-            How to use LakeView?
+          <Link className="sidebar-row" to="/manual" onClick={!pinned ? onClose : undefined}>
+            <FiBookOpen className="sidebar-icon" />
+            <span>How to use LakeView?</span>
           </Link>
         </li>
         <li>
-          <FiSend className="sidebar-icon" />{" "}
-          <Link to="/feedback" onClick={!pinned ? onClose : undefined}>
-            Submit Feedback
+          <Link className="sidebar-row" to="/feedback" onClick={!pinned ? onClose : undefined}>
+            <FiSend className="sidebar-icon" />
+            <span>Submit Feedback</span>
           </Link>
         </li>
         <li>
-          <FiGithub className="sidebar-icon" />{" "}
           <a
+            className="sidebar-row"
             href="https://github.com/"
             target="_blank"
             rel="noopener noreferrer"
             onClick={!pinned ? onClose : undefined}
           >
-            GitHub Page
+            <FiGithub className="sidebar-icon" />
+            <span>GitHub Page</span>
           </a>
         </li>
         <li>
-          <FiDatabase className="sidebar-icon" />{" "}
-          <Link to="/data" onClick={!pinned ? onClose : undefined}>
-            About the Data
+          <Link className="sidebar-row" to="/data" onClick={!pinned ? onClose : undefined}>
+            <FiDatabase className="sidebar-icon" />
+            <span>About the Data</span>
           </Link>
         </li>
       </ul>
@@ -144,17 +164,42 @@ function Sidebar({ isOpen, onClose, pinned, setPinned }) {
       {/* Bottom Menu */}
       <ul className="sidebar-bottom">
         <li>
-          <FiSettings className="sidebar-icon" />{" "}
-          <Link to="/settings" onClick={!pinned ? onClose : undefined}>
-            Settings
+          <Link className="sidebar-row" to="/settings" onClick={!pinned ? onClose : undefined}>
+            <FiSettings className="sidebar-icon" />
+            <span>Settings</span>
           </Link>
         </li>
-        <li>
-          <FiLogIn className="sidebar-icon" />{" "}
-          <Link to="/signin" onClick={!pinned ? onClose : undefined}>
-            Sign-in
-          </Link>
-        </li>
+        {me ? (
+          <>
+            <li aria-label="Signed-in user" title={me.name}>
+              <div className="sidebar-row" style={{ cursor: 'default' }}>
+                <FiUser className="sidebar-icon" />
+                <span>{me.name}</span>
+              </div>
+            </li>
+            <li>
+              <button
+                className="sidebar-row"
+                onClick={async () => {
+                  try { await api('/auth/logout', { method: 'POST' }); } catch {}
+                  clearToken();
+                  if (!pinned) onClose?.();
+                  navigate('/signin');
+                }}
+              >
+                <FiLogOut className="sidebar-icon" />
+                <span>Sign out</span>
+              </button>
+            </li>
+          </>
+        ) : (
+          <li>
+            <Link className="sidebar-row" to="/signin" onClick={!pinned ? onClose : undefined}>
+              <FiLogIn className="sidebar-icon" />
+              <span>Sign-in</span>
+            </Link>
+          </li>
+        )}
       </ul>
     </div>
   );

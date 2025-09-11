@@ -1,6 +1,7 @@
 // resources/js/pages/PublicInterface/RegistrationPage.jsx
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FiArrowLeft } from "react-icons/fi";
 
 export default function RegistrationPage() {
   const navigate = useNavigate();
@@ -36,6 +37,8 @@ export default function RegistrationPage() {
     } catch (e) {
       setErr("Registration failed. Email may already be registered.");
     } finally {
+      // Clear sensitive input from memory/DOM
+      setPassword("");
       setLoading(false);
     }
   }
@@ -43,14 +46,12 @@ export default function RegistrationPage() {
   return (
     <div className="auth-page">
       <div className="auth-box">
-        {/* Left Illustration (kept) */}
-        <div
-          className="auth-illustration"
-          style={{ backgroundImage: "url('/register-illustration.png')" }}
-        />
-
-        {/* Right Form (kept) */}
+        {/* Single Column Form */}
         <div className="auth-form">
+          <div className="auth-brand">
+            <img src="/lakeview-logo-alt.png" alt="LakeView PH" />
+            <span>LakeView PH</span>
+          </div>
           <h2>Create a New Account</h2>
           <p className="auth-subtitle">Sign up to access LakeView PH</p>
 
@@ -81,6 +82,7 @@ export default function RegistrationPage() {
               autoComplete="new-password"
               required
             />
+            <div className="auth-hint">Use at least 8 characters for a strong password.</div>
 
             <button type="submit" className="auth-btn" disabled={loading}>
               {loading ? "Creating account..." : "REGISTER"}
@@ -93,6 +95,12 @@ export default function RegistrationPage() {
               Sign In
             </Link>
           </p>
+          <div className="auth-back-row">
+            <Link to="/" className="auth-back" title="Back to LakeView">
+              <FiArrowLeft size={16} />
+              <span>Back to LakeView</span>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

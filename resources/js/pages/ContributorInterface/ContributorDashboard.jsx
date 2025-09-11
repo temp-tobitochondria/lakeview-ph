@@ -53,12 +53,9 @@ export default function ContributorDashboard() {
     { path: "/contrib-dashboard/help", label: "Help", icon: <FiLifeBuoy /> },
   ];
 
-  const user = { name: "Contributor" };
-
   return (
     <DashboardLayout
       links={links}
-      user={user}
     >
       <Routes>
         {/* Overview */}

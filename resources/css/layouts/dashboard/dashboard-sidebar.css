@@ -12,7 +12,7 @@
   margin: 16px;
   border-radius: 20px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
+  overflow: auto;
   transition: width 0.3s ease, transform 0.25s ease, box-shadow 0.25s ease;
   height: calc(100vh - 32px);
   position: relative; /* ✅ allow drawer toggle positioning */
@@ -72,9 +72,29 @@
   overflow-y: auto;
   padding-right: 6px;
 }
+/* Dynamic scrollbar styling (dashboard sidebar + nav) */
+.dashboard-sidebar,
+.dashboard-nav-links {
+  scrollbar-width: thin;            /* Firefox */
+  scrollbar-color: #475569 transparent; /* thumb track */
+}
+.dashboard-sidebar::-webkit-scrollbar,
+.dashboard-nav-links::-webkit-scrollbar {
+  width: 10px;
+}
+.dashboard-sidebar::-webkit-scrollbar-thumb,
+.dashboard-nav-links::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 8px;
+}
+.dashboard-sidebar::-webkit-scrollbar-track,
+.dashboard-nav-links::-webkit-scrollbar-track {
+  background: transparent;
+}
 .dashboard-nav-links li a {
   display: flex;
   align-items: center;
+  width: 100%;
   padding: 14px 16px;
   color: #e2e8f0;
   text-decoration: none;

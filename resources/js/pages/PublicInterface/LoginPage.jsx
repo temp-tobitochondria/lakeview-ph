@@ -1,6 +1,7 @@
 // resources/js/pages/PublicInterface/LoginPage.jsx
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FiArrowLeft } from "react-icons/fi";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -8,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -39,6 +41,8 @@ export default function LoginPage() {
     } catch (e) {
       setErr("Invalid email or password.");
     } finally {
+      // Clear sensitive input from memory/DOM
+      setPassword("");
       setLoading(false);
     }
   }
@@ -46,14 +50,13 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-box">
-        {/* Left Illustration (kept) */}
-        <div
-          className="auth-illustration"
-          style={{ backgroundImage: "url('/login-illustration.png')" }}
-        />
-
-        {/* Right Form (kept) */}
+        {/* Single Column Form */}
         <div className="auth-form">
+          <div className="auth-brand">
+            <img src="/lakeview-logo-alt.png" alt="LakeView PH" />
+            <span>LakeView PH</span>
+          </div>
+          
           <h2>Welcome Back</h2>
           <p className="auth-subtitle">Log in to continue to LakeView PH</p>
 
@@ -77,6 +80,8 @@ export default function LoginPage() {
               required
             />
 
+            <div className="auth-forgot">Forgot your password?</div>
+
             <button type="submit" className="auth-btn" disabled={loading}>
               {loading ? "Signing in..." : "LOG IN"}
             </button>
@@ -88,6 +93,12 @@ export default function LoginPage() {
               Sign Up
             </Link>
           </p>
+          <div className="auth-back-row">
+            <Link to="/" className="auth-back" title="Back to LakeView">
+              <FiArrowLeft size={16} />
+              <span>Back to LakeView</span>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

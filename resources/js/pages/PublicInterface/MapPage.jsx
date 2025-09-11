@@ -15,6 +15,9 @@
 // ----------------------------------------------------
 
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { FiArrowLeft } from "react-icons/fi";
+import { api } from "../../lib/api";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -57,6 +60,27 @@ function MapPage() {
   // Measurement tool (distance / area)
   const [measureActive, setMeasureActive] = useState(false);
   const [measureMode, setMeasureMode] = useState("distance"); // "distance" | "area"
+
+  // Determine if a signed-in user with a dashboard is present
+  const [userRole, setUserRole] = useState(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const me = await api('/auth/me');
+        if (!mounted) return;
+        if (['superadmin','org_admin','contributor'].includes(me.role)) {
+          setUserRole(me.role);
+        } else {
+          setUserRole(null);
+        }
+      } catch {
+        if (mounted) setUserRole(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // ----------------------------------------------------
   // Map Layer Configurations
@@ -218,6 +242,28 @@ function MapPage() {
       <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />{" "}
       {/* Basemap switcher */}
       <ScreenshotButton /> {/* Bottom-center screenshot */}
+
+      {/* Back to Dashboard button for signed-in roles */}
+      {userRole && (
+        <button
+          className="map-back-btn"
+          onClick={() => {
+            if (userRole === 'superadmin') navigate('/admin-dashboard');
+            else if (userRole === 'org_admin') navigate('/org-dashboard');
+            else if (userRole === 'contributor') navigate('/contrib-dashboard');
+          }}
+          title="Back to Dashboard"
+          style={{
+            position: 'absolute',
+            bottom: 20,
+            right: 20,
+            zIndex: 1100,
+            display: 'inline-flex'
+          }}
+        >
+          <FiArrowLeft />
+        </button>
+      )}
     </div>
   );
 }

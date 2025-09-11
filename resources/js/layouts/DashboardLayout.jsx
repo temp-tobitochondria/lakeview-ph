@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   FiMap,
   FiLogOut,
@@ -7,10 +7,26 @@ import {
   FiChevronsLeft,
   FiChevronsRight,
 } from "react-icons/fi";
+import { api, clearToken } from "../lib/api";
 
 export default function DashboardLayout({ links, user, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const u = await api('/auth/me');
+        if (mounted) setMe(u);
+      } catch {
+        // ignore; user not authenticated or token invalid
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Find active link
   const activeLink = links.find(
@@ -43,11 +59,22 @@ export default function DashboardLayout({ links, user, children }) {
 
         {/* User Section */}
         <div className="dashboard-user-section">
-          <div className="dashboard-user-info" title={user?.name || "User"}>
+          <div className="dashboard-user-info" title={(me?.name || "")}>
             <FiUser size={18} />
-            <span className="user-name">{user?.name || "User"}</span>
+            {me?.name ? (
+              <span className="user-name">{me.name}</span>
+            ) : null}
           </div>
-          <div className="dashboard-signout" role="button" tabIndex={0}>
+          <div
+            className="dashboard-signout"
+            role="button"
+            tabIndex={0}
+            onClick={async () => {
+              try { await api('/auth/logout', { method: 'POST' }); } catch {}
+              clearToken();
+              navigate('/signin');
+            }}
+          >
             <FiLogOut size={18} /> <span className="signout-text">Sign out</span>
           </div>
         </div>

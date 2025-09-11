@@ -13,6 +13,7 @@
   flex-direction: column;
   z-index: 1200;
   transition: left 0.3s ease;
+  overflow-y: auto; /* allow dynamic scrolling when content exceeds viewport */
   border-top-right-radius: 16px;
   border-bottom-right-radius: 16px;
 }
@@ -97,4 +98,36 @@
 .sidebar-bottom {
   margin-top: auto;
   border-top: 1px solid #ddd;
+}
+
+/* Dynamic scrollbar styling (public sidebar) */
+.sidebar {
+  scrollbar-width: thin;            /* Firefox */
+  scrollbar-color: #94a3b8 #f1f5f9; /* thumb track */
+}
+.sidebar::-webkit-scrollbar {
+  width: 10px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 8px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+/* Make the whole row clickable for links/buttons */
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-decoration: none;
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
 }
