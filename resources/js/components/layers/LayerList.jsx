@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FiLayers, FiLoader, FiEye, FiToggleRight, FiLock, FiUnlock, FiTrash2, FiEdit2,
 } from "react-icons/fi";
@@ -13,10 +13,25 @@ import {
   updateLayer,
   fetchLakeOptions,
   fetchWatershedOptions,
+  computeNextVisibility,
 } from "../../lib/layers";
 import AppMap from "../../components/AppMap";
 import { GeoJSON } from "react-leaflet";
 import L from "leaflet";
+
+const VISIBILITY_LABELS = {
+  public: "Public",
+  admin: "Admin",
+  organization: "Admin (legacy)",
+  organization_admin: "Admin (legacy)",
+};
+
+const DEFAULT_VISIBILITY_OPTIONS = [
+  { value: "public", label: "Public" },
+  { value: "admin", label: "Admin" },
+];
+
+const getVisibilityLabel = (value) => VISIBILITY_LABELS[value] || value || "Unknown";
 
 function LayerList({
   initialBodyType = "lake",
@@ -26,6 +41,7 @@ function LayerList({
   allowDelete = true,
   showPreview = false,
   onPreview,
+  visibilityOptions = DEFAULT_VISIBILITY_OPTIONS,
 }) {
   const [bodyType, setBodyType] = useState(initialBodyType);
   const [bodyId, setBodyId] = useState(initialBodyId);
@@ -39,6 +55,27 @@ function LayerList({
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", category: "", notes: "", visibility: "public" });
+  const normalizedVisibilityOptions = useMemo(() => {
+    const base = Array.isArray(visibilityOptions) && visibilityOptions.length
+      ? visibilityOptions
+      : DEFAULT_VISIBILITY_OPTIONS;
+    const mapped = base.map((opt) => (typeof opt === 'string'
+      ? { value: opt, label: getVisibilityLabel(opt) }
+      : { value: opt.value, label: opt.label ?? getVisibilityLabel(opt.value) }
+    )).filter((opt) => opt && opt.value);
+    return mapped.length ? mapped : DEFAULT_VISIBILITY_OPTIONS;
+  }, [visibilityOptions]);
+
+  const allowedVisibilityValues = useMemo(
+    () => normalizedVisibilityOptions.map((opt) => opt.value),
+    [normalizedVisibilityOptions]
+  );
+
+  const formatCreator = (row) => {
+    if (row?.uploaded_by_org) return row.uploaded_by_org;
+    return 'System Administrator';
+  };
+
   const [previewLayer, setPreviewLayer] = useState(null);
   const previewMapRef = useRef(null);
 
@@ -117,8 +154,9 @@ function LayerList({
   }, [previewLayer]);
 
   const doToggleVisibility = async (row) => {
+    if (allowedVisibilityValues.length < 2) return;
     try {
-      await toggleLayerVisibility(row);
+      await toggleLayerVisibility(row, allowedVisibilityValues);
       await refresh();
     } catch (e) {
       console.error('[LayerList] Toggle visibility failed', e);
@@ -270,80 +308,91 @@ function LayerList({
                   </tr>
                 </thead>
                 <tbody>
-                  {layers.map((row) => (
-                    <tr key={row.id}>
-                      <td className="lv-td">{row.name}</td>
-                      <td className="lv-td">{row.category || '-'}</td>
-                      <td className="lv-td">{row.visibility === "public" ? "Public" : "Admin"}</td>
-                      <td className="lv-td">{row.is_active ? "Yes" : "No"}</td>
-                      <td className="lv-td">{row.uploaded_by_name || '-'}</td>
-                      <td className="lv-td">{row.area_km2 ?? "-"}</td>
-                      <td className="lv-td">{row.updated_at ? new Date(row.updated_at).toLocaleString() : "-"}</td>
-                      <td className="lv-td sticky-right lv-td-actions">
-                        <div className="lv-actions-inline">
-                          <button
-                            className="icon-btn simple"
-                            title="View on map"
-                            aria-label="View"
-                            onClick={() => setPreviewLayer(row)}
-                          >
-                            <FiEye />
-                          </button>
+                  {layers.map((row) => {
+                    const nextVisibility = computeNextVisibility(row.visibility, allowedVisibilityValues);
+                    const canToggleVisibility = allowToggleVisibility && allowedVisibilityValues.length >= 2 && nextVisibility !== row.visibility;
+                    const initialEditVisibility = (() => {
+                      const current = ['organization', 'organization_admin'].includes(row.visibility) ? 'admin' : row.visibility;
+                      if (allowedVisibilityValues.includes(current)) return current;
+                      return normalizedVisibilityOptions[0]?.value || 'public';
+                    })();
 
-                          <button
-                            className="icon-btn simple"
-                            title="Edit metadata"
-                            aria-label="Edit"
-                            onClick={() => {
-                              setEditRow(row);
-                              setEditForm({
-                                name: row.name || "",
-                                category: row.category || "",
-                                notes: row.notes || "",
-                                visibility: row.visibility || "public",
-                              });
-                              setEditOpen(true);
-                            }}
-                          >
-                            <FiEdit2 />
-                          </button>
-
-                          {allowActivate && (
-                            <button
-                              className={`icon-btn simple ${row.is_active ? "accent" : ""}`}
-                              title={row.is_active ? "Unset Default" : "Set as Default"}
-                              aria-label={row.is_active ? "Unset Default" : "Set as Default"}
-                              onClick={() => doToggleDefault(row)}
-                            >
-                              <FiToggleRight />
-                            </button>
-                          )}
-
-                          {allowToggleVisibility && (
+                    return (
+                      <tr key={row.id}>
+                        <td className="lv-td">{row.name}</td>
+                        <td className="lv-td">{row.category || '-'}</td>
+                        <td className="lv-td">{getVisibilityLabel(row.visibility)}</td>
+                        <td className="lv-td">{row.is_active ? 'Yes' : 'No'}</td>
+                        <td className="lv-td">{formatCreator(row)}</td>
+                        <td className="lv-td">{row.area_km2 ?? '-'}</td>
+                        <td className="lv-td">{row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}</td>
+                        <td className="lv-td sticky-right lv-td-actions">
+                          <div className="lv-actions-inline">
                             <button
                               className="icon-btn simple"
-                              title={row.visibility === "public" ? "Make Admin-only" : "Make Public"}
-                              aria-label="Toggle Visibility"
-                              onClick={() => doToggleVisibility(row)}
+                              title="View on map"
+                              aria-label="View"
+                              onClick={() => setPreviewLayer(row)}
                             >
-                              {row.visibility === "public" ? <FiLock /> : <FiUnlock />}
+                              <FiEye />
                             </button>
-                          )}
 
-                          {allowDelete && (
                             <button
-                              className="icon-btn simple danger"
-                              title="Delete"
-                              aria-label="Delete"
-                              onClick={() => doDelete(row.id)}
+                              className="icon-btn simple"
+                              title="Edit metadata"
+                              aria-label="Edit"
+                              onClick={() => {
+                                setEditRow(row);
+                                setEditForm({
+                                  name: row.name || '',
+                                  category: row.category || '',
+                                  notes: row.notes || '',
+                                  visibility: initialEditVisibility,
+                                });
+                                setEditOpen(true);
+                              }}
                             >
-                              <FiTrash2 />
+                              <FiEdit2 />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+
+                            {allowActivate && (
+                              <button
+                                className={`icon-btn simple ${row.is_active ? 'accent' : ''}`}
+                                title={row.is_active ? 'Unset Default' : 'Set as Default'}
+                                aria-label={row.is_active ? 'Unset Default' : 'Set as Default'}
+                                onClick={() => doToggleDefault(row)}
+                              >
+                                <FiToggleRight />
+                              </button>
+                            )}
+
+                            {canToggleVisibility && (
+                              <button
+                                className="icon-btn simple"
+                                title={`Switch to ${getVisibilityLabel(nextVisibility)}`}
+                                aria-label={`Switch visibility to ${getVisibilityLabel(nextVisibility)}`}
+                                onClick={() => doToggleVisibility(row)}
+                              >
+                                {row.visibility === 'public' ? <FiLock /> : <FiUnlock />}
+                              </button>
+                            )}
+
+                            {allowDelete && (
+                              <button
+                                className="icon-btn simple danger"
+                                title="Delete"
+                                aria-label="Delete"
+                                onClick={() => doDelete(row.id)}
+                              >
+                                <FiTrash2 />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
                 </tbody>
               </table>
             </div>
@@ -422,8 +471,15 @@ function LayerList({
                 value={editForm.visibility}
                 onChange={(e) => setEditForm((f) => ({ ...f, visibility: e.target.value }))}
               >
-                <option value="public">Public</option>
-                <option value="admin">Admin only</option>
+                {[...normalizedVisibilityOptions,
+                  ...(editRow && editRow.visibility && !normalizedVisibilityOptions.some((opt) => opt.value === editRow.visibility)
+                    ? [{ value: editRow.visibility, label: getVisibilityLabel(editRow.visibility) }]
+                    : []
+                  )].map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
               </select>
             </div>
           </div>

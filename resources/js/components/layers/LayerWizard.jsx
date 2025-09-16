@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { GeoJSON } from "react-leaflet";
 import AppMap from "../../components/AppMap";
 import "leaflet/dist/leaflet.css";
@@ -25,8 +25,34 @@ export default function LayerWizard({
   allowedBodyTypes = ["lake", "watershed"],
   selectionModeLake = "dropdown",
   selectionModeWatershed = "dropdown",
+  visibilityOptions = [
+    { value: "public", label: "Public" },
+    { value: "admin", label: "Admin" },
+  ],
   onPublished,             // (layerResponse) => void
 }) {
+  const normalizedVisibilityOptions = useMemo(() => {
+    const base = Array.isArray(visibilityOptions) && visibilityOptions.length
+      ? visibilityOptions
+      : [
+          { value: "public", label: "Public" },
+          { value: "admin", label: "Admin" },
+        ];
+    return base
+      .map((opt) => (typeof opt === "string"
+        ? { value: opt, label: opt.charAt(0).toUpperCase() + opt.slice(1) }
+        : { value: opt.value, label: opt.label ?? opt.value }
+      ))
+      .filter((opt) => opt && opt.value);
+  }, [visibilityOptions]);
+
+  const resolvedDefaultVisibility = useMemo(() => {
+    if (normalizedVisibilityOptions.some((opt) => opt.value === defaultVisibility)) {
+      return defaultVisibility;
+    }
+    return normalizedVisibilityOptions[0]?.value || "public";
+  }, [defaultVisibility, normalizedVisibilityOptions]);
+
   const [data, setData] = useState({
     // file/geom
     fileName: "",
@@ -43,7 +69,7 @@ export default function LayerWizard({
     name: "",
     category: "",
     notes: "",
-    visibility: defaultVisibility, // 'admin' | 'public'
+    visibility: resolvedDefaultVisibility, // initial visibility selection
     isActive: false,
   });
 
@@ -51,6 +77,20 @@ export default function LayerWizard({
   const mapRef = useRef(null);
   const [lakeOptions, setLakeOptions] = useState([]);
   const [watershedOptions, setWatershedOptions] = useState([]);
+
+  useEffect(() => {
+    setData((d) => {
+      if (normalizedVisibilityOptions.some((opt) => opt.value === d.visibility)) {
+        return d;
+      }
+      return { ...d, visibility: resolvedDefaultVisibility };
+    });
+  }, [normalizedVisibilityOptions, resolvedDefaultVisibility]);
+
+  useEffect(() => {
+    if (allowSetActive) return;
+    setData((d) => (d.isActive ? { ...d, isActive: false } : d));
+  }, [allowSetActive]);
 
   // fit map when preview changes
   useEffect(() => {
@@ -163,8 +203,8 @@ export default function LayerWizard({
         type: "base",
         category: data.category,
         srid: Number(data.sourceSrid) || 4326,
-        visibility: data.visibility,          // 'admin' | 'public'
-        is_active: !!data.isActive,
+        visibility: data.visibility,          // e.g. public, organization
+        is_active: allowSetActive ? !!data.isActive : false,
         status: "ready",
         notes: data.notes || null,
         source_type: "geojson",
@@ -436,8 +476,11 @@ export default function LayerWizard({
                   value={data.visibility}
                   onChange={(e) => setData((d) => ({ ...d, visibility: e.target.value }))}
                 >
-                  <option value="public">Public</option>
-                  <option value="admin">Admin only</option>
+                  {normalizedVisibilityOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

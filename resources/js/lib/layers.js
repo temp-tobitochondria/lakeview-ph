@@ -56,8 +56,27 @@ export const createLayer = (payload) => api("/layers", { method: "POST", body: p
 export const activateLayer = (id) =>
   api(`/layers/${id}`, { method: "PATCH", body: { is_active: true } });
 
-export const toggleLayerVisibility = (row) => {
-  const next = row.visibility === "public" ? "admin" : "public";
+export const computeNextVisibility = (current, allowed = []) => {
+  const base = Array.isArray(allowed) && allowed.length ? allowed.filter(Boolean) : ['public', 'admin'];
+  const normalized = base.map((v) => String(v));
+  let currentValue = current;
+  if (currentValue === 'organization' || currentValue === 'organization_admin') {
+    currentValue = 'admin';
+  }
+  if (!normalized.length) return currentValue || 'public';
+  const idx = normalized.indexOf(currentValue);
+  if (idx === -1) return normalized[0];
+  return normalized[(idx + 1) % normalized.length];
+};
+
+export const toggleLayerVisibility = (row, allowed) => {
+  if (!row || !row.id) {
+    return Promise.reject(new Error('Layer row is required'));
+  }
+  const next = computeNextVisibility(row.visibility, allowed);
+  if (!next || next === row.visibility) {
+    return Promise.resolve(row);
+  }
   return api(`/layers/${row.id}`, { method: "PATCH", body: { visibility: next } });
 };
 
