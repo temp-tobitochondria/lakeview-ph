@@ -13,7 +13,6 @@ import {
 
 import DashboardLayout from "../../layouts/DashboardLayout";
 import OrgOverview from "./orgOverview";
-import OrgLogTest from "./orgLogTest";
 import OrgMembers from "./orgMembers";
 import OrgLayers from "./orgLayers";
 
@@ -23,7 +22,7 @@ export default function OrgDashboard() {
   const links = [
     { path: "/org-dashboard", label: "Overview", icon: <FiHome />, exact: true },
     { path: "/org-dashboard/members", label: "Members", icon: <FiUsers /> },
-    { path: "/org-dashboard/log", label: "Log Test", icon: <FiPlusCircle /> },
+    { path: "/org-dashboard/logs", label: "Sample Logs", icon: <FiPlusCircle /> },
     { path: "/org-dashboard/layers", label: "Layers", icon: <FiLayers /> },
     { path: "/org-dashboard/approvals", label: "Approvals", icon: <FiClipboard /> },
     { path: "/org-dashboard/alerts", label: "Alerts", icon: <FiFlag /> },
@@ -35,7 +34,7 @@ export default function OrgDashboard() {
       <Routes>
         <Route index element={<OrgOverview />} />
         <Route path="members" element={<OrgMembers />} />
-        <Route path="log" element={<OrgLogTest />} />
+        <Route path="logs" element={<Page title="Tests"  />} />
         <Route path="layers" element={<OrgLayers />} />
         <Route path="approvals" element={<Page title="Approvals & Reviews" />} />
         <Route path="alerts" element={<Page title="Org Alerts" />} />

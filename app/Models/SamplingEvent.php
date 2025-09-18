@@ -9,7 +9,6 @@ class SamplingEvent extends Model
 {
     use HasFactory;
 
-    public $timestamps = false;
 
     protected $fillable = [
         'organization_id',
@@ -27,6 +26,7 @@ class SamplingEvent extends Model
 
     protected $casts = [
         'sampled_at' => 'datetime',
+        'status' => 'string',
     ];
 
     public function organization()

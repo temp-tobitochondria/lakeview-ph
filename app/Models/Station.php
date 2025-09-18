@@ -9,8 +9,6 @@ class Station extends Model
 {
     use HasFactory;
 
-    public $timestamps = false;
-
     protected $fillable = [
         'organization_id',
         'lake_id',

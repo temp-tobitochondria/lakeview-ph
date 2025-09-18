@@ -11,6 +11,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             ParameterSeeder::class,
+            SampleLogSeeder::class,
         ]);
 
         if (!User::where('email', 'test@example.com')->exists()) {

@@ -9,7 +9,6 @@ class SampleResult extends Model
 {
     use HasFactory;
 
-    public $timestamps = false;
 
     protected $fillable = [
         'sampling_event_id',
@@ -28,6 +27,7 @@ class SampleResult extends Model
         'value' => 'float',
         'depth_m' => 'float',
         'evaluated_at' => 'datetime',
+        'pass_fail' => 'string',
     ];
 
     public function samplingEvent()

@@ -11,7 +11,8 @@ use App\Http\Controllers\Api\Admin\ParameterController as AdminParameterControll
 use App\Http\Controllers\Api\Admin\ParameterThresholdController as AdminParameterThresholdController;
 use App\Http\Controllers\Api\Admin\WqStandardController as AdminWqStandardController;
 use App\Http\Controllers\Api\Admin\WaterQualityClassController as AdminWaterQualityClassController;
-
+use App\Http\Controllers\Api\Admin\StationController as AdminStationController;
+use App\Http\Controllers\Api\Admin\SamplingEventController as AdminSamplingEventController;
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']); // public
     Route::post('/login',    [AuthController::class, 'login']);    // public
@@ -29,6 +30,8 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::apiResource('parameters', AdminParameterController::class);
     Route::apiResource('parameter-thresholds', AdminParameterThresholdController::class)->except(['create', 'edit']);
     Route::apiResource('wq-standards', AdminWqStandardController::class)->except(['create', 'edit']);
+    Route::apiResource('stations', AdminStationController::class)->except(['create', 'edit']);
+    Route::apiResource('sample-events', AdminSamplingEventController::class)->except(['create', 'edit']);
 });
 
 Route::middleware(['auth:sanctum','role:org_admin'])->prefix('org')->group(function () {
@@ -71,4 +74,8 @@ Route::get('/public/layers/{id}', [ApiLayerController::class, 'publicShow']);
 // Slim options for dropdowns (id + name), with optional ?q=
 Route::get('/options/lakes',      [OptionsController::class, 'lakes']);
 Route::get('/options/watersheds', [OptionsController::class, 'watersheds']);
+Route::get('/options/parameters', [OptionsController::class, 'parameters']);
+Route::get('/options/wq-standards', [OptionsController::class, 'standards']);
+Route::get('/options/water-quality-classes', [OptionsController::class, 'waterQualityClasses']);
+
 

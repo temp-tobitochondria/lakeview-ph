@@ -37,6 +37,9 @@ const normalizeRows = (rows = []) =>
     region: row.region ?? "",
     province: row.province ?? "",
     municipality: row.municipality ?? "",
+    class_code: row.class_code ?? "",
+    class_name: row.water_quality_class?.name ?? "",
+    classification: row.class_code ? [row.class_code, row.water_quality_class?.name].filter(Boolean).join(" - ") : "",
     surface_area_km2: fmtNum(row.surface_area_km2, 2),
     elevation_m: fmtNum(row.elevation_m, 1),
     mean_depth_m: fmtNum(row.mean_depth_m, 1),
@@ -69,6 +72,7 @@ function ManageLakesTab() {
   const [allLakes, setAllLakes] = useState([]);
   const [lakes, setLakes] = useState([]);
   const [watersheds, setWatersheds] = useState([]);
+  const [classOptions, setClassOptions] = useState([]);
 
   const mapRef = useRef(null);
   const lakeGeoRef = useRef(null);
@@ -126,6 +130,7 @@ function ManageLakesTab() {
       { id: "region", header: "Region", accessor: "region", width: 140, className: "col-md-hide" },
       { id: "province", header: "Province", accessor: "province", width: 160, className: "col-md-hide" },
       { id: "municipality", header: "Municipality", accessor: "municipality", width: 180, className: "col-sm-hide" },
+      { id: "classification", header: "DENR Class", accessor: "classification", width: 160, render: (row) => row.class_code || "" },
       { id: "surface_area_km2", header: "Surface Area (km^2)", accessor: "surface_area_km2", width: 170, className: "col-sm-hide" },
       { id: "elevation_m", header: "Elevation (m)", accessor: "elevation_m", width: 150, className: "col-md-hide", _optional: true },
       { id: "mean_depth_m", header: "Mean Depth (m)", accessor: "mean_depth_m", width: 160, className: "col-md-hide", _optional: true },
@@ -137,7 +142,7 @@ function ManageLakesTab() {
   );
 
   const defaultsVisible = useMemo(() => {
-    const initial = { name: true, alt_name: true, region: true, province: true, municipality: true, surface_area_km2: true };
+    const initial = { name: true, alt_name: true, region: true, province: true, municipality: true, classification: true, surface_area_km2: true };
     baseColumns.forEach((col) => {
       if (!(col.id in initial)) initial[col.id] = false;
     });
@@ -205,6 +210,16 @@ function ManageLakesTab() {
     }
   }, []);
 
+  const fetchClasses = useCallback(async () => {
+    try {
+      const res = await api("/options/water-quality-classes");
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setClassOptions(list);
+    } catch (err) {
+      console.error("[ManageLakesTab] Failed to load water quality classes", err);
+      setClassOptions([]);
+    }
+  }, []);
   const fetchLakes = useCallback(async () => {
     setLoading(true);
     setErrorMsg("");
@@ -223,8 +238,9 @@ function ManageLakesTab() {
 
   useEffect(() => {
     fetchWatersheds();
+    fetchClasses();
     fetchLakes();
-  }, [fetchWatersheds, fetchLakes]);
+  }, [fetchWatersheds, fetchClasses, fetchLakes]);
 
   useEffect(() => {
     const q = query.trim().toLowerCase();
@@ -236,12 +252,13 @@ function ManageLakesTab() {
     const [minDepth, maxDepth] = adv.mean_depth_m ?? [null, null];
 
     const filtered = allLakes.filter((row) => {
-      const haystack = `${row.name} ${row.alt_name || ""} ${row.location} ${row.watershed}`.toLowerCase();
+      const haystack = `${row.name} ${row.alt_name || ""} ${row.location} ${row.watershed} ${row.classification}`.toLowerCase();
 
       if (q && !haystack.includes(q)) return false;
       if (region && (row.region || "").toLowerCase() !== region) return false;
       if (province && (row.province || "").toLowerCase() !== province) return false;
       if (municipality && (row.municipality || "").toLowerCase() !== municipality) return false;
+      if ((adv.class_code ?? "") && (row.class_code || "") !== adv.class_code) return false;
 
       const area = row._raw?.surface_area_km2 ?? null;
       if (minArea != null && !(area != null && Number(area) >= Number(minArea))) return false;
@@ -471,6 +488,7 @@ function ManageLakesTab() {
       surface_area_km2: source.surface_area_km2 ?? "",
       elevation_m: source.elevation_m ?? "",
       mean_depth_m: source.mean_depth_m ?? "",
+      class_code: source.class_code ?? "",
     });
     setFormOpen(true);
   }, []);
@@ -491,7 +509,7 @@ function ManageLakesTab() {
       const num = Number(value);
       payload[field] = Number.isNaN(num) ? null : num;
     });
-    ["name", "alt_name", "region", "province", "municipality"].forEach((field) => {
+    ["name", "alt_name", "region", "province", "municipality", "class_code"].forEach((field) => {
       const value = payload[field];
       payload[field] = value == null ? null : String(value).trim() || null;
     });
@@ -586,6 +604,17 @@ function ManageLakesTab() {
     [allLakes]
   );
 
+  const classFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All DENR classes" },
+      ...classOptions.map((item) => ({
+        value: item.code,
+        label: item.name ? `${item.code} - ${item.name}` : item.code,
+      })),
+    ],
+    [classOptions]
+  );
+
   const actions = useMemo(
     () => [
       { label: "View", title: "View", icon: <FiEye />, onClick: viewLake },
@@ -602,7 +631,7 @@ function ManageLakesTab() {
         search={{
           value: query,
           onChange: setQuery,
-          placeholder: "Search lakes by name, alt name, location, watershed...",
+          placeholder: "Search lakes by name, alt name, location, watershed, classification...",
         }}
         filters={[]}
         columnPicker={{ columns: baseColumns, visibleMap, onVisibleChange: setVisibleMap }}
@@ -641,6 +670,14 @@ function ManageLakesTab() {
             value: adv.municipality ?? "",
             onChange: (value) => setAdv((state) => ({ ...state, municipality: value })),
             options: municipalityOptions,
+          },
+          {
+            id: "class_code",
+            label: "DENR Class",
+            type: "select",
+            value: adv.class_code ?? "",
+            onChange: (value) => setAdv((state) => ({ ...state, class_code: value })),
+            options: classFilterOptions,
           },
           {
             id: "area_km2",
@@ -746,6 +783,7 @@ function ManageLakesTab() {
         mode={formMode}
         initialValue={formInitial}
         watersheds={watersheds}
+        classOptions={classOptions}
         loading={loading}
         onSubmit={saveLake}
         onCancel={() => setFormOpen(false)}
@@ -766,4 +804,5 @@ function ManageLakesTab() {
 }
 
 export default ManageLakesTab;
+
 

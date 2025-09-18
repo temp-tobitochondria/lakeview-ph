@@ -15,14 +15,14 @@ class LakeController extends Controller
     {
         return Lake::select(
             'id','watershed_id','name','alt_name','region','province','municipality',
-            'surface_area_km2','elevation_m','mean_depth_m','created_at','updated_at'
-        )->with('watershed:id,name')->orderBy('name')->get();
+            'surface_area_km2','elevation_m','mean_depth_m','class_code','created_at','updated_at'
+        )->with(['watershed:id,name','waterQualityClass:code,name'])->orderBy('name')->get();
     }
 
     public function show(Lake $lake)
     {
         // include GeoJSON from the active layer (default geometry)
-        $lake->load('watershed:id,name');
+        $lake->load('watershed:id,name','waterQualityClass:code,name');
         $active = $lake->activeLayer()
             ->select('id')
             ->selectRaw('ST_AsGeoJSON(geom) as geom_geojson')
@@ -42,9 +42,10 @@ class LakeController extends Controller
             'surface_area_km2' => ['nullable','numeric'],
             'elevation_m' => ['nullable','numeric'],
             'mean_depth_m' => ['nullable','numeric'],
+            'class_code' => ['nullable','string','max:10', Rule::exists('water_quality_classes','code')],
         ]);
         $lake = Lake::create($data);
-        return response()->json($lake->load('watershed:id,name'), 201);
+        return response()->json($lake->load('watershed:id,name','waterQualityClass:code,name'), 201);
     }
 
     public function update(Request $req, Lake $lake)
@@ -59,9 +60,10 @@ class LakeController extends Controller
             'surface_area_km2' => ['nullable','numeric'],
             'elevation_m' => ['nullable','numeric'],
             'mean_depth_m' => ['nullable','numeric'],
+            'class_code' => ['nullable','string','max:10', Rule::exists('water_quality_classes','code')],
         ]);
         $lake->update($data);
-        return $lake->load('watershed:id,name');
+        return $lake->load('watershed:id,name','waterQualityClass:code,name');
     }
 
     public function destroy(Lake $lake)
@@ -85,7 +87,7 @@ class LakeController extends Controller
                 ->whereNotNull('ly.geom')
                 ->select(
                     'l.id','l.name','l.alt_name','l.region','l.province','l.municipality',
-                    'l.surface_area_km2','l.elevation_m','l.mean_depth_m',
+                    'l.surface_area_km2','l.elevation_m','l.mean_depth_m','l.class_code',
                     'l.created_at','l.updated_at',
                     'w.name as watershed_name',
                     'ly.id as layer_id',
@@ -130,3 +132,4 @@ class LakeController extends Controller
         }
     }
 }
+
