@@ -15,6 +15,7 @@ import MapControls from "../../components/MapControls";
 import SearchBar from "../../components/SearchBar";
 import LayerControl from "../../components/LayerControl";
 import ScreenshotButton from "../../components/ScreenshotButton";
+import CoordinatesScale from "../../components/CoordinatesScale"
 import Sidebar from "../../components/Sidebar";
 import ContextMenu from "../../components/ContextMenu";
 import MeasureTool from "../../components/MeasureTool";
@@ -416,6 +417,7 @@ function MapPage() {
 
         {/* Measure Tool */}
         <MeasureTool active={measureActive} mode={measureMode} onFinish={() => setMeasureActive(false)} />
+        <CoordinatesScale />
 
         {/* Map Controls */}
         <MapControls defaultBounds={worldBounds} />
@@ -467,7 +469,6 @@ function MapPage() {
       <SearchBar onMenuClick={() => setSidebarOpen(true)} />
       <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />
       <ScreenshotButton />
-
       {/* Back to Dashboard */}
       {userRole && (
         <button
