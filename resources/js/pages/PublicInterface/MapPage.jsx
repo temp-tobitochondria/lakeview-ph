@@ -20,7 +20,7 @@ import Sidebar from "../../components/Sidebar";
 import ContextMenu from "../../components/ContextMenu";
 import MeasureTool from "../../components/MeasureTool";
 import LakeInfoPanel from "../../components/LakeInfoPanel";
-import AuthModal from "../../components/AuthModal";
+import AuthModal from "../../components/modals/AuthModal";
 
 function MapWithContextMenu({ children }) {
   const map = useMap();

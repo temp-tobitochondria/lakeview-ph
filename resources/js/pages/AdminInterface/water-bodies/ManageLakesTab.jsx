@@ -9,7 +9,7 @@ import "leaflet/dist/leaflet.css";
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
 import LakeForm from "../../../components/LakeForm";
-import ConfirmDialog from "../../../components/ConfirmDialog";
+import ConfirmDialog from "../../../components/modals/ConfirmDialog";
 import TableToolbar from "../../../components/table/TableToolbar";
 import FilterPanel from "../../../components/table/FilterPanel";
 

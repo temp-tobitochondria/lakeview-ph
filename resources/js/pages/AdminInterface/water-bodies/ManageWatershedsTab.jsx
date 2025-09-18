@@ -7,7 +7,7 @@ import L from "leaflet";
 
 import TableLayout from "../../../layouts/TableLayout";
 import TableToolbar from "../../../components/table/TableToolbar";
-import ConfirmDialog from "../../../components/ConfirmDialog";
+import ConfirmDialog from "../../../components/modals/ConfirmDialog";
 import WatershedForm from "../../../components/WatershedForm";
 import { api } from "../../../lib/api";
 

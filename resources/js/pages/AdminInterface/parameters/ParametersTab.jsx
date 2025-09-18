@@ -391,20 +391,6 @@ function ParametersTab() {
           { value: "0", label: "Inactive only" },
         ],
       },
-      {
-        id: "unit",
-        label: "Unit contains",
-        type: "text",
-        value: adv.unit ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, unit: value })),
-      },
-      {
-        id: "notes",
-        label: "Notes contain",
-        type: "text",
-        value: adv.notes ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, notes: value })),
-      },
     ],
     [adv, categoryFilterOptions, groupFilterOptions, dataTypeFilterOptions, evaluationFilterOptions]
   );

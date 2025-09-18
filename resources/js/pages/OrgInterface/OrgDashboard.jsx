@@ -15,6 +15,8 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import OrgOverview from "./orgOverview";
 import OrgMembers from "./orgMembers";
 import OrgLayers from "./orgLayers";
+import OrgAddWQTest from "./orgAddWQTest";
+import OrgWQTests from "./orgWQTests";
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -41,8 +43,8 @@ export default function OrgDashboard() {
       <Routes>
         <Route index element={<OrgOverview />} />
         <Route path="members" element={<OrgMembers />} />
-        <Route path="add-wq-tests" element={<Page title="Add Water Quality Test"  />} />
-        <Route path="wq-tests" element={<Page title="Water Quality Tests"  />} />
+        <Route path="add-wq-tests" element={<OrgAddWQTest  />} />
+        <Route path="wq-tests" element={<OrgWQTests  />} />
         <Route path="layers" element={<OrgLayers />} />
         <Route path="settings" element={<Page title="Settings" />} />
       </Routes>
