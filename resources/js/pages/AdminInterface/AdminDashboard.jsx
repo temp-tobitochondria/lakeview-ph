@@ -27,28 +27,20 @@ export default function AdminDashboard() {
   const links = [
     // Overview (KPI Dashboard)
     { path: "/admin-dashboard", label: "Overview", icon: <FiHome />, exact: true },
-
     // Organizations
     { path: "/admin-dashboard/organizations", label: "Organizations", icon: <FiBriefcase /> },
-
     // Users
     { path: "/admin-dashboard/users", label: "Users", icon: <FiUsers /> },
-
     // Water Body Catalog
     { path: "/admin-dashboard/lakes", label: "Water Bodies", icon: <FiMap /> },
-
     // Base Layers
     { path: "/admin-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
-
     // Parameters
     { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
-
     // System Feedback
     { path: "/admin-dashboard/feedback", label: "System Feedback", icon: <FiClipboard /> },
-
     // Audit Logs
     { path: "/admin-dashboard/audit", label: "Audit Logs", icon: <FiActivity /> },
-
     // System Settings
     { path: "/admin-dashboard/settings", label: "System Settings", icon: <FiSettings /> },
   ];

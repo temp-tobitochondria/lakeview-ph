@@ -5,9 +5,9 @@ import {
   FiHome,
   FiUsers,
   FiPlusCircle,
-  FiLayers,
   FiClipboard,
-  FiFlag,
+  FiLayers,
+  FiActivity,
   FiSettings,
 } from "react-icons/fi";
 
@@ -20,12 +20,19 @@ const Page = ({ title }) => <h2>{title}</h2>;
 
 export default function OrgDashboard() {
   const links = [
+    // Overview
     { path: "/org-dashboard", label: "Overview", icon: <FiHome />, exact: true },
+    // Organization Members
     { path: "/org-dashboard/members", label: "Members", icon: <FiUsers /> },
-    { path: "/org-dashboard/logs", label: "Sample Logs", icon: <FiPlusCircle /> },
-    { path: "/org-dashboard/layers", label: "Layers", icon: <FiLayers /> },
-    { path: "/org-dashboard/approvals", label: "Approvals", icon: <FiClipboard /> },
-    { path: "/org-dashboard/alerts", label: "Alerts", icon: <FiFlag /> },
+    // Log Water Quality Tests
+    { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Test", icon: <FiPlusCircle /> },
+    // View Water Quality Tests
+    { path: "/org-dashboard/wq-tests", label: "View Water Quality Tests", icon: <FiClipboard /> },
+    // Add Organization-created Layers
+    { path: "/org-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
+    // Organization-wide Audit Logs
+    { path: "/org-dashboard/org-audit", label: "Audit Logs", icon: <FiActivity /> },
+    // Settings
     { path: "/org-dashboard/settings", label: "Settings", icon: <FiSettings /> },
   ];
 
@@ -34,10 +41,9 @@ export default function OrgDashboard() {
       <Routes>
         <Route index element={<OrgOverview />} />
         <Route path="members" element={<OrgMembers />} />
-        <Route path="logs" element={<Page title="Tests"  />} />
+        <Route path="add-wq-tests" element={<Page title="Add Water Quality Test"  />} />
+        <Route path="wq-tests" element={<Page title="Water Quality Tests"  />} />
         <Route path="layers" element={<OrgLayers />} />
-        <Route path="approvals" element={<Page title="Approvals & Reviews" />} />
-        <Route path="alerts" element={<Page title="Org Alerts" />} />
         <Route path="settings" element={<Page title="Settings" />} />
       </Routes>
     </DashboardLayout>
