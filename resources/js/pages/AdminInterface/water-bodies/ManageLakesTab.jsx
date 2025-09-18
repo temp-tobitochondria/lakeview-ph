@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiEye, FiEdit2, FiTrash2, FiLayers } from "react-icons/fi";
 import { GeoJSON } from "react-leaflet";
-import AppMap from "../../components/AppMap";
-import MapViewport from "../../components/MapViewport";
+import AppMap from "../../../components/AppMap";
+import MapViewport from "../../../components/MapViewport";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import TableLayout from "../../layouts/TableLayout";
-import { api } from "../../lib/api";
-import LakeForm from "../../components/LakeForm";
-import ConfirmDialog from "../../components/ConfirmDialog";
-import TableToolbar from "../../components/table/TableToolbar";
-import FilterPanel from "../../components/table/FilterPanel";
+import TableLayout from "../../../layouts/TableLayout";
+import { api } from "../../../lib/api";
+import LakeForm from "../../../components/LakeForm";
+import ConfirmDialog from "../../../components/ConfirmDialog";
+import TableToolbar from "../../../components/table/TableToolbar";
+import FilterPanel from "../../../components/table/FilterPanel";
 
 const TABLE_ID = "admin-watercat-lakes";
 const VIS_KEY = `${TABLE_ID}::visible`;

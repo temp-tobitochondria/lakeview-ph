@@ -23,8 +23,7 @@ function OverviewTab({ lake, showWatershed = false, canToggleWatershed = false, 
   const areaStr      = useMemo(() => fmtNum(lake?.surface_area_km2, " km²", 2), [lake]);
   const elevationStr = useMemo(() => fmtNum(lake?.elevation_m, " m", 1), [lake]);
   const meanDepthStr = useMemo(() => fmtNum(lake?.mean_depth_m, " m", 1), [lake]);
-  const createdAtStr = useMemo(() => fmtDate(lake?.created_at), [lake]);
-  const updatedAtStr = useMemo(() => fmtDate(lake?.updated_at), [lake]);
+
 
   const showToggle = canToggleWatershed && typeof onToggleWatershed === 'function';
 
@@ -73,12 +72,6 @@ function OverviewTab({ lake, showWatershed = false, canToggleWatershed = false, 
 
         <div><strong>Location (full):</strong></div>
         <div>{locationStr}</div>
-
-        <div><strong>Created:</strong></div>
-        <div>{createdAtStr}</div>
-
-        <div><strong>Updated:</strong></div>
-        <div>{updatedAtStr}</div>
       </div>
     </>
   );

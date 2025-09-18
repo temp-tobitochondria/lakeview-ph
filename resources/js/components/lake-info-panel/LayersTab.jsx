@@ -45,10 +45,6 @@ function LayersTab({
         </button>
       </div>
 
-      <p style={{ marginTop: 0, marginBottom: 8, fontSize: 12, opacity: 0.75 }}>
-        Showing <strong>public</strong> layers only.
-      </p>
-
       {layers.length === 0 ? (
         <div className="insight-card">
           <p style={{ margin: 0 }}>

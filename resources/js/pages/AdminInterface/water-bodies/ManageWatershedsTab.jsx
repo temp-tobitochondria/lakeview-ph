@@ -1,15 +1,15 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiEdit2, FiEye, FiTrash2 } from "react-icons/fi";
-import AppMap from "../../components/AppMap";
-import MapViewport from "../../components/MapViewport";
+import AppMap from "../../../components/AppMap";
+import MapViewport from "../../../components/MapViewport";
 import { GeoJSON } from "react-leaflet";
 import L from "leaflet";
 
-import TableLayout from "../../layouts/TableLayout";
-import TableToolbar from "../../components/table/TableToolbar";
-import ConfirmDialog from "../../components/ConfirmDialog";
-import WatershedForm from "../../components/WatershedForm";
-import { api } from "../../lib/api";
+import TableLayout from "../../../layouts/TableLayout";
+import TableToolbar from "../../../components/table/TableToolbar";
+import ConfirmDialog from "../../../components/ConfirmDialog";
+import WatershedForm from "../../../components/WatershedForm";
+import { api } from "../../../lib/api";
 
 const TABLE_ID = "admin-watercat-watersheds";
 const VIS_KEY = `${TABLE_ID}::visible`;

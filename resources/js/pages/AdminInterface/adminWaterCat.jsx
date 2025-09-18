@@ -1,8 +1,8 @@
 ﻿import React, { useState } from "react";
 import { FiMap } from "react-icons/fi";
 
-import ManageLakesTab from "./ManageLakesTab";
-import ManageWatershedsTab from "./ManageWatershedsTab";
+import ManageLakesTab from "./water-bodies/ManageLakesTab";
+import ManageWatershedsTab from "./water-bodies/ManageWatershedsTab";
 
 function AdminWaterCat() {
   const [activeTab, setActiveTab] = useState("lakes");
