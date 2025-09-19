@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FiEdit2, FiTrash2, FiX } from "react-icons/fi";
 import Modal from "../Modal";
-import { alertError } from "../../utils/alerts";
-import { extractErrorMessage } from "../../utils/errors";
 
 /**
  * StationModal
@@ -50,43 +48,16 @@ export default function StationModal({
     !Number.isNaN(Number(form.lat)) &&
     !Number.isNaN(Number(form.lng));
 
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    if (busy) return;
-
+  const save = () => {
     const payload = {
       ...form,
       lake_id: lakeId ? Number(lakeId) : null,
       lat: Number(form.lat),
       lng: Number(form.lng),
     };
-
-    try {
-      setBusy(true);
-      if (editing) {
-        await onUpdate?.(payload);
-      } else {
-        await onCreate?.(payload);
-      }
-      onClose?.();
-    } catch (err) {
-      alertError("Station error", extractErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (busy) return;
-    try {
-      setBusy(true);
-      await onDelete?.(id);
-    } catch (err) {
-      alertError("Station error", extractErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
+    if (editing) onUpdate?.(payload);
+    else onCreate?.(payload);
+    onClose?.();
   };
 
   return (
@@ -103,7 +74,7 @@ export default function StationModal({
           <button className="pill-btn ghost" onClick={onClose}>
             <FiX /> Close
           </button>
-          <button className="pill-btn primary" onClick={save} disabled={!valid || busy}>
+          <button className="pill-btn primary" onClick={save} disabled={!valid}>
             {editing ? "Save" : "Create"}
           </button>
         </div>
@@ -198,9 +169,8 @@ export default function StationModal({
                       </button>
                       <button
                         className="pill-btn ghost danger"
-                        onClick={() => handleDelete(s.id)}
+                        onClick={() => onDelete?.(s.id)}
                         title="Delete"
-                        disabled={busy}
                       >
                         <FiTrash2 />
                       </button>

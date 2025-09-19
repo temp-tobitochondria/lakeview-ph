@@ -13,7 +13,6 @@ use App\Http\Controllers\Api\Admin\WqStandardController as AdminWqStandardContro
 use App\Http\Controllers\Api\Admin\WaterQualityClassController as AdminWaterQualityClassController;
 use App\Http\Controllers\Api\Admin\StationController as AdminStationController;
 use App\Http\Controllers\Api\Admin\SamplingEventController as AdminSamplingEventController;
-use App\Http\Controllers\Api\Org\WhoamiController as OrgWhoamiController;
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']); // public
     Route::post('/login',    [AuthController::class, 'login']);    // public
@@ -35,10 +34,8 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::apiResource('sample-events', AdminSamplingEventController::class)->except(['create', 'edit']);
 });
 
-Route::middleware(['auth:sanctum','role:org_admin,contributor,superadmin'])->prefix('org')->group(function () {
-    Route::get('/whoami', OrgWhoamiController::class);
-    Route::apiResource('stations', AdminStationController::class)->except(['create', 'edit']);
-    Route::apiResource('sample-events', AdminSamplingEventController::class)->except(['create', 'edit']);
+Route::middleware(['auth:sanctum','role:org_admin'])->prefix('org')->group(function () {
+    Route::get('/whoami', fn() => ['ok' => true]);
 });
 
 Route::middleware(['auth:sanctum','role:contributor'])->prefix('contrib')->group(function () {
