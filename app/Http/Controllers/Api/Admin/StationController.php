@@ -45,9 +45,8 @@ class StationController extends Controller
             $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN));
         }
 
-        $stations = $query
-            ->orderBy('name')
-            ->get();
+        // Org members (org_admin and contributor) see all stations for the organization.
+        $stations = $query->orderBy('name')->get();
 
         return response()->json(['data' => $stations]);
     }
@@ -61,7 +60,7 @@ class StationController extends Controller
 
         $this->assertLakeExists($data['lake_id']);
 
-        $station = DB::transaction(function () use ($tenantId, $data) {
+        $station = DB::transaction(function () use ($tenantId, $data, $request) {
             $attributes = [
                 'organization_id' => $tenantId,
                 'lake_id' => $data['lake_id'],
@@ -69,6 +68,8 @@ class StationController extends Controller
                 'description' => $data['description'] ?? null,
                 'is_active' => $data['is_active'] ?? true,
             ];
+
+            // record creator intentionally omitted — not tracking creator on stations
 
             $station = Station::create($attributes);
 
@@ -101,6 +102,8 @@ class StationController extends Controller
         if ($station->organization_id !== $tenantId) {
             abort(403, 'Forbidden');
         }
+
+        // org_admins (checked by resolveTenantMembership) may update any station in their org
 
         if (isset($data['lake_id'])) {
             $this->assertLakeExists($data['lake_id']);
@@ -138,8 +141,9 @@ class StationController extends Controller
 
     public function destroy(Request $request, Station $station)
     {
-        $this->resolveTenantMembership($request, ['org_admin'], $station->organization_id);
+        $context = $this->resolveTenantMembership($request, ['org_admin'], $station->organization_id);
 
+        // org_admins (checked by resolveTenantMembership) may delete any station in their org
         $station->delete();
 
         return response()->json(['message' => 'Station deleted']);
