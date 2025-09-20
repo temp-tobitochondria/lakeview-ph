@@ -3,7 +3,7 @@ import { Marker, Tooltip } from "react-leaflet";
 import { FaRuler, FaDrawPolygon, FaMapMarkerAlt, FaCopy } from "react-icons/fa";
 import L from "leaflet";
 import ReactDOMServer from "react-dom/server";
-import { alertError } from "../lib/alerts";
+import { alertError, alertSuccess } from "../lib/alerts";
 
 // Blue pin icon
 const bluePinIcon = new L.DivIcon({

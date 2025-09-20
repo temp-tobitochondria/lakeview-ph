@@ -17,6 +17,7 @@ import {
 
 import { createLayer, fetchLakeOptions, fetchWatershedOptions } from "../../lib/layers";
 import { alertSuccess, alertError } from "../../lib/alerts";
+import MapViewport from "../../components/MapViewport";
 
 export default function LayerWizard({
   defaultBodyType = "lake",
@@ -59,20 +60,25 @@ export default function LayerWizard({
     // file/geom
     fileName: "",
     geomText: "",
-    uploadGeom: null,       // original MultiPolygon (source SRID)
-    previewGeom: null,      // WGS84 for map preview
+    uploadGeom: null,
+    previewGeom: null,
     sourceSrid: 4326,
 
     // link
-    bodyType: allowedBodyTypes.includes(defaultBodyType) ? defaultBodyType : allowedBodyTypes[0] || "lake",
+    bodyType: allowedBodyTypes.includes(defaultBodyType) ? defaultBodyType : (allowedBodyTypes[0] || "lake"),
     bodyId: initialBodyId ? String(initialBodyId) : "",
 
     // meta
     name: "",
     category: "",
     notes: "",
-    visibility: resolvedDefaultVisibility, // initial visibility selection
+    visibility: resolvedDefaultVisibility,
     isActive: false,
+
+    // viewport
+    includeViewport: true,
+    viewport: null,
+    viewportVersion: 0,
   });
 
   const [error, setError] = useState("");
@@ -100,13 +106,7 @@ export default function LayerWizard({
     setData((d) => (d.isActive ? { ...d, isActive: false } : d));
   }, [allowSetActive]);
 
-  // fit map when preview changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !data.previewGeom) return;
-    const b = boundsFromGeom(data.previewGeom);
-    if (b && b.isValid()) map.fitBounds(b.pad(0.2));
-  }, [data.previewGeom]);
+  // Map viewport is now controlled by MapViewport inside the Preview render
 
   // Load lake options (names only) when selecting a lake
   useEffect(() => {
@@ -219,6 +219,7 @@ export default function LayerWizard({
         geom_geojson: JSON.stringify(data.uploadGeom),
       };
 
+
       const res = await createLayer(payload);
       if (typeof onPublished === "function") onPublished(res);
 
@@ -324,6 +325,11 @@ export default function LayerWizard({
                 {data.previewGeom && (
                   <GeoJSON key="geom" data={{ type: "Feature", geometry: data.previewGeom }} style={{ color: previewColor, weight: 2, fillOpacity: 0.15 }} />
                 )}
+                {/* MapViewport will fit map to either previewGeom or to a captured viewport (if present) */}
+                <MapViewport
+                  bounds={data.viewport ? [[data.viewport.bounds[0], data.viewport.bounds[1]], [data.viewport.bounds[2], data.viewport.bounds[3]]] : (data.previewGeom ? boundsFromGeom(data.previewGeom) : null)}
+                  version={data.viewportVersion || 0}
+                />
               </AppMap>
             </div>
 
@@ -351,12 +357,12 @@ export default function LayerWizard({
     {
       key: "link",
       title: "Link to Body",
-      render: () => (
+      render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">
             <div className="dashboard-card-title">
               <FiMap />
-              <span>Link to a {data.bodyType === "lake" ? "Lake" : "Watershed"}</span>
+                <span>Link to a {wdata.bodyType === "lake" ? "Lake" : "Watershed"}</span>
             </div>
           </div>
           <div className="dashboard-card-body">
@@ -365,10 +371,10 @@ export default function LayerWizard({
                 <div className="form-group">
                   <label>Body Type</label>
                   <select
-                    value={data.bodyType}
-                    onChange={(e) =>
-                      setData((d) => ({ ...d, bodyType: e.target.value, bodyId: "" }))
-                    }
+                      value={wdata.bodyType}
+                      onChange={(e) =>
+                        wSetData((d) => ({ ...d, bodyType: e.target.value, bodyId: "" }))
+                      }
                   >
                     {allowedBodyTypes.includes("lake") && (<option value="lake">Lake</option>)}
                     {allowedBodyTypes.includes("watershed") && (<option value="watershed">Watershed</option>)}
@@ -376,12 +382,12 @@ export default function LayerWizard({
                 </div>
               )}
 
-              {data.bodyType === "lake" ? (
+                {wdata.bodyType === "lake" ? (
                 <div className="form-group" style={{ minWidth: 260 }}>
                   <label>Select Lake</label>
                   <select
-                    value={data.bodyId}
-                    onChange={(e) => setData((d) => ({ ...d, bodyId: e.target.value }))}
+                      value={wdata.bodyId}
+                      onChange={(e) => wSetData((d) => ({ ...d, bodyId: e.target.value }))}
                     required
                   >
                     <option value="" disabled>Choose a lake</option>
@@ -396,8 +402,8 @@ export default function LayerWizard({
                 <div className="form-group" style={{ minWidth: 260 }}>
                   <label>Select Watershed</label>
                   <select
-                    value={data.bodyId}
-                    onChange={(e) => setData((d) => ({ ...d, bodyId: e.target.value }))}
+                      value={wdata.bodyId}
+                      onChange={(e) => wSetData((d) => ({ ...d, bodyId: e.target.value }))}
                     required
                   >
                     <option value="" disabled>Select category…</option>

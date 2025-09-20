@@ -79,6 +79,41 @@ function LayerList({
   };
 
   const [previewLayer, setPreviewLayer] = useState(null);
+  
+  const handlePreviewClick = (row) => {
+    if (!row) return;
+
+    // Try to parse geometry and update viewport immediately (like MapPage.applyOverlayByLayerId)
+    if (row?.geom_geojson) {
+      try {
+        const geometry = JSON.parse(row.geom_geojson);
+        setPreviewGeometry(geometry);
+        try {
+          const gj = L.geoJSON(geometry);
+          const b = gj.getBounds();
+          if (b && b.isValid && b.isValid()) {
+            setPreviewBounds(b);
+            updateViewport(b, { maxZoom: row?.body_type === 'watershed' ? 12 : 13 });
+          } else {
+            setPreviewBounds(null);
+          }
+        } catch (err) {
+          console.warn('[LayerList] Could not compute bounds for preview', err);
+          setPreviewBounds(null);
+        }
+      } catch (err) {
+        console.warn('[LayerList] Failed to parse preview geometry', err);
+        setPreviewGeometry(null);
+        setPreviewBounds(null);
+      }
+    } else {
+      setPreviewGeometry(null);
+      setPreviewBounds(null);
+    }
+
+    // Attach a token so React remounts the GeoJSON even if the same id is clicked
+    setPreviewLayer({ ...row, _previewToken: Date.now() });
+  };
 
   const [previewGeometry, setPreviewGeometry] = useState(null);
   const [previewBounds, setPreviewBounds] = useState(null);
@@ -326,7 +361,7 @@ function LayerList({
             <div style={{ height: 360, borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb', marginBottom: 12 }}>
               <AppMap view="osm">
                 <GeoJSON
-                  key={`preview-${previewLayer?.id ?? 'layer'}-${previewLayer?.geom_geojson?.length ?? 0}`}
+                  key={`preview-${previewLayer?.id ?? 'layer'}-${previewLayer?._previewToken ?? previewLayer?.geom_geojson?.length ?? 0}`}
                   data={previewGeometry}
                   style={{ weight: 2, fillOpacity: 0.1, color: (previewLayer?.body_type === 'watershed' ? '#16a34a' : '#2563eb') }}
                 />
@@ -394,7 +429,7 @@ function LayerList({
                               className="icon-btn simple"
                               title="View on map"
                               aria-label="View"
-                              onClick={() => setPreviewLayer(row)}
+                              onClick={() => handlePreviewClick(row)}
                             >
                               <FiEye />
                             </button>
