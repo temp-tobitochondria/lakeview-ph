@@ -57,20 +57,37 @@ export default function OrgWQTestModal({
     setDraft(record || null);
   }, [record, open]);
 
-  const hasPoint = useMemo(() => {
-    if (!draft) return false;
-    return Number.isFinite(Number(draft.lat)) && Number.isFinite(Number(draft.lng));
+  // derive geographic values from multiple possible field names
+  const geo = useMemo(() => {
+    if (!draft) return { hasPoint: false, lat: NaN, lng: NaN, bounds: null };
+    const lat = Number(draft.lat ?? draft.latitude ?? draft.latitude_dd ?? draft.latitude_decimal);
+    const lng = Number(draft.lng ?? draft.longitude ?? draft.longitude_dd ?? draft.longitude_decimal);
+    const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+    const bounds = hasPoint ? [[lat - 0.02, lng - 0.02], [lat + 0.02, lng + 0.02]] : null;
+    return { hasPoint, lat, lng, bounds };
   }, [draft]);
-
-  const bounds = useMemo(() => {
-    if (!hasPoint) return null;
-    const lat = Number(draft.lat), lng = Number(draft.lng);
-    return [[lat - 0.02, lng - 0.02], [lat + 0.02, lng + 0.02]];
-  }, [hasPoint, draft]);
 
   if (!open || !draft) return null;
 
   const { year, quarter, month, day } = yqmFrom(draft);
+  // derive displayable lake name and nicely formatted sampled date
+  const lakeName = draft?.lake?.name ?? draft?.lake_name ?? draft?.lake?.display_name ?? "—";
+  const formattedDate = (() => {
+    try {
+      return new Date(draft.sampled_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+    } catch (e) {
+      return new Date(draft.sampled_at).toLocaleDateString();
+    }
+  })();
+  // derive station display name (fall back to coords if no station name)
+  const stationName = (() => {
+    const n = draft?.station?.name ?? draft?.station_name ?? draft?.station?.display_name;
+    if (n) return n;
+    if (Number.isFinite(geo.lat) && Number.isFinite(geo.lng)) {
+      try { return `${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}`; } catch (e) { /* fallthrough */ }
+    }
+    return "—";
+  })();
 
   // ---- parameter edit helpers ----
   const rows = Array.isArray(draft.results) ? draft.results : [];
@@ -118,8 +135,8 @@ export default function OrgWQTestModal({
           notes: draft.notes,
           applied_standard_id: draft.applied_standard_id,
           status: draft.status,
-          latitude: draft.lat ?? null,
-          longitude: draft.lng ?? null,
+          latitude: Number.isFinite(geo.lat) ? geo.lat : (draft.lat ?? draft.latitude ?? null),
+          longitude: Number.isFinite(geo.lng) ? geo.lng : (draft.lng ?? draft.longitude ?? null),
           measurements: (draft.results || []).map((r) => ({
             parameter_id: r.parameter_id ?? null,
             value: r.value ?? null,
@@ -147,7 +164,7 @@ export default function OrgWQTestModal({
       width={760}
       // keep overall modal compact; inner body will scroll
       maxHeight="86vh"
-      title={`${editable ? "Edit" : "WQ Test"} #${draft.id}`}
+  title={`${formattedDate} - ${lakeName}`}
       footer={
         <div style={{ display: "flex", width: "100%", justifyContent: "space-between" }}>
           <div style={{ display: "flex", gap: 8 }}>
@@ -182,8 +199,8 @@ export default function OrgWQTestModal({
           <Pill tone={draft.status === "public" ? "success" : "muted"}>
             {draft.status === "public" ? "Published" : "Draft"}
           </Pill>
-          {draft.lake_name ? <Pill>{draft.lake_name}</Pill> : null}
-          {draft.station_name ? <Pill>{draft.station_name}</Pill> : null}
+          {lakeName ? <Pill>{lakeName}</Pill> : null}
+          {stationName ? <Pill>{stationName}</Pill> : null}
         </div>
 
         {/* Location card */}
@@ -197,14 +214,14 @@ export default function OrgWQTestModal({
           <div className="dashboard-card-body">
             <div className="map-preview" style={{ height: 300, marginBottom: 12 }}>
               <AppMap style={{ height: "100%" }}>
-                {hasPoint && bounds && <MapViewport bounds={bounds} />}
-                {hasPoint && (
-                  <Marker position={[Number(draft.lat), Number(draft.lng)]} icon={DEFAULT_ICON}>
+                {geo.hasPoint && geo.bounds && <MapViewport bounds={geo.bounds} />}
+                {geo.hasPoint && (
+                  <Marker position={[geo.lat, geo.lng]} icon={DEFAULT_ICON}>
                     <Popup>
                       <div>
                         <div><strong>Point</strong></div>
-                        <div>{Number(draft.lat).toFixed(6)}, {Number(draft.lng).toFixed(6)}</div>
-                        {draft.station_name ? <div>Station: {draft.station_name}</div> : null}
+                        <div>{geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}</div>
+                        {stationName ? <div>Station: {stationName}</div> : null}
                       </div>
                     </Popup>
                   </Marker>
@@ -212,12 +229,12 @@ export default function OrgWQTestModal({
               </AppMap>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div><strong>Sampled At:</strong> {new Date(draft.sampled_at).toLocaleString()}</div>
               <div><strong>Sampler:</strong> {draft.sampler_name || "—"}</div>
               <div><strong>Method:</strong> {draft.method || "—"}</div>
               <div><strong>Weather:</strong> {draft.weather || "—"}</div>
-              <div><strong>Standard:</strong> {draft.applied_standard_code || "—"}</div>
+              <div><strong>Standard:</strong> {draft.applied_standard_code || draft.applied_standard_name || draft.applied_standard?.code || draft.applied_standard?.name || "—"}</div>
               <div><strong>Period:</strong> {Number.isFinite(year) ? `${year} · Q${quarter} · M${month} · D${day}` : "—"}</div>
               <div style={{ gridColumn: "1 / -1" }}><strong>Notes:</strong> {draft.notes || "—"}</div>
             </div>
