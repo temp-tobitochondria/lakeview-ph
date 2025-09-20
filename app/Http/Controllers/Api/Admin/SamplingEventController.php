@@ -127,6 +127,7 @@ class SamplingEventController extends Controller
                 'weather' => $data['weather'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'status' => $data['status'] ?? 'draft',
+                'created_by_user_id' => $request->user()->id ?? null,
             ];
 
             $event = SamplingEvent::create($attributes);
@@ -188,6 +189,7 @@ class SamplingEventController extends Controller
             }
 
             if (!empty($updates)) {
+                $updates['updated_by_user_id'] = $request->user()->id ?? null;
                 $samplingEvent->update($updates);
             }
 
@@ -251,6 +253,8 @@ class SamplingEventController extends Controller
                 'lake:id,name,class_code',
                 'station:id,name',
                 'appliedStandard:id,code,name',
+                'createdBy:id,name',
+                'updatedBy:id,name',
             ])
             ->withCount('results');
     }
@@ -268,6 +272,8 @@ class SamplingEventController extends Controller
                 'results' => function ($query) {
                     $query->with(['parameter:id,code,name,unit']);
                 },
+                'createdBy:id,name',
+                'updatedBy:id,name',
             ])
             ->withCount('results');
     }

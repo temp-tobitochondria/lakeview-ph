@@ -22,6 +22,8 @@ class SamplingEventFactory extends Factory
             'weather' => $this->faker->randomElement(['Clear', 'Overcast', 'Rain showers', 'Windy']),
             'notes' => $this->faker->optional()->sentence(12),
             'status' => $this->faker->randomElement(['draft', 'submitted', 'verified']),
+            'created_by_user_id' => null,
+            'updated_by_user_id' => null,
         ];
     }
 }

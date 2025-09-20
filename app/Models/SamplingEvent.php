@@ -22,6 +22,8 @@ class SamplingEvent extends Model
         'weather',
         'notes',
         'status',
+        'created_by_user_id',
+        'updated_by_user_id',
     ];
 
     protected $casts = [
@@ -32,6 +34,16 @@ class SamplingEvent extends Model
     public function organization()
     {
         return $this->belongsTo(Tenant::class, 'organization_id');
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by_user_id');
     }
 
     public function lake()

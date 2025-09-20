@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "../../lib/api";
+import { alertError, alertSuccess } from "../../utils/alerts";
+import { fetchLakeOptions } from "../../lib/layers";
 import {
   FiMapPin, FiUser, FiThermometer, FiClipboard, FiCheckCircle,
   FiPlus, FiTrash2, FiEdit2, FiFlag
@@ -10,41 +13,7 @@ import StationModal from "../../components/modals/StationModal";
 import { GeoJSON, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 
-/* --------------------- Config / Mock Data (until backend) -------------------- */
-const STEP_LABELS = [
-  { key: "location",   title: "Lake & Location",    icon: <FiMapPin /> },
-  { key: "details",    title: "Sampling Details",   icon: <FiUser /> },
-  { key: "parameters", title: "Parameters",         icon: <FiThermometer /> },
-  { key: "standard",   title: "Standard & Notes",   icon: <FiClipboard /> },
-  { key: "review",     title: "Review",             icon: <FiCheckCircle /> },
-];
-
-const MOCK_LAKES = [
-  { id: 1, name: "Laguna de Bay", class_code: "C" },
-  { id: 2, name: "Taal Lake",     class_code: "B" },
-  { id: 3, name: "Lake Bunot",    class_code: "C" },
-];
-
-const MOCK_STATIONS = {
-  1: [
-    { id: 101, name: "LLDA Sta. Rosa", lat: 14.276, lng: 121.110, description: "" },
-    { id: 102, name: "LLDA Calamba",   lat: 14.214, lng: 121.165, description: "" },
-  ],
-  2: [{ id: 201, name: "Pulo North", lat: 14.002, lng: 120.979, description: "" }],
-  3: [{ id: 301, name: "Bunot West", lat: 14.064, lng: 121.314, description: "" }],
-};
-
-const MOCK_PARAMETERS = [
-  { id: 1, code: "DO",   name: "Dissolved Oxygen",          unit: "mg/L" },
-  { id: 2, code: "pH",   name: "pH",                         unit: "" },
-  { id: 3, code: "BOD",  name: "Biochemical Oxygen Demand",  unit: "mg/L" },
-  { id: 4, code: "Temp", name: "Temperature",                unit: "°C" },
-];
-
-const MOCK_STANDARDS = [
-  { id: 1, code: "DAO2016-08", name: "DENR DAO 2016-08",            is_current: false },
-  { id: 2, code: "DAO2021-19", name: "DENR DAO 2021-19 (Current)",  is_current: true  },
-];
+/* --------------------- Config -------------------- */
 
 const fmtDateLocal = (d = new Date()) => {
   const pad = (n) => String(n).padStart(2, "0");
@@ -98,27 +67,185 @@ const FG = ({ label, children, style }) => (
   </div>
 );
 
+/* Wizard step labels used by the local Wizard component */
+const STEP_LABELS = [
+  { key: 'location', title: 'Location' },
+  { key: 'details',  title: 'Details'  },
+  { key: 'params',    title: 'Parameters' },
+  { key: 'standard',  title: 'Standard' },
+  { key: 'review',    title: 'Review' },
+];
+
 /* -------------------------------- Component --------------------------------- */
 export default function WQTestWizard({
-  lakes = MOCK_LAKES,
+  lakes = [],
   lakeGeoms = {},
-  stationsByLake: stationsByLakeProp = MOCK_STATIONS,
-  parameters = MOCK_PARAMETERS,
-  standards = MOCK_STANDARDS,
+  stationsByLake: stationsByLakeProp = {},
+  parameters = [],
+  standards = [],
   organization = null,
-  currentUserRole = "org-admin",   // "org-admin" | "contributor" | "system-admin"
+  currentUserRole = null,   // if not provided, determine from API
   onSubmit,
 }) {
+  const [resolvedUserRole, setResolvedUserRole] = useState(currentUserRole);
+
+  useEffect(() => {
+    if (currentUserRole) return; // prop provided — trust it
+    let mounted = true;
+    (async () => {
+      try {
+        const me = await api("/auth/me");
+        if (!mounted) return;
+        const role = (me?.role || "")
+          .toString()
+          .trim()
+          .replace(/\s+/g, "_")
+          .replace(/-/g, "_");
+        setResolvedUserRole(role || null);
+      } catch (e) {
+        if (mounted) setResolvedUserRole(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUserRole]);
   const [stationsByLake, setStationsByLake] = useState(stationsByLakeProp);
+  const [localLakes, setLocalLakes] = useState(lakes);
+  const [localLakeGeoms, setLocalLakeGeoms] = useState(lakeGeoms || {});
   const [stationModalOpen, setStationModalOpen] = useState(false);
   const [stationEdit, setStationEdit] = useState(null);
 
-  const lakeOptions      = Array.isArray(lakes)      && lakes.length      ? lakes      : MOCK_LAKES;
-  const parameterOptions = Array.isArray(parameters) && parameters.length ? parameters : MOCK_PARAMETERS;
-  const standardOptions  = Array.isArray(standards)  && standards.length  ? standards  : MOCK_STANDARDS;
+  const lakeOptions      = Array.isArray(localLakes) && localLakes.length ? localLakes : [];
+  const parameterOptions = Array.isArray(parameters) && parameters.length ? parameters : [];
+  const standardOptions  = Array.isArray(standards)  && standards.length  ? standards  : [];
 
-  const canPublish = currentUserRole === "org-admin" || currentUserRole === "system-admin";
-  const stationOptions = (data) => stationsByLake?.[data.lake_id] || [];
+  const roleToCheck = currentUserRole ?? resolvedUserRole;
+  const canPublish = roleToCheck === "org_admin" || roleToCheck === "superadmin";
+  const stationOptions = (data) => stationsByLake?.[String(data.lake_id)] || [];
+
+  // Permissions: only org_admin or superadmin may manage stations
+  const canManageStations = roleToCheck === "org_admin" || roleToCheck === "superadmin";
+
+  // API-backed station handlers (only used when canManageStations)
+  const createStationApi = async (data, setData, station) => {
+    try {
+      const payload = {
+        organization_id: data.organization_id ?? null,
+        lake_id: data.lake_id ? Number(data.lake_id) : null,
+        name: station.name,
+        description: station.description || null,
+        latitude: station.lat === "" ? null : Number(station.lat),
+        longitude: station.lng === "" ? null : Number(station.lng),
+      };
+  const res = await api(`/admin/stations`, { method: "POST", body: payload });
+  const s = res?.data;
+  if (!s) throw new Error("Invalid response");
+  // normalize server fields (latitude/longitude) to frontend shape (lat/lng)
+  const norm = { ...s, lat: s.latitude ?? s.lat ?? null, lng: s.longitude ?? s.lng ?? null };
+  const list = stationsByLake[String(data.lake_id)] || [];
+  setStationsByLake({ ...stationsByLake, [String(data.lake_id)]: [...list, norm] });
+      // select the newly-created station
+      setData({ ...data,
+        station_id: s.id,
+        station_name: s.name,
+        station_desc: s.description || "",
+        lat: s.latitude ?? data.lat,
+        lng: s.longitude ?? data.lng,
+        geom_point: (s.latitude !== null && s.longitude !== null) ? { lat: Number(s.latitude), lng: Number(s.longitude) } : data.geom_point,
+      });
+    } catch (e) {
+      // If validation error from server, show message. Otherwise fall back to local create.
+      const msg = e?.message || String(e);
+      if (msg.includes('422') || msg.toLowerCase().includes('validation')) {
+        alertError('Validation error', msg.replace(/^HTTP\s*422\s*/i, '').trim() || 'Please check the station fields.');
+        return;
+      }
+  // Non-validation error: report and abort.
+  alertError('Station create failed', msg);
+  return;
+    }
+  };
+
+  const updateStationApi = async (data, setData, station) => {
+    try {
+      const payload = {
+        organization_id: data.organization_id ?? null,
+        lake_id: data.lake_id ? Number(data.lake_id) : null,
+        name: station.name,
+        description: station.description || null,
+        latitude: station.lat === "" ? null : Number(station.lat),
+        longitude: station.lng === "" ? null : Number(station.lng),
+      };
+  const res = await api(`/admin/stations/${encodeURIComponent(station.id)}`, { method: "PUT", body: payload });
+  const s = res?.data;
+  if (!s) throw new Error("Invalid response");
+  // normalize and merge into list
+  const norm = { ...s, lat: s.latitude ?? s.lat ?? null, lng: s.longitude ?? s.lng ?? null };
+  const list = stationsByLake[String(data.lake_id)] || [];
+  const updated = list.map((x) => (String(x.id) === String(norm.id) ? norm : x));
+  setStationsByLake({ ...stationsByLake, [String(data.lake_id)]: updated });
+      if (String(data.station_id) === String(s.id)) {
+        setData({ ...data,
+          station_name: s.name,
+          station_desc: s.description || "",
+          lat: s.latitude ?? data.lat,
+          lng: s.longitude ?? data.lng,
+          geom_point: (s.latitude !== null && s.longitude !== null) ? { lat: Number(s.latitude), lng: Number(s.longitude) } : data.geom_point,
+        });
+      }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (msg.includes('422') || msg.toLowerCase().includes('validation')) {
+        alertError('Validation error', msg.replace(/^HTTP\s*422\s*/i, '').trim() || 'Please check the station fields.');
+        return;
+      }
+  alertError('Station update failed', msg);
+  return;
+    }
+  };
+
+  const deleteStationApi = async (data, setData, stationId) => {
+    try {
+  await api(`/admin/stations/${encodeURIComponent(stationId)}`, { method: "DELETE" });
+  const list = stationsByLake[String(data.lake_id)] || [];
+  const updated = list.filter((s) => String(s.id) !== String(stationId));
+  setStationsByLake({ ...stationsByLake, [String(data.lake_id)]: updated });
+      if (String(data.station_id) === String(stationId)) {
+        setData({ ...data, station_id: "", station_name: "", station_desc: "" });
+      }
+      alertSuccess('Station deleted', 'The station was removed.');
+    } catch (e) {
+      alertError('Delete failed', 'Could not delete station.');
+      return;
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    let timer = null;
+    // If parent provided lakes, use them. Otherwise fetch lightweight options.
+    if (Array.isArray(lakes) && lakes.length) {
+      setLocalLakes(lakes);
+      return () => { mounted = false; };
+    }
+
+    // debounce a bit to avoid StrictMode double-invoke causing multiple back-to-back requests
+    timer = setTimeout(() => {
+      (async () => {
+        try {
+          const opts = await fetchLakeOptions();
+          if (!mounted) return;
+          setLocalLakes(Array.isArray(opts) ? opts : []);
+        } catch (e) {
+          if (mounted) setLocalLakes([]);
+        }
+      })();
+    }, 50);
+
+    return () => { mounted = false; if (timer) clearTimeout(timer); };
+  }, [lakes]);
+
+  // merged geoms: prop `lakeGeoms` may be provided by parent; localLakeGeoms stores fetched geometries
+  const mergedLakeGeoms = { ...(lakeGeoms || {}), ...(localLakeGeoms || {}) };
 
   const mapBounds = (data) => {
     if (data?.geom_point) {
@@ -126,10 +253,13 @@ export default function WQTestWizard({
       const pad = 0.02;
       return [[lat - pad, lng - pad], [lat + pad, lng + pad]];
     }
-    if (data?.lake_id && lakeGeoms?.[data.lake_id]) {
+    if (data?.lake_id) {
       try {
-        const layer = L.geoJSON(lakeGeoms[data.lake_id]);
-        return layer.getBounds();
+        const k = String(data.lake_id);
+        if (mergedLakeGeoms?.[k]) {
+          const layer = L.geoJSON(mergedLakeGeoms[k]);
+          return layer.getBounds();
+        }
       } catch {}
     }
     return [[13.5, 120.5], [15.5, 122.2]];
@@ -154,6 +284,30 @@ export default function WQTestWizard({
       station_name: "",
       station_desc: "",
     });
+    // fetch geometry for the selected lake (if not already present)
+    if (id) {
+      fetchLakeGeo(id).catch(() => {});
+      // fetch stations for this lake so the modal/table shows up-to-date data
+      fetchStationsForLake(id).catch(() => {});
+    }
+  };
+
+  // Fetch lake geometry (from /api/lakes/:id -> returns geom_geojson string)
+  const fetchLakeGeo = async (id) => {
+    if (!id) return null;
+    const key = String(id);
+    if ((lakeGeoms && lakeGeoms[key]) || (localLakeGeoms && localLakeGeoms[key])) return localLakeGeoms[key] || lakeGeoms[key];
+    try {
+      const r = await api(`/lakes/${encodeURIComponent(id)}`);
+  const raw = r?.geom_geojson;
+      if (!raw) return null;
+      let geom = null;
+      try { geom = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { geom = raw; }
+  if (geom) setLocalLakeGeoms((prev) => ({ ...(prev || {}), [key]: geom }));
+      return geom;
+    } catch (e) {
+      return null;
+    }
   };
   const setLocMode = (data, setData, mode) => setData({ ...data, loc_mode: mode });
   const setCoords = (data, setData, lat, lng) => {
@@ -164,13 +318,16 @@ export default function WQTestWizard({
   const pickStation = (data, setData, stationId) => {
     const st = stationOptions(data).find((s) => String(s.id) === String(stationId));
     if (!st) return setData({ ...data, station_id: "", station_name: "", station_desc: "" });
+    const latNum = st.lat !== null && st.lat !== undefined && st.lat !== '' ? Number(st.lat) : null;
+    const lngNum = st.lng !== null && st.lng !== undefined && st.lng !== '' ? Number(st.lng) : null;
     setData({
       ...data,
       station_id: stationId,
       station_name: st.name,
       station_desc: st.description || "",
-      lat: st.lat, lng: st.lng,
-      geom_point: { lat: st.lat, lng: st.lng },
+      lat: latNum,
+      lng: lngNum,
+      geom_point: latNum !== null && lngNum !== null ? { lat: latNum, lng: lngNum } : data.geom_point,
     });
   };
   const handleMapClick = (data, setData, e) => {
@@ -212,45 +369,7 @@ export default function WQTestWizard({
     setData({ ...data, results: next });
   };
 
-  // Station CRUD using modal
-  const createStation = (data, setData, station) => {
-    const newId = Date.now();
-    const list = stationsByLake[data.lake_id] || [];
-    const newStation = { id: newId, ...station };
-    setStationsByLake({ ...stationsByLake, [data.lake_id]: [...list, newStation] });
-    setData({
-      ...data,
-      station_id: newId,
-      station_name: station.name,
-      station_desc: station.description || "",
-      lat: station.lat,
-      lng: station.lng,
-      geom_point: { lat: station.lat, lng: station.lng },
-    });
-  };
-  const updateStation = (data, setData, station) => {
-    const list = stationsByLake[data.lake_id] || [];
-    const updated = list.map((s) => (s.id === station.id ? { ...s, ...station } : s));
-    setStationsByLake({ ...stationsByLake, [data.lake_id]: updated });
-    if (String(data.station_id) === String(station.id)) {
-      setData({
-        ...data,
-        station_name: station.name,
-        station_desc: station.description || "",
-        lat: station.lat,
-        lng: station.lng,
-        geom_point: { lat: station.lat, lng: station.lng },
-      });
-    }
-  };
-  const deleteStation = (data, setData, stationId) => {
-    const list = stationsByLake[data.lake_id] || [];
-    const updated = list.filter((s) => s.id !== stationId);
-    setStationsByLake({ ...stationsByLake, [data.lake_id]: updated });
-    if (String(data.station_id) === String(stationId)) {
-      setData({ ...data, station_id: "", station_name: "", station_desc: "" });
-    }
-  };
+  // Station CRUD is API-backed (createStationApi/updateStationApi/deleteStationApi).
 
   const submit = (data) => {
     const payload = {
@@ -270,6 +389,30 @@ export default function WQTestWizard({
       // year/quarter/month/day are GENERATED on the DB from sampled_at; no need to send.
     };
     onSubmit?.(payload);
+  };
+
+  // Fetch stations for a lake from the server and cache them in `stationsByLake`.
+  const fetchStationsForLake = async (lakeId) => {
+    if (!lakeId) return [];
+    if (stationsByLake && stationsByLake[String(lakeId)] && stationsByLake[String(lakeId)].length) return stationsByLake[String(lakeId)];
+    try {
+      const qs = `?lake_id=${encodeURIComponent(lakeId)}${organization && organization.id ? `&organization_id=${encodeURIComponent(organization.id)}` : ''}`;
+      const res = await api(`/admin/stations${qs}`);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      const normalized = list.map((s) => {
+        const latRaw = s.latitude ?? s.lat ?? null;
+        const lngRaw = s.longitude ?? s.lng ?? null;
+        return {
+          ...s,
+          lat: latRaw !== null && latRaw !== undefined && latRaw !== '' ? Number(latRaw) : null,
+          lng: lngRaw !== null && lngRaw !== undefined && lngRaw !== '' ? Number(lngRaw) : null,
+        };
+      });
+      setStationsByLake((prev) => ({ ...(prev || {}), [String(lakeId)]: normalized }));
+      return normalized;
+    } catch (e) {
+      return [];
+    }
   };
 
   /* --------------------------------- Steps ---------------------------------- */
@@ -370,32 +513,39 @@ export default function WQTestWizard({
 
                 <FG label="Actions" style={{ minWidth: 220 }}>
                   <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="pill-btn primary"
+                          onClick={async () => {
+                            if (!data.lake_id) return;
+                            await fetchStationsForLake(data.lake_id).catch(() => {});
+                            setStationEdit(null);
+                            setStationModalOpen(true);
+                          }}
+                          disabled={!data.lake_id || !canManageStations}
+                        >
+                          <FiPlus /> New Station
+                        </button>
                     <button
-                      className="pill-btn primary"
-                      onClick={() => { setStationEdit(null); setStationModalOpen(true); }}
-                    >
-                      <FiPlus /> New Station
-                    </button>
-                    <button
-                      className="pill-btn ghost"
-                      disabled={!data.station_id}
-                      onClick={() => {
-                        if (!data.station_id) return;
-                        setStationEdit(
-                          stationOptions(data).find((s) => String(s.id) === String(data.station_id)) || null
-                        );
-                        setStationModalOpen(true);
-                      }}
-                    >
-                      <FiEdit2 />
-                    </button>
-                    <button
-                      className="pill-btn ghost danger"
-                      disabled={!data.station_id}
-                      onClick={() => deleteStation(data, setData, Number(data.station_id))}
-                    >
-                      <FiTrash2 />
-                    </button>
+                          className="pill-btn ghost"
+                          disabled={!data.station_id || !canManageStations}
+                          onClick={async () => {
+                            if (!data.station_id) return;
+                            await fetchStationsForLake(data.lake_id).catch(() => {});
+                            setStationEdit(
+                              stationOptions(data).find((s) => String(s.id) === String(data.station_id)) || null
+                            );
+                            setStationModalOpen(true);
+                          }}
+                        >
+                          <FiEdit2 />
+                        </button>
+                        <button
+                          className="pill-btn ghost danger"
+                          disabled={!data.station_id || !canManageStations}
+                          onClick={() => deleteStationApi(data, setData, Number(data.station_id))}
+                        >
+                          <FiTrash2 />
+                        </button>
                   </div>
                 </FG>
               </FormRow>
@@ -422,8 +572,8 @@ export default function WQTestWizard({
           {/* Map */}
           <div className="map-preview" style={{ marginTop: 12 }}>
             <AppMap onClick={(e) => handleMapClick(data, setData, e)} style={{ height: 380 }}>
-              {data.lake_id && lakeGeoms?.[data.lake_id] ? (
-                <GeoJSON data={lakeGeoms[data.lake_id]} style={{ color: "#2563eb", weight: 2, fillOpacity: 0.1 }} />
+              {data.lake_id && mergedLakeGeoms?.[String(data.lake_id)] ? (
+                <GeoJSON key={String(data.lake_id)} data={mergedLakeGeoms[String(data.lake_id)]} style={{ color: "#2563eb", weight: 2, fillOpacity: 0.1 }} />
               ) : null}
 
               {data.geom_point ? (
@@ -431,7 +581,7 @@ export default function WQTestWizard({
                   <Popup>
                     <div>
                       <div><strong>Point</strong></div>
-                      <div>{data.geom_point.lat?.toFixed(6)}, {data.geom_point.lng?.toFixed(6)}</div>
+                      <div>{data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? Number(data.geom_point.lat).toFixed(6) : '—'}, {data.geom_point && Number.isFinite(Number(data.geom_point.lng)) ? Number(data.geom_point.lng).toFixed(6) : '—'}</div>
                       {data.station_id ? <div>Station: {data.station_name}</div> : null}
                     </div>
                   </Popup>
@@ -453,9 +603,10 @@ export default function WQTestWizard({
             lakeId={data.lake_id}
             stations={stationOptions(data)}
             editing={stationEdit}
-            onCreate={(station) => createStation(data, setData, station)}
-            onUpdate={(station) => updateStation(data, setData, station)}
-            onDelete={(id) => deleteStation(data, setData, id)}
+            canManage={canManageStations}
+            onCreate={(station) => createStationApi(data, setData, station)}
+            onUpdate={(station) => updateStationApi(data, setData, station)}
+            onDelete={(id) => deleteStationApi(data, setData, id)}
           />
         </div>
       ),
@@ -676,7 +827,7 @@ export default function WQTestWizard({
                 <div><strong>Lake:</strong> {data.lake_name || "—"}</div>
                 <div><strong>Lake Class:</strong> {data.lake_class_code || "—"}</div>
                 <div><strong>Location Mode:</strong> {data.loc_mode === "coord" ? "Coordinates" : "Station"}</div>
-                <div><strong>Point:</strong> {data.geom_point ? `${data.geom_point.lat?.toFixed(6)}, ${data.geom_point.lng?.toFixed(6)}` : "—"}</div>
+                <div><strong>Point:</strong> {data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? `${Number(data.geom_point.lat).toFixed(6)}, ${Number(data.geom_point.lng).toFixed(6)}` : "—"}</div>
                 <div><strong>Station:</strong> {data.station_id ? data.station_name : "—"}</div>
                 <div><strong>Sampled At:</strong> {data.sampled_at || "—"}</div>
                 <div><strong>Period:</strong> {d ? `${yr} · Q${qt} · M${String(mo).padStart(2,"0")}` : "—"}</div>

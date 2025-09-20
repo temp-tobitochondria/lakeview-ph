@@ -76,8 +76,30 @@ export async function api(path, { method = "GET", body, headers = {}, auth = tru
   }
 
   if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(t || `HTTP ${res.status}`);
+    // Try to parse a JSON error body to extract validation messages
+    let t = "";
+    try {
+      const j = await res.json();
+      if (j) {
+        if (j.errors && typeof j.errors === 'object') {
+          t = Object.entries(j.errors)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+            .join('; ');
+        } else if (j.message) {
+          t = j.message;
+        } else {
+          t = JSON.stringify(j);
+        }
+      }
+    } catch {
+      t = await res.text().catch(() => "");
+    }
+
+    if (res.status === 429) {
+      throw new Error(`HTTP 429 Too Many Requests: ${t || 'rate limit exceeded'}`);
+    }
+
+    throw new Error(t ? `HTTP ${res.status} ${t}` : `HTTP ${res.status}`);
   }
 
   return res.json().catch(() => ({}));

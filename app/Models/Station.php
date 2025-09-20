@@ -9,6 +9,12 @@ class Station extends Model
 {
     use HasFactory;
 
+    /**
+     * Stations table is managed without Laravel's automatic timestamps.
+     * Disable Eloquent timestamps to avoid inserting `created_at`/`updated_at`.
+     */
+    public $timestamps = false;
+
     protected $fillable = [
         'organization_id',
         'lake_id',

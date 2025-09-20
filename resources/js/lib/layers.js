@@ -10,19 +10,54 @@ const pluck = (r) => {
 };
 
 /** ---- Options (id, name) helpers for dropdowns ---- */
+// Simple in-memory cache + in-flight request dedupe to avoid rapid repeated calls
+const _lakeOptionsCache = new Map(); // key -> {ts, data}
+const _lakeOptionsInflight = new Map(); // key -> Promise
+const LAKE_OPTIONS_TTL = 30 * 1000; // 30s
+
 export const fetchLakeOptions = async (q = "") => {
-  const qp = q ? `?q=${encodeURIComponent(q)}` : "";
-  const attempts = [
-    () => api(`/options/lakes${qp}`),
-    () => api(`/lakes${qp}`),
-  ];
-  for (const tryFetch of attempts) {
-    try {
-      const res = await tryFetch();
-      return pluck(res).map((r) => ({ id: r.id, name: r.name }));
-    } catch (_) {}
+  const key = String(q || "");
+
+  // return cached value if fresh
+  const cached = _lakeOptionsCache.get(key);
+  if (cached && Date.now() - cached.ts < LAKE_OPTIONS_TTL) {
+    return cached.data;
   }
-  return [];
+
+  // if there's an in-flight request for the same key, return it
+  if (_lakeOptionsInflight.has(key)) {
+    return _lakeOptionsInflight.get(key);
+  }
+
+  const promise = (async () => {
+    const qp = q ? `?q=${encodeURIComponent(q)}` : "";
+    const attempts = [
+      () => api(`/options/lakes${qp}`),
+      () => api(`/lakes${qp}`),
+    ];
+    for (const tryFetch of attempts) {
+      try {
+        const res = await tryFetch();
+        const rows = pluck(res).map((r) => ({ id: r.id, name: r.name, class_code: r.class_code }));
+        _lakeOptionsCache.set(key, { ts: Date.now(), data: rows });
+        return rows;
+      } catch (_) {
+        // try next
+      }
+    }
+    // fallback empty
+    const empty = [];
+    _lakeOptionsCache.set(key, { ts: Date.now(), data: empty });
+    return empty;
+  })();
+
+  _lakeOptionsInflight.set(key, promise);
+  try {
+    const result = await promise;
+    return result;
+  } finally {
+    _lakeOptionsInflight.delete(key);
+  }
 };
 
 export const fetchWatershedOptions = async (q = "") => {

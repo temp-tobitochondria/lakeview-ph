@@ -1,63 +1,11 @@
 // resources/js/pages/OrgInterface/OrgWQTests.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../../components/table/TableToolbar";
 import OrgWQTestModal from "../../components/water-quality-test/OrgWQTestModal";
 import { FiEye, FiEdit2, FiTrash2, FiGlobe } from "react-icons/fi";
 
-/* Mock until backend is wired */
-const MOCK_LAKES = [
-  { id: 1, name: "Laguna de Bay", class_code: "C" },
-  { id: 2, name: "Taal Lake", class_code: "B" },
-];
-const MOCK_TESTS = [
-  {
-    id: 5001,
-    status: "published",
-    lake_id: 1,
-    lake_name: "Laguna de Bay",
-    station_id: 101,
-    station_name: "LLDA Sta. Rosa",
-    sampled_at: "2025-07-01T09:30",
-    sampler_name: "J. Cruz",
-    method: "Grab",
-    weather: "Sunny",
-    lat: 14.276,
-    lng: 121.110,
-    applied_standard_code: "DAO2021-19",
-    results: [
-      { parameter_id: 1, code: "DO", name: "Dissolved Oxygen", value: 6.2, unit: "mg/L", depth_m: 1.0 },
-      { parameter_id: 2, code: "pH", name: "pH", value: 7.4, unit: "" },
-    ],
-    notes: "Morning run",
-    year: 2025, quarter: 3, month: 7, day: 1,
-  },
-  {
-    id: 5002,
-    status: "draft",
-    lake_id: 2,
-    lake_name: "Taal Lake",
-    station_id: null,
-    station_name: "",
-    sampled_at: "2025-07-03T15:10",
-    sampler_name: "M. Dela Cruz",
-    method: "Grab",
-    weather: "Cloudy",
-    lat: 14.003,
-    lng: 120.981,
-    applied_standard_code: "DAO2021-19",
-    results: [{ parameter_id: 1, code: "DO", name: "Dissolved Oxygen", value: 5.4, unit: "mg/L" }],
-    notes: "",
-    year: 2025, quarter: 3, month: 7, day: 3,
-  },
-];
-
-// Small catalog so the modal can label/select parameters when adding rows in edit mode
-const PARAM_CATALOG = [
-  { id: 1, code: "DO",  name: "Dissolved Oxygen", unit: "mg/L" },
-  { id: 2, code: "pH",  name: "pH",                unit: ""     },
-  { id: 3, code: "BOD", name: "BOD",               unit: "mg/L" },
-];
+// Inline mock data removed. Real data should be provided by parent components or fetched from the API.
 
 function startOfDay(iso) {
   if (!iso) return null;
@@ -79,15 +27,73 @@ function yqmFrom(record) {
   return { year: y, quarter: q, month: m };
 }
 
-export default function OrgWQTests({
-  initialLakes = MOCK_LAKES,
-  initialTests = MOCK_TESTS,
-  currentUserRole = "org-admin", // "org-admin" | "contributor" | "system-admin"
-}) {
-  const canPublish = currentUserRole === "org-admin" || currentUserRole === "system-admin";
+import { api } from "../../lib/api";
+import { fetchLakeOptions } from "../../lib/layers";
 
-  const [lakes] = useState(initialLakes);
+export default function OrgWQTests({
+  initialLakes = [],
+  initialTests = [],
+  parameterCatalog = [],
+}) {
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const me = await api("/auth/me");
+        if (!mounted) return;
+        // Normalize backend role values like 'org_admin' to frontend-friendly strings
+        const role = (me?.role || "")
+          .toString()
+          .trim()
+          .replace(/\s+/g, "_")
+          .replace(/-/g, "_");
+        setCurrentUserRole(role || null);
+      } catch (e) {
+        if (mounted) setCurrentUserRole(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    let timer = null;
+
+    // debounce to avoid rapid back-to-back requests triggering 429
+    timer = setTimeout(() => {
+      (async () => {
+        try {
+          const opts = await fetchLakeOptions();
+          console.debug('[OrgWQTests] fetched lakes:', Array.isArray(opts) ? opts.length : typeof opts, opts);
+          if (!mounted) return;
+          setLakes(Array.isArray(opts) ? opts : []);
+        } catch (e) {
+          console.error('[OrgWQTests] failed to fetch lakes', e);
+          if (mounted) setLakes(initialLakes || []);
+        }
+      })();
+
+      (async () => {
+        try {
+          const params = await api('/options/parameters');
+          if (!mounted) return;
+          setParamCatalog(Array.isArray(params) ? params : []);
+        } catch (e) {
+          if (mounted) setParamCatalog(parameterCatalog || []);
+        }
+      })();
+    }, 50);
+
+    return () => { mounted = false; if (timer) clearTimeout(timer); };
+  }, []);
+
+  const canPublish = currentUserRole === "org_admin" || currentUserRole === "superadmin";
+
+  const [lakes, setLakes] = useState(initialLakes);
   const [tests, setTests] = useState(initialTests);
+  const [paramCatalog, setParamCatalog] = useState(parameterCatalog);
 
   // filters/search
   const [q, setQ] = useState("");
@@ -284,7 +290,7 @@ export default function OrgWQTests({
         onClose={() => setOpen(false)}
         record={selected}
         editable={editing}                     // <-- edit vs view
-        parameterCatalog={PARAM_CATALOG}       // optional, for add-row select
+    parameterCatalog={paramCatalog}       // optional, for add-row select
         canPublish={canPublish}
         onTogglePublish={() => {
           if (!selected) return;
