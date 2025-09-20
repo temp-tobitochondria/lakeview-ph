@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../../components/table/TableToolbar";
 import OrgWQTestModal from "../../components/water-quality-test/OrgWQTestModal";
-import { FiEye, FiEdit2, FiTrash2, FiGlobe } from "react-icons/fi";
+import { FiEye, FiEdit2, FiTrash2 } from "react-icons/fi";
 
 // Inline mock data removed. Real data should be provided by parent components or fetched from the API.
 
@@ -124,6 +124,67 @@ export default function OrgWQTests({
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
         setTests(data);
+
+        // Resolve missing user names (createdBy/updatedBy) when backend didn't include relation
+        (async () => {
+          try {
+            const ids = new Set();
+            data.forEach((r) => {
+              if (!r?.createdBy?.name && r?.created_by_user_id) ids.add(r.created_by_user_id);
+              if (!r?.updatedBy?.name && r?.updated_by_user_id) ids.add(r.updated_by_user_id);
+            });
+            if (!ids.size) return;
+
+            const cache = new Map();
+            async function fetchUserName(id) {
+              if (!id) return null;
+              if (cache.has(id)) return cache.get(id);
+              let name = null;
+              const tryPaths = [`/admin/users/${id}`, `/users/${id}`];
+              for (const p of tryPaths) {
+                try {
+                  const r = await api(p);
+                  // r may be {data:{...}} or direct object
+                  const u = r?.data ?? r;
+                  if (u && (u.name || u.full_name || u.display_name)) {
+                    name = u.name || u.full_name || u.display_name;
+                    break;
+                  }
+                } catch (e) {
+                  // ignore and try next
+                }
+              }
+              cache.set(id, name);
+              return name;
+            }
+
+            // Resolve in parallel but limited to avoid flooding: batch of 6
+            const idsArr = Array.from(ids);
+            for (let i = 0; i < idsArr.length; i += 6) {
+              const batch = idsArr.slice(i, i + 6);
+              const promises = batch.map((id) => fetchUserName(id));
+              const names = await Promise.all(promises);
+              // update tests with any found names
+              setTests((prev) => prev.map((r) => {
+                const copy = { ...r };
+                if (!copy?.createdBy?.name && copy?.created_by_user_id) {
+                  const idx = batch.indexOf(copy.created_by_user_id);
+                  const nm = idx !== -1 ? names[idx] : cache.get(copy.created_by_user_id);
+                  if (nm) copy.createdBy = { name: nm };
+                }
+                if (!copy?.updatedBy?.name && copy?.updated_by_user_id) {
+                  const idx2 = batch.indexOf(copy.updated_by_user_id);
+                  const nm2 = idx2 !== -1 ? names[idx2] : cache.get(copy.updated_by_user_id);
+                  if (nm2) copy.updatedBy = { name: nm2 };
+                }
+                return copy;
+              }));
+            }
+          } catch (e) {
+            // ignore failures — UI will still show fallback
+            console.debug('[OrgWQTests] user name resolution failed', e);
+          }
+        })();
       } catch (e) {
         console.error('[OrgWQTests] failed to fetch tests', e);
         if (mounted) setTests(initialTests || []);
@@ -135,9 +196,76 @@ export default function OrgWQTests({
     return () => { mounted = false; };
   }, [resetSignal]);
 
+  // Full refresh handler: reload tests, lakes and parameter catalog
+  const doRefresh = async () => {
+    setLoading(true);
+    try {
+      const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
+        api('/admin/sample-events'),
+        fetchLakeOptions(),
+        api('/options/parameters'),
+      ]);
+
+      if (testsRes.status === 'fulfilled') {
+        const data = Array.isArray(testsRes.value.data) ? testsRes.value.data : [];
+        setTests(data);
+      }
+      if (lakesOpts.status === 'fulfilled') {
+        setLakes(Array.isArray(lakesOpts.value) ? lakesOpts.value : []);
+      }
+      if (paramsRes.status === 'fulfilled') {
+        setParamCatalog(Array.isArray(paramsRes.value) ? paramsRes.value : []);
+      }
+      setResetSignal((x) => x + 1);
+    } catch (e) {
+      console.error('[OrgWQTests] refresh failed', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const baseColumns = useMemo(
     () => [
-      { id: "id", header: "ID", width: 110, accessor: "id" },
+      { id: "year", header: "Year", width: 90, render: (row) => yqmFrom(row).year ?? "—" },
+      {
+        id: "quarter",
+        header: "Quarter",
+        width: 90,
+        render: (row) => {
+          const q = yqmFrom(row).quarter;
+          return Number.isFinite(q) ? `Q${q}` : "—";
+        },
+      },
+      {
+        id: "month_day",
+        header: "Month-Day",
+        width: 160,
+        render: (row) => {
+          if (!row || !row.sampled_at) return "—";
+          try {
+            const d = new Date(row.sampled_at);
+            return d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+          } catch (e) {
+            return "—";
+          }
+        },
+      },
+      { id: "lake_name", header: "Lake", width: 200, render: (row) => row?.lake?.name ?? row?.lake_name ?? "—" },
+      { id: "station_name", header: "Station", width: 220, render: (row) => {
+          const name = row?.station?.name ?? row?.station_name;
+          if (name) return name;
+          if (row?.latitude != null && row?.longitude != null) {
+            try {
+              const lat = Number(row.latitude).toFixed(6);
+              const lon = Number(row.longitude).toFixed(6);
+              return `${lat}, ${lon}`;
+            } catch (e) {
+              return "—";
+            }
+          }
+          return "—";
+        }
+      },
       {
         id: "status",
         header: "Status",
@@ -148,21 +276,24 @@ export default function OrgWQTests({
           </span>
         ),
       },
-      { id: "lake_name", header: "Lake", width: 200, accessor: "lake_name" },
-      { id: "station_name", header: "Station", width: 220, render: (row) => row.station_name || "—" },
-      { id: "year", header: "Year", width: 90, render: (row) => yqmFrom(row).year ?? "—" },
-      { id: "quarter", header: "Qtr", width: 70, render: (row) => yqmFrom(row).quarter ?? "—" },
-      { id: "month", header: "Month", width: 90, render: (row) => yqmFrom(row).month ?? "—" },
-      { id: "sampler_name", header: "Sampler", width: 160, accessor: "sampler_name" },
-      { id: "applied_standard_code", header: "Standard", width: 150, accessor: "applied_standard_code" },
+
+      // Hidden/toggleable columns
+  { id: "logged_by", header: "Logged By", width: 180, render: (row) => (row?.createdBy?.name ?? row?.created_by_name ?? "—") },
+  { id: "updated_by", header: "Updated By", width: 180, render: (row) => (row?.updatedBy?.name ?? row?.updated_by_name ?? "—") },
+      { id: "logged_at", header: "Logged At", width: 170, render: (row) => (row?.created_at ? new Date(row.created_at).toLocaleString() : "—") },
+      { id: "updated_at", header: "Updated At", width: 170, render: (row) => (row?.updated_at ? new Date(row.updated_at).toLocaleString() : "—") },
     ],
     []
   );
 
-  // Column visibility: default-hide year/quarter/month
+  // Column visibility: show Year/Quarter/Month-Day/Lake/Station/Status by default;
+  // hide logged/updated columns by default but make them toggleable
   const [visibleMap, setVisibleMap] = useState(() =>
     Object.fromEntries(
-      baseColumns.map((c) => [c.id, !["year", "quarter", "month"].includes(c.id)])
+      baseColumns.map((c) => [
+        c.id,
+        !["logged_by", "updated_by", "logged_at", "updated_at"].includes(c.id),
+      ])
     )
   );
   const displayColumns = useMemo(
@@ -220,16 +351,6 @@ export default function OrgWQTests({
         setSelected(row); setEditing(true); setOpen(true);
       },
     },
-        ...(canPublish ? [{
-      label: "Publish/Unpublish",
-      title: "Toggle Publish",
-      icon: <FiGlobe />,
-      onClick: (row) => {
-        setTests((prev) =>
-          prev.map((t) => (t.id === row.id ? { ...t, status: t.status === "public" ? "draft" : "public" } : t))
-        );
-      },
-    }] : []),
     {
       label: "Delete",
       title: "Delete",
@@ -277,21 +398,21 @@ export default function OrgWQTests({
         // Period selects (compact; stay on one line)
         { id: "year", label: "Year", type: "select", value: year, onChange: setYear,
           options: [{ value: "", label: "Year" }, ...years.map((y) => ({ value: String(y), label: String(y) }))] },
-        { id: "quarter", label: "Qtr", type: "select", value: quarter, onChange: setQuarter,
-          options: [{ value: "", label: "Qtr" }, { value: "1", label: "Q1" }, { value: "2", label: "Q2" }, { value: "3", label: "Q3" }, { value: "4", label: "Q4" }] },
+        { id: "quarter", label: "Quarter", type: "select", value: quarter, onChange: setQuarter,
+          options: [{ value: "", label: "Quarter" }, { value: "1", label: "Q1" }, { value: "2", label: "Q2" }, { value: "3", label: "Q3" }, { value: "4", label: "Q4" }] },
         { id: "month", label: "Month", type: "select", value: month, onChange: setMonth,
           options: [{ value: "", label: "Month" }, ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({ value: String(m), label: String(m).padStart(2,"0") }))] },
-        // Date range (inclusive)
-        { id: "from", label: "From", type: "date", value: dateFrom, onChange: setDateFrom },
-        { id: "to",   label: "To",   type: "date", value: dateTo,   onChange: setDateTo   },
+  // Date range (inclusive)
+  { id: "from", label: "From", type: "date", value: dateFrom, onChange: setDateFrom, placeholder: "From mm/dd/yyyy" },
+  { id: "to",   label: "To",   type: "date", value: dateTo,   onChange: setDateTo,   placeholder: "To mm/dd/yyyy" },
       ]}
       columnPicker={{
-        columns: baseColumns.map((c) => ({ id: c.id, label: c.header, locked: c.id === "id" })),
+        columns: baseColumns.map((c) => ({ id: c.id, label: c.header })),
         visibleMap,
-        onVisibleChange: (next) => setVisibleMap({ ...next, id: true }),
+        onVisibleChange: (next) => setVisibleMap(next),
       }}
-      onResetWidths={() => setResetSignal((x) => x + 1)}
-      onRefresh={() => setResetSignal((x) => x + 1)}
+  onResetWidths={() => setResetSignal((x) => x + 1)}
+  onRefresh={doRefresh}
       onExport={null}
       onAdd={null}
     />

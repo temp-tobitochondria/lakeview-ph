@@ -124,6 +124,8 @@ export default function TableToolbar({
                 value={f.value || ""}
                 onChange={(e) => f.onChange?.(e.target.value || null)}
                 aria-label={f.label}
+                placeholder={f.placeholder || undefined}
+                title={f.placeholder || f.label}
                 style={{ minWidth: 180 }}
               />
             </div>

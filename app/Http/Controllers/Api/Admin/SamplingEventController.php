@@ -245,10 +245,16 @@ class SamplingEventController extends Controller
 
     protected function eventListQuery()
     {
+        // Include creator/updater names via LEFT JOIN so the list endpoint always has a simple string
+        // column to display even if relations are not hydrated by Eloquent in some responses.
         return SamplingEvent::query()
             ->select('sampling_events.*')
             ->selectRaw('ST_Y(geom_point) as latitude')
             ->selectRaw('ST_X(geom_point) as longitude')
+            ->leftJoin('users as __creator', '__creator.id', '=', 'sampling_events.created_by_user_id')
+            ->leftJoin('users as __updater', '__updater.id', '=', 'sampling_events.updated_by_user_id')
+            ->addSelect(DB::raw("COALESCE(__creator.name, '') AS created_by_name"))
+            ->addSelect(DB::raw("COALESCE(__updater.name, '') AS updated_by_name"))
             ->with([
                 'lake:id,name,class_code',
                 'station:id,name',
@@ -265,6 +271,10 @@ class SamplingEventController extends Controller
             ->select('sampling_events.*')
             ->selectRaw('ST_Y(geom_point) as latitude')
             ->selectRaw('ST_X(geom_point) as longitude')
+            ->leftJoin('users as __creator', '__creator.id', '=', 'sampling_events.created_by_user_id')
+            ->leftJoin('users as __updater', '__updater.id', '=', 'sampling_events.updated_by_user_id')
+            ->addSelect(DB::raw("COALESCE(__creator.name, '') AS created_by_name"))
+            ->addSelect(DB::raw("COALESCE(__updater.name, '') AS updated_by_name"))
             ->with([
                 'lake:id,name,class_code',
                 'station:id,name',
