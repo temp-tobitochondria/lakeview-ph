@@ -38,12 +38,21 @@ class SamplingEventController extends Controller
 
         $publicOnly = false;
 
-        if ($context['has_membership'] || $context['is_superadmin']) {
+        // If the user has an org membership (org_admin/contributor), scope to that
+        // tenant. Superadmins are allowed to see all events when no
+        // organization_id is provided; if a specific organization_id is supplied
+        // we will filter to it.
+        if ($context['has_membership']) {
             if ($context['tenant_id'] === null) {
                 abort(422, 'organization_id is required.');
             }
             $tenantId = (int) $context['tenant_id'];
             $query->where('sampling_events.organization_id', $tenantId);
+        } elseif ($context['is_superadmin']) {
+            // superadmin: only apply a filter when client provided organization_id
+            if ($requestedTenant !== null) {
+                $query->where('sampling_events.organization_id', (int) $requestedTenant);
+            }
         } else {
             if ($requestedTenant === null) {
                 abort(403, 'Forbidden');
@@ -277,11 +286,14 @@ class SamplingEventController extends Controller
             ->select('sampling_events.*')
             ->selectRaw('ST_Y(geom_point) as latitude')
             ->selectRaw('ST_X(geom_point) as longitude')
+            ->leftJoin('tenants', 'tenants.id', '=', 'sampling_events.organization_id')
+            ->addSelect(DB::raw("COALESCE(tenants.name, '') AS organization_name"))
             ->leftJoin('users as __creator', '__creator.id', '=', 'sampling_events.created_by_user_id')
             ->leftJoin('users as __updater', '__updater.id', '=', 'sampling_events.updated_by_user_id')
             ->addSelect(DB::raw("COALESCE(__creator.name, '') AS created_by_name"))
             ->addSelect(DB::raw("COALESCE(__updater.name, '') AS updated_by_name"))
             ->with([
+                'organization:id,name',
                 'lake:id,name,class_code',
                 'station:id,name',
                 'appliedStandard:id,code,name',
@@ -297,11 +309,14 @@ class SamplingEventController extends Controller
             ->select('sampling_events.*')
             ->selectRaw('ST_Y(geom_point) as latitude')
             ->selectRaw('ST_X(geom_point) as longitude')
+            ->leftJoin('tenants', 'tenants.id', '=', 'sampling_events.organization_id')
+            ->addSelect(DB::raw("COALESCE(tenants.name, '') AS organization_name"))
             ->leftJoin('users as __creator', '__creator.id', '=', 'sampling_events.created_by_user_id')
             ->leftJoin('users as __updater', '__updater.id', '=', 'sampling_events.updated_by_user_id')
             ->addSelect(DB::raw("COALESCE(__creator.name, '') AS created_by_name"))
             ->addSelect(DB::raw("COALESCE(__updater.name, '') AS updated_by_name"))
             ->with([
+                'organization:id,name',
                 'lake:id,name,class_code',
                 'station:id,name',
                 'appliedStandard:id,code,name',

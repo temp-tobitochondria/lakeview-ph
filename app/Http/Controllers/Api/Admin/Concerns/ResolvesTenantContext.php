@@ -56,7 +56,7 @@ trait ResolvesTenantContext
                 ? (int) $match->pivot->tenant_id
                 : $tenantId;
 
-            if ($resolvedTenant === null) {
+            if ($resolvedTenant === null && $match->name !== 'superadmin') {
                 abort(422, 'organization_id is required for this action.');
             }
 
@@ -70,10 +70,6 @@ trait ResolvesTenantContext
 
         $superadmin = $roles->firstWhere('name', 'superadmin');
         if ($superadmin) {
-            if ($tenantId === null) {
-                abort(422, 'organization_id is required for superadmin actions.');
-            }
-
             return [
                 'tenant_id' => $tenantId,
                 'role' => 'superadmin',

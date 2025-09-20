@@ -9,6 +9,7 @@ import {
   FiLayers,      // Base Layers
   FiSliders,     // Parameters & Thresholds
   FiClipboard,   // Approvals & Publishing
+  FiFileText,    // WQ Tests
   FiActivity,    // Audit Logs
   FiSettings,    // System Settings
 } from "react-icons/fi";
@@ -20,6 +21,7 @@ import AdminUsers from "./AdminUsers";
 import AdminWaterCat from "./adminWaterCat";
 import AdminLayers from "./adminLayers";
 import AdminParameters from "./adminParams";
+import AdminWQTests from "./adminWQTests";
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -37,6 +39,8 @@ export default function AdminDashboard() {
     { path: "/admin-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
     // Parameters
     { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
+  // Water Quality Tests
+  { path: "/admin-dashboard/wq-tests", label: "WQ Tests", icon: <FiFileText /> },
     // System Feedback
     { path: "/admin-dashboard/feedback", label: "System Feedback", icon: <FiClipboard /> },
     // Audit Logs
@@ -65,6 +69,9 @@ export default function AdminDashboard() {
 
         {/* Parameters */}
         <Route path="parameters" element={<AdminParameters />} />
+
+  {/* Water Quality Tests */}
+  <Route path="wq-tests" element={<AdminWQTests />} />
 
         {/* Feedback */}
         <Route path="feedback" element={<Page title="System Feedback" />} />

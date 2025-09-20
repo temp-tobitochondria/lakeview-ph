@@ -78,17 +78,25 @@ export default function OrgWQTestModal({
         const data = res?.data || res || {};
 
         const normalizedResults = Array.isArray(data.results)
-          ? data.results.map((r) => ({
-              id: r.id,
-              parameter_id: r.parameter_id ?? r.parameter?.id ?? null,
-              code: r.parameter?.code ?? r.code ?? "",
-              name: r.parameter?.name ?? r.name ?? "",
-              unit: r.unit ?? r.parameter?.unit ?? "",
-              value: r.value ?? null,
-              depth_m: r.depth_m ?? null,
-              pass_fail: r.pass_fail ?? null,
-              remarks: r.remarks ?? "",
-            }))
+          ? data.results.map((r) => {
+              const paramObj = r.parameter || null;
+              // fallback to provided parameterCatalog if API didn't include parameter object
+              const catalogParam = (!paramObj && Array.isArray(parameterCatalog) && r.parameter_id)
+                ? parameterCatalog.find((p) => String(p.id) === String(r.parameter_id))
+                : null;
+              const source = paramObj || catalogParam || {};
+              return {
+                id: r.id,
+                parameter_id: r.parameter_id ?? source.id ?? null,
+                code: source.code ?? r.code ?? "",
+                name: source.name ?? r.name ?? "",
+                unit: r.unit ?? source.unit ?? "",
+                value: r.value ?? null,
+                depth_m: r.depth_m ?? null,
+                pass_fail: r.pass_fail ?? null,
+                remarks: r.remarks ?? "",
+              };
+            })
           : [];
 
         if (!mounted) return;

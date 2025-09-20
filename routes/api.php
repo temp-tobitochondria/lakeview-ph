@@ -36,6 +36,12 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
         ->except(['create', 'edit']);
     // Toggle publish state for a sampling event
     Route::post('sample-events/{samplingEvent}/toggle-publish', [AdminSamplingEventController::class, 'togglePublish']);
+
+    // Lightweight tenants list for admin dropdowns
+    Route::get('/tenants', function () {
+        $rows = \App\Models\Tenant::query()->select(['id', 'name'])->orderBy('name')->get();
+        return response()->json(['data' => $rows]);
+    });
 });
 
 Route::middleware(['auth:sanctum','role:org_admin'])->prefix('org')->group(function () {
