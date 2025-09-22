@@ -28,6 +28,7 @@
    should come after the screenshot button rules, just like in your original file. */
 @import './components/search-bar.css';
 @import './components/screenshot-button.css';
+@import './components/filter-tray.css';
 @import './components/map-controls.css';
 @import './components/layer-control.css';
 @import './components/context-menu.css';

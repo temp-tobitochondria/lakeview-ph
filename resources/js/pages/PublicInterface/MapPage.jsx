@@ -21,6 +21,8 @@ import ContextMenu from "../../components/ContextMenu";
 import MeasureTool from "../../components/MeasureTool";
 import LakeInfoPanel from "../../components/LakeInfoPanel";
 import AuthModal from "../../components/modals/AuthModal";
+import FilterTray from "../../components/FilterTray";
+import { buildQuery } from "../../lib/api";
 
 function MapWithContextMenu({ children }) {
   const map = useMap();
@@ -62,6 +64,8 @@ function MapPage() {
   const [authMode, setAuthMode] = useState("login");
 
   const [publicFC, setPublicFC] = useState(null);
+  const [filterTrayOpen, setFilterTrayOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState({});
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -87,11 +91,15 @@ function MapPage() {
   }, [location.pathname]);
 
   // ---------------- Fetch public lake geometries ----------------
-  const loadPublicLakes = async () => {
+  const loadPublicLakes = async (filters = {}) => {
     try {
-      const fc = await api("/public/lakes-geo"); // FeatureCollection
+      const qs = buildQuery(filters || {});
+      const fc = await api(`/public/lakes-geo${qs}`); // FeatureCollection (server-side filtered)
       if (fc?.type === "FeatureCollection") {
         setPublicFC(fc);
+
+        // Force remount of the base GeoJSON so leaflet replaces the layer
+        setBaseKey((v) => v + 1);
 
         // Fit to all lakes initially
         if (mapRef.current && fc.features?.length) {
@@ -110,6 +118,16 @@ function MapPage() {
     }
   };
   useEffect(() => { loadPublicLakes(); }, []);
+
+  // Apply filters manually when user submits
+  const handleApplyFilters = async (filters) => {
+    setActiveFilters(filters || {});
+    try {
+      await loadPublicLakes(filters || {});
+    } catch (e) {
+      console.error('[MapPage] Failed to load filtered lakes', e);
+    }
+  };
 
   // ---------------- Layers list for selected lake (PUBLIC) ----------------
   const loadPublicLayersForLake = async (lakeId) => {
@@ -465,7 +483,13 @@ function MapPage() {
       />
 
       {/* UI overlays */}
-      <SearchBar onMenuClick={() => setSidebarOpen(true)} />
+      <SearchBar onMenuClick={() => setSidebarOpen(true)} onFilterClick={() => setFilterTrayOpen((v) => !v)} />
+      <FilterTray
+        open={filterTrayOpen}
+        onClose={() => setFilterTrayOpen(false)}
+        onApply={(filters) => handleApplyFilters(filters)}
+        initial={activeFilters}
+      />
       <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />
       <ScreenshotButton />
       {/* Back to Dashboard */}

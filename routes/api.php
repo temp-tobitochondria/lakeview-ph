@@ -87,5 +87,8 @@ Route::get('/options/watersheds', [OptionsController::class, 'watersheds']);
 Route::get('/options/parameters', [OptionsController::class, 'parameters']);
 Route::get('/options/wq-standards', [OptionsController::class, 'standards']);
 Route::get('/options/water-quality-classes', [OptionsController::class, 'waterQualityClasses']);
+Route::get('/options/regions', [OptionsController::class, 'regions']);
+Route::get('/options/provinces', [OptionsController::class, 'provinces']);
+Route::get('/options/municipalities', [OptionsController::class, 'municipalities']);
 
 

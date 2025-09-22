@@ -112,4 +112,55 @@ class OptionsController extends Controller
 
         return response()->json($rows);
     }
+
+    /**
+     * GET /api/options/regions
+     * Returns distinct region names from lakes
+     */
+    public function regions()
+    {
+        $rows = Lake::query()
+            ->selectRaw('distinct region')
+            ->whereNotNull('region')
+            ->orderBy('region')
+            ->pluck('region')
+            ->filter()
+            ->values();
+
+        return response()->json($rows);
+    }
+
+    /**
+     * GET /api/options/provinces
+     * Returns distinct province names from lakes
+     */
+    public function provinces()
+    {
+        $rows = Lake::query()
+            ->selectRaw('distinct province')
+            ->whereNotNull('province')
+            ->orderBy('province')
+            ->pluck('province')
+            ->filter()
+            ->values();
+
+        return response()->json($rows);
+    }
+
+    /**
+     * GET /api/options/municipalities
+     * Returns distinct municipality names from lakes
+     */
+    public function municipalities()
+    {
+        $rows = Lake::query()
+            ->selectRaw('distinct municipality')
+            ->whereNotNull('municipality')
+            ->orderBy('municipality')
+            ->pluck('municipality')
+            ->filter()
+            ->values();
+
+        return response()->json($rows);
+    }
 }

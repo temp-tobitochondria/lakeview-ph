@@ -76,7 +76,7 @@ class LakeController extends Controller
     {
         try {
             // ACTIVE + PUBLIC default layer per lake
-            $rows = DB::table('lakes as l')
+            $q = DB::table('lakes as l')
                 ->join('layers as ly', function ($j) {
                     $j->on('ly.body_id', '=', 'l.id')
                     ->where('ly.body_type', 'lake')
@@ -92,8 +92,56 @@ class LakeController extends Controller
                     'w.name as watershed_name',
                     'ly.id as layer_id',
                     DB::raw('ST_AsGeoJSON(ly.geom) as geom_geojson')
-                )
-                ->get();
+                );
+
+            // Server-side filter parameters (all optional)
+            $region = request()->query('region');
+            $province = request()->query('province');
+            $municipality = request()->query('municipality');
+            $class_code = request()->query('class_code');
+
+            $surface_min = request()->query('surface_area_min');
+            $surface_max = request()->query('surface_area_max');
+            $elevation_min = request()->query('elevation_min');
+            $elevation_max = request()->query('elevation_max');
+            $depth_min = request()->query('mean_depth_min');
+            $depth_max = request()->query('mean_depth_max');
+
+            if ($region) {
+                $q->where('l.region', $region);
+            }
+            if ($province) {
+                $q->where('l.province', $province);
+            }
+            if ($municipality) {
+                $q->where('l.municipality', $municipality);
+            }
+            if ($class_code) {
+                $q->where('l.class_code', $class_code);
+            }
+
+            if (is_numeric($surface_min)) {
+                $q->where('l.surface_area_km2', '>=', (float)$surface_min);
+            }
+            if (is_numeric($surface_max)) {
+                $q->where('l.surface_area_km2', '<=', (float)$surface_max);
+            }
+
+            if (is_numeric($elevation_min)) {
+                $q->where('l.elevation_m', '>=', (float)$elevation_min);
+            }
+            if (is_numeric($elevation_max)) {
+                $q->where('l.elevation_m', '<=', (float)$elevation_max);
+            }
+
+            if (is_numeric($depth_min)) {
+                $q->where('l.mean_depth_m', '>=', (float)$depth_min);
+            }
+            if (is_numeric($depth_max)) {
+                $q->where('l.mean_depth_m', '<=', (float)$depth_max);
+            }
+
+            $rows = $q->get();
 
             $features = [];
             foreach ($rows as $r) {
