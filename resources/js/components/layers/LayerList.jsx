@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FiLayers, FiLoader, FiEye, FiToggleRight, FiLock, FiUnlock, FiTrash2, FiEdit2,
+  FiLayers, FiLoader, FiEye, FiTrash2, FiEdit2,
 } from "react-icons/fi";
 
 import Modal from "../Modal";
 import { confirm, alertError, alertSuccess, alertWarning } from "../../lib/alerts";
 import {
   fetchLayersForBody,
-  // activateLayer,  // no longer used
   toggleLayerVisibility,
   deleteLayer,
   fetchBodyName,
@@ -265,7 +264,6 @@ function LayerList({
     }
   };
 
-  // NEW: default toggle with "one-at-a-time" guard (no auto-unset others)
   const doToggleDefault = async (row) => {
     try {
       if (row.is_active) {
@@ -445,6 +443,7 @@ function LayerList({
                                   category: row.category || '',
                                   notes: row.notes || '',
                                   visibility: initialEditVisibility,
+                                  is_active: !!row.is_active,
                                 });
                                 setEditOpen(true);
                               }}
@@ -452,27 +451,6 @@ function LayerList({
                               <FiEdit2 />
                             </button>
 
-                            {allowActivate && (
-                              <button
-                                className={`icon-btn simple ${row.is_active ? 'accent' : ''}`}
-                                title={row.is_active ? 'Unset Default' : 'Set as Default'}
-                                aria-label={row.is_active ? 'Unset Default' : 'Set as Default'}
-                                onClick={() => doToggleDefault(row)}
-                              >
-                                <FiToggleRight />
-                              </button>
-                            )}
-
-                            {canToggleVisibility && (
-                              <button
-                                className="icon-btn simple"
-                                title={`Switch to ${getVisibilityLabel(nextVisibility)}`}
-                                aria-label={`Switch visibility to ${getVisibilityLabel(nextVisibility)}`}
-                                onClick={() => doToggleVisibility(row)}
-                              >
-                                {row.visibility === 'public' ? <FiLock /> : <FiUnlock />}
-                              </button>
-                            )}
 
                             {allowDelete && (
                               <button
@@ -516,11 +494,21 @@ function LayerList({
                 className="pill-btn primary"
                 onClick={async () => {
                   try {
+                    // If user is trying to enable default, ensure no other layer is default
+                    if (editForm.is_active) {
+                      const existing = layers.find((l) => l.is_active && l.id !== editRow.id);
+                      if (existing) {
+                        await alertWarning('Default Layer Exists', `"${existing.name}" is already set as the default layer.\n\nPlease unset it first or turn off default for this layer.`);
+                        return;
+                      }
+                    }
+
                     await updateLayer(editRow.id, {
                       name: editForm.name,
                       category: editForm.category || null,
                       notes: editForm.notes || null,
                       visibility: editForm.visibility,
+                      is_active: !!editForm.is_active,
                     });
                     setEditOpen(false);
                     await refresh();
@@ -579,6 +567,18 @@ function LayerList({
                     </option>
                   ))}
               </select>
+            </div>
+            <div className="form-group">
+              <label>Default Layer</label>
+              <div>
+                <button
+                  type="button"
+                  className={`pill-btn ${editForm.is_active ? 'primary' : 'ghost'}`}
+                  onClick={() => setEditForm((f) => ({ ...f, is_active: !f.is_active }))}
+                >
+                  {editForm.is_active ? 'Default Enabled' : 'Set as Default'}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>

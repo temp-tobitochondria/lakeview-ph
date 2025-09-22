@@ -7,7 +7,6 @@ import {
 } from "react-icons/fi";
 
 import Wizard from "../../components/Wizard";
-// BodySelect removed to keep the UX uniform (dropdown for both)
 
 import {
   boundsFromGeom,
@@ -197,26 +196,27 @@ export default function LayerWizard({
   };
 
   // -------- publish ----------
-  const onPublish = async () => {
+  const onPublish = async (wizardData) => {
     setError("");
     try {
-      if (!data.uploadGeom) throw new Error("Please upload or paste a valid Polygon/MultiPolygon GeoJSON first.");
-      if (!data.bodyType || !data.bodyId) throw new Error("Select a target (lake or watershed) and its ID.");
-      if (!data.name) throw new Error("Layer name is required.");
+      const form = wizardData || data;
+      if (!form.uploadGeom) throw new Error("Please upload or paste a valid Polygon/MultiPolygon GeoJSON first.");
+      if (!form.bodyType || !form.bodyId) throw new Error("Select a target (lake or watershed) and its ID.");
+      if (!form.name) throw new Error("Layer name is required.");
 
       const payload = {
-        body_type: data.bodyType,
-        body_id: Number(data.bodyId),
-        name: data.name,
+        body_type: form.bodyType,
+        body_id: Number(form.bodyId),
+        name: form.name,
         type: "base",
-        category: data.category,
-        srid: Number(data.sourceSrid) || 4326,
-        visibility: data.visibility,          // e.g. public, organization
-        is_active: allowSetActive ? !!data.isActive : false,
+        category: form.category,
+        srid: Number(form.sourceSrid) || 4326,
+        visibility: form.visibility,          // e.g. public, organization
+        is_active: allowSetActive ? !!form.isActive : false,
         status: "ready",
-        notes: data.notes || null,
+        notes: form.notes || null,
         source_type: "geojson",
-        geom_geojson: JSON.stringify(data.uploadGeom),
+        geom_geojson: JSON.stringify(form.uploadGeom),
       };
 
 
@@ -534,7 +534,7 @@ export default function LayerWizard({
       initialData={data}
       labels={{ back: "Back", next: "Next", finish: "Publish" }}
       onFinish={onPublish}
-      onChange={(payload) => setData((d) => ({ ...d, ...payload }))}
+  onChange={(payload) => setTimeout(() => setData((d) => ({ ...d, ...payload })), 0)}
     />
   );
 }
