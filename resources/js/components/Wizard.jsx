@@ -1,5 +1,5 @@
 // resources/js/components/Wizard.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
 /**
@@ -30,12 +30,9 @@ export default function Wizard({
   labels = { back: "Back", next: "Next", finish: "Finish" },
 }) {
   const [stepIndex, setStepIndex] = useState(initialStep);
+  // Initialize data once from initialData; do not auto-reset on prop changes.
+  // Consumers needing to force a reset should remount the Wizard or add a reset key.
   const [data, setData] = useState(initialData);
-
-  // Keep internal data in sync if parent provides new initialData
-  useEffect(() => {
-    setData(initialData || {});
-  }, [initialData]);
 
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;

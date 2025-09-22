@@ -1,19 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FiEdit2, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 
-import TableToolbar from "../../../components/table/TableToolbar";
-import FilterPanel from "../../../components/table/FilterPanel";
 import TableLayout from "../../../layouts/TableLayout";
 import { api, buildQuery } from "../../../lib/api";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 
 const TABLE_ID = "admin-parameters";
 const VIS_KEY = `${TABLE_ID}::visible`;
-const ADV_KEY = `${TABLE_ID}::adv`;
-const SEARCH_KEY = `${TABLE_ID}::search`;
 
 const CATEGORY_OPTIONS = [
   { value: "Physico-chemical", label: "Physico-chemical" },
+  { value: "Biological", label: "Biological" },
+  { value: "Bacteriological", label: "Bacteriological" },
   { value: "Microbiological", label: "Microbiological" },
   { value: "Inorganic", label: "Inorganic" },
   { value: "Metal", label: "Metal" },
@@ -66,38 +64,13 @@ function ParametersTab() {
   const [params, setParams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [query, setQuery] = useState(() => {
-    try {
-      return localStorage.getItem(SEARCH_KEY) || "";
-    } catch (err) {
-      return "";
-    }
-  });
+  const [query, setQuery] = useState("");
   const [resetSignal, setResetSignal] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [adv, setAdv] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(ADV_KEY)) || {};
-    } catch (err) {
-      return {};
-    }
-  });
+  const [gridEdits, setGridEdits] = useState({}); // { [id|'__new__']: partial }
+  const [newRows, setNewRows] = useState([]);
+  // Removed advanced filter panel state
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(ADV_KEY, JSON.stringify(adv));
-    } catch (err) {
-      // ignore storage failures
-    }
-  }, [adv]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SEARCH_KEY, query);
-    } catch (err) {
-      // ignore storage failures
-    }
-  }, [query]);
+  // Removed persistence for adv/search
 
   const baseColumns = useMemo(
     () => [
@@ -175,22 +148,7 @@ function ParametersTab() {
     [baseColumns, visibleMap]
   );
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    for (const value of Object.values(adv)) {
-      if (Array.isArray(value)) {
-        if (value.some((item) => item !== null && item !== "" && item !== undefined)) count += 1;
-      } else if (
-        value !== null &&
-        value !== "" &&
-        value !== undefined &&
-        !(typeof value === "boolean" && value === false)
-      ) {
-        count += 1;
-      }
-    }
-    return count;
-  }, [adv]);
+  // Removed active filter badge count
 
   const fetchParameters = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -232,45 +190,145 @@ function ParametersTab() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return normalized.filter((row) => {
-      if (q) {
-        const haystack = [
-          row.code,
-          row.name,
-          row.category,
-          row.group,
-          row.unit,
-          row.aliases_display,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-
-      if (adv.category && row.category !== adv.category) return false;
-      if (adv.group && row.group !== adv.group) return false;
-      if (adv.data_type && row.data_type !== adv.data_type) return false;
-      if (
-        adv.evaluation_type &&
-        (row.evaluation_type || "").toLowerCase() !== adv.evaluation_type
-      )
-        return false;
-      if (adv.is_active === "1" && !row.is_active) return false;
-      if (adv.is_active === "0" && row.is_active) return false;
-      if (
-        adv.unit &&
-        !(row.unit || "").toLowerCase().includes(adv.unit.trim().toLowerCase())
-      )
-        return false;
-      if (
-        adv.notes &&
-        !(row.notes || "").toLowerCase().includes(adv.notes.trim().toLowerCase())
-      )
-        return false;
-
-      return true;
+      if (!q) return true;
+      const haystack = [row.code, row.name, row.category, row.group, row.unit, row.aliases_display]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
     });
-  }, [normalized, query, adv]);
+  }, [normalized, query]);
+
+  const GRID_TABLE_ID = "admin-parameters-grid";
+
+  const gridRows = useMemo(() => {
+    const rows = filtered.map((row) => ({ ...row }));
+    newRows.forEach((rid) => {
+      rows.push({ id: rid, code: "", name: "", unit: "", category: "", group: "", data_type: "", evaluation_type: "", is_active: true, notes: "", aliases_display: "", __id: null });
+    });
+    return rows.map((r) => ({ ...r, ...(gridEdits[r.id] || {}) }));
+  }, [filtered, newRows, gridEdits]);
+
+  const updateGridCell = (key, field, value) => {
+    setGridEdits((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  };
+
+  const saveGridRow = async (row) => {
+    const payload = {
+      code: String(row.code || "").trim(),
+      name: String(row.name || "").trim(),
+      unit: row.unit || null,
+      category: row.category || null,
+      group: row.group || null,
+      data_type: row.data_type || null,
+      evaluation_type: row.evaluation_type || null,
+      is_active: !!row.is_active,
+      notes: (row.notes || "").trim() || null,
+      aliases: (row.aliases_display || "")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean),
+    };
+    try {
+      if (row.__id) {
+        await api(`/admin/parameters/${row.__id}`, { method: "PUT", body: payload });
+        await alertSuccess("Saved", `Updated ${payload.code}.`);
+      } else {
+        if (!payload.code || !payload.name) {
+          await alertError("Validation", "Code and Name are required for new parameter");
+          return;
+        }
+        await api(`/admin/parameters`, { method: "POST", body: payload });
+        await alertSuccess("Created", `Created ${payload.code}.`);
+      }
+  setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+  if (!row.__id) setNewRows((prev) => prev.filter((rid) => rid !== row.id));
+      await fetchParameters({ search: query });
+    } catch (err) {
+      console.error("Failed to save parameter", err);
+      await alertError("Save failed", err?.message || "Failed to save parameter");
+    }
+  };
+
+  const deleteGridRow = async (row) => {
+    if (!row.__id) {
+      setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      setNewRows((prev) => prev.filter((rid) => rid !== row.id));
+      return;
+    }
+    const ok = await confirm({ title: 'Delete parameter?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
+    if (!ok) return;
+    try {
+      await api(`/admin/parameters/${row.__id}`, { method: "DELETE" });
+      setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      await fetchParameters({ search: query });
+      await alertSuccess('Deleted', `"${row.code}" was deleted.`);
+    } catch (err) {
+      console.error("Failed to delete parameter", err);
+      await alertError('Delete failed', err?.message || 'Failed to delete parameter');
+    }
+  };
+
+  const gridColumns = useMemo(() => [
+    { id: "code", header: "Code", width: 120, render: (row) => (
+      <input type="text" value={row.code ?? ""} disabled={!!row.__id} placeholder="Type code..."
+        onChange={(e) => updateGridCell(row.id, "code", e.target.value)} style={{ width: "100%" }} />
+    )},
+    { id: "name", header: "Name", width: 200, render: (row) => (
+      <input type="text" value={row.name ?? ""} placeholder="Type name..."
+        onChange={(e) => updateGridCell(row.id, "name", e.target.value)} style={{ width: "100%" }} />
+    )},
+    { id: "category", header: "Category", width: 160, render: (row) => (
+      <select value={row.category ?? ""} onChange={(e) => updateGridCell(row.id, "category", e.target.value)} style={{ width: "100%" }}>
+        <option value="">Select category</option>
+        {CATEGORY_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    )},
+    { id: "group", header: "Group", width: 200, render: (row) => (
+      <select value={row.group ?? ""} onChange={(e) => updateGridCell(row.id, "group", e.target.value)} style={{ width: "100%" }}>
+        <option value="">Select group</option>
+        {GROUP_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    )},
+    { id: "unit", header: "Unit", width: 120, render: (row) => (
+      <select value={row.unit ?? ""} onChange={(e) => updateGridCell(row.id, "unit", e.target.value)} style={{ width: "100%" }}>
+        <option value="">Select unit</option>
+        {UNIT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    )},
+    { id: "data_type", header: "Data Type", width: 140, render: (row) => (
+      <select value={row.data_type ?? ""} onChange={(e) => updateGridCell(row.id, "data_type", e.target.value)} style={{ width: "100%" }}>
+        <option value="">Select data type</option>
+        <option value="Numeric">Numeric</option>
+        <option value="Range">Range</option>
+        <option value="Categorical">Categorical</option>
+      </select>
+    )},
+    { id: "evaluation_type", header: "Evaluation", width: 160, render: (row) => (
+      <select value={row.evaluation_type ?? ""} onChange={(e) => updateGridCell(row.id, "evaluation_type", e.target.value)} style={{ width: "100%" }}>
+        <option value="">Not set</option>
+        <option value="Max (≤)">Max (≤)</option>
+        <option value="Min (≥)">Min (≥)</option>
+        <option value="Range">Range (between)</option>
+      </select>
+    )},
+    { id: "is_active", header: "Active", width: 110, render: (row) => (
+      <select value={row.is_active ? "1" : "0"} onChange={(e) => updateGridCell(row.id, "is_active", e.target.value === "1")} style={{ width: "100%" }}>
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+    )},
+    { id: "aliases", header: "Aliases", defaultHidden: true, render: (row) => (
+      <input type="text" value={row.aliases_display ?? ""} placeholder="Comma separated aliases..."
+        onChange={(e) => updateGridCell(row.id, "aliases_display", e.target.value)} style={{ width: "100%" }} />
+    )},
+  ], []);
 
   const handleRefresh = useCallback(() => {
     fetchParameters({ search: query });
@@ -346,55 +404,7 @@ function ParametersTab() {
     ];
   }, [params]);
 
-  const filterPanelFields = useMemo(
-    () => [
-      {
-        id: "category",
-        label: "Category",
-        type: "select",
-        value: adv.category ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, category: value })),
-        options: categoryFilterOptions,
-      },
-      {
-        id: "group",
-        label: "Group",
-        type: "select",
-        value: adv.group ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, group: value })),
-        options: groupFilterOptions,
-      },
-      {
-        id: "data_type",
-        label: "Data Type",
-        type: "select",
-        value: adv.data_type ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, data_type: value })),
-        options: dataTypeFilterOptions,
-      },
-      {
-        id: "evaluation_type",
-        label: "Evaluation",
-        type: "select",
-        value: adv.evaluation_type ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, evaluation_type: value })),
-        options: evaluationFilterOptions,
-      },
-      {
-        id: "is_active",
-        label: "Status",
-        type: "select",
-        value: adv.is_active ?? "",
-        onChange: (value) => setAdv((state) => ({ ...state, is_active: value })),
-        options: [
-          { value: "", label: "Active + inactive" },
-          { value: "1", label: "Active only" },
-          { value: "0", label: "Inactive only" },
-        ],
-      },
-    ],
-    [adv, categoryFilterOptions, groupFilterOptions, dataTypeFilterOptions, evaluationFilterOptions]
-  );
+  // Removed filter panel config
 
   const actions = useMemo(
     () => [
@@ -492,174 +502,29 @@ function ParametersTab() {
     <div className="dashboard-card">
       <div className="dashboard-card-header">
         <div className="dashboard-card-title">
-          <FiPlus />
-          <span>{form.__id ? "Edit Parameter" : "Create Parameter"}</span>
+          <span>Edit Parameters (Inline)</span>
         </div>
       </div>
 
-      <form onSubmit={handleSave} className="dashboard-card-body">
-        <div className="org-form">
-          <div className="form-group" style={{ minWidth: 220 }}>
-            <label>Code *</label>
-            <input
-              type="text"
-              value={form.code}
-              onChange={(event) => handleChange("code", event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group" style={{ minWidth: 260 }}>
-            <label>Name *</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(event) => handleChange("name", event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Category</label>
-            <select
-              value={form.category}
-              onChange={(event) => handleChange("category", event.target.value)}
-            >
-              <option value="">Select category</option>
-              {categoryOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Group</label>
-            <select
-              value={form.group}
-              onChange={(event) => handleChange("group", event.target.value)}
-            >
-              <option value="">Select group</option>
-              {groupOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Unit</label>
-            <select
-              value={form.unit}
-              onChange={(event) => handleChange("unit", event.target.value)}
-            >
-              <option value="">Select unit</option>
-              {unitOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Data Type</label>
-            <select
-              value={form.data_type}
-              onChange={(event) => handleChange("data_type", event.target.value)}
-            >
-              <option value="">Select Data Type</option>
-              <option value="Numeric">Numeric</option>
-              <option value="Range">Range</option>
-              <option value="Categorical">Categorical</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Evaluation</label>
-            <select
-              value={form.evaluation_type}
-              onChange={(event) => handleChange("evaluation_type", event.target.value)}
-            >
-              <option value="">Not set</option>
-              <option value="Max (≤)">Max (≤)</option>
-              <option value="Min (≥)">Min (≥)</option>
-              <option value="Range">Range (between)</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Status</label>
-            <select
-              value={form.is_active ? "1" : "0"}
-              onChange={(event) => handleChange("is_active", event.target.value === "1")}
-            >
-              <option value="1">Active</option>
-              <option value="0">Inactive</option>
-            </select>
-          </div>
-
-          <div className="form-group" style={{ flexBasis: "100%" }}>
-            <label>Aliases (comma separated)</label>
-            <textarea
-              rows={2}
-              value={form.aliases_text}
-              onChange={(event) => handleChange("aliases_text", event.target.value)}
-            />
-          </div>
-
-          <div className="form-group" style={{ flexBasis: "100%" }}>
-            <label>Notes</label>
-            <textarea
-              rows={3}
-              value={form.notes}
-              onChange={(event) => handleChange("notes", event.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="org-actions-right">
-          <button type="button" className="pill-btn ghost" onClick={handleReset} disabled={saving}>
-            Clear
-          </button>
-          <button type="submit" className="pill-btn primary" disabled={saving}>
-            <FiSave />
-            <span>{form.__id ? "Update" : "Save"}</span>
-          </button>
-        </div>
-      </form>
-
-      <TableToolbar
-        tableId={TABLE_ID}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search code, name, category...",
-        }}
-        filters={[]}
-        columnPicker={{ columns: baseColumns, visibleMap, onVisibleChange: setVisibleMap }}
-        onResetWidths={() => setResetSignal((value) => value + 1)}
-        onRefresh={handleRefresh}
-        onToggleFilters={() => setFiltersOpen((value) => !value)}
-        filtersBadgeCount={activeFilterCount}
-      />
-
-      <FilterPanel
-        open={filtersOpen}
-        onClearAll={() => setAdv({})}
-        fields={filterPanelFields}
-      />
-
-      <div className="dashboard-card-body" style={{ paddingTop: 0 }}>
+      <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
         <TableLayout
-          tableId={TABLE_ID}
-          columns={visibleColumns}
-          data={filtered}
-          pageSize={12}
-          actions={actions}
-          resetSignal={resetSignal}
+          tableId={GRID_TABLE_ID}
+          columns={gridColumns}
+          data={gridRows}
+          pageSize={5}
+          actions={[
+            { label: "Save", type: "edit", icon: <FiSave />, onClick: (row) => saveGridRow(row) },
+            { label: "Delete", type: "delete", icon: <FiTrash2 />, onClick: (row) => deleteGridRow(row) },
+          ]}
+          columnPicker={{ label: "Columns", locked: ["code"], defaultHidden: ["aliases"] }}
+          toolbar={{
+            left: (
+              <button type="button" className="pill-btn primary" onClick={() => setNewRows((prev) => [...prev, `__new__-${Date.now()}`])}>
+                <FiPlus />
+                <span>Add Row</span>
+              </button>
+            ),
+          }}
         />
         {loading && <p style={{ marginTop: 12, color: "#6b7280" }}>Loading...</p>}
       </div>
@@ -668,5 +533,3 @@ function ParametersTab() {
 }
 
 export default ParametersTab;
-
-
