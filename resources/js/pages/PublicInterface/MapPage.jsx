@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FiArrowLeft } from "react-icons/fi";
-import { api } from "../../lib/api";
+import { api, getToken } from "../../lib/api";
 import { useMap, GeoJSON } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -54,11 +54,14 @@ function MapPage() {
   useEffect(() => {
     let mounted = true;
     (async () => {
+      if (!getToken()) { setUserRole(null); return; }
       try {
         const me = await api("/auth/me");
         if (!mounted) return;
         setUserRole(['superadmin','org_admin','contributor'].includes(me.role) ? me.role : null);
-      } catch { if (mounted) setUserRole(null); }
+      } catch {
+        if (mounted) setUserRole(null);
+      }
     })();
     return () => { mounted = false; };
   }, []);

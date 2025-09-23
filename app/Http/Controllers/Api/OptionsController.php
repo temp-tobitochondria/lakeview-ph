@@ -10,6 +10,19 @@ use App\Models\Watershed;
 class OptionsController extends Controller
 {
     /**
+     * GET /api/options/roles
+     * Returns ["public", "contributor", ...] for role dropdowns.
+     */
+    public function roles(Request $request)
+    {
+        // Optionally filter by scope if needed
+        $roles = \App\Models\Role::query()
+            ->orderBy('id')
+            ->pluck('name')
+            ->values();
+        return response()->json($roles);
+    }
+    /**
      * GET /api/options/lakes?q=&limit=
      * Returns [{ id, name }, ...] for lightweight dropdowns.
      */

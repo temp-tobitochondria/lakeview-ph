@@ -1,162 +1,290 @@
-// resources/js/pages/AdminInterface/AdminUsers.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  FiPlus,
-  FiSearch,
-  FiFilter,
-  FiRefreshCw,
-  FiEdit2,
-  FiTrash2,
-  FiEye,
-  FiUser,
-  FiMail,
-} from "react-icons/fi";
+// resources/js/pages/AdminInterface/adminUsers.jsx
+import React, { useEffect, useState } from "react";
+import api from "../../lib/api";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 
-import TableLayout from "../../layouts/TableLayout"; // adjust the path if different
+import Modal from "../../components/Modal";
+import AdminUsersForm from "../../components/adminUsersForm";
 
-/**
- * AdminUsers
- * - List users with fields from Register page:
- *   full_name, email, occupation, affiliation, created_at
- * - Search + occupation filter
- * - Actions: View / Edit / Delete (placeholders)
- * - Responsive via TableLayout + table.css (no mock data)
- */
-export default function AdminUsers() {
-  // ---------- UI State ----------
-  const [query, setQuery] = useState("");
-  const [occupation, setOccupation] = useState(""); // '', 'Student', 'Researcher', 'Professional', 'Other'
+const emptyInitial = { name: "", email: "", password: "", role: "" };
+
+export default function AdminUsersPage() {
+  // table state
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 15, total: 0 });
+  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ---------- Data State (empty by design) ----------
-  const [users, setUsers] = useState([]); // [{ id, full_name, email, occupation, affiliation, created_at }]
+  // modal/form state
+  const [open, setOpen] = useState(false);      // Modal expects `open` prop (not isOpen)
+  const [mode, setMode] = useState("create");   // 'create' | 'edit'
+  const [initial, setInitial] = useState(emptyInitial);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  // ---------- Columns ----------
-  const columns = useMemo(
-    () => [
-        { header: "", width: 32, className: "col-xs-hide",
-        render: (row) => <input type="checkbox" aria-label={`Select ${row?.full_name ?? "row"}`} /> },
+  const page = meta.current_page ?? 1;
+  const perPage = meta.per_page ?? 15;
 
-        {
-        header: <span className="th-with-icon"><FiUser /> Name</span>,
-        label: "Name",
-        accessor: "full_name",
-        },
-        {
-        header: <span className="th-with-icon"><FiMail /> Email</span>,
-        label: "Email",
-        accessor: "email",
-        width: 240,
-        className: "col-sm-hide",
-        },
-        { header: "Occupation", label: "Occupation", accessor: "occupation", width: 160 },
-        { header: "Affiliation", label: "Affiliation", accessor: "affiliation", className: "col-md-hide" },
-        { header: "Created", label: "Created", accessor: "created_at", width: 180, className: "col-md-hide" },
-    ],
-    []
-    );
+  const unwrap = (res) => (res?.data ?? res);
+  const toast = (title, icon = "success") =>
+    Swal.fire({ toast: true, position: "top-end", timer: 1600, showConfirmButton: false, icon, title });
 
-
-  // ---------- Row Actions ----------
-  const actions = useMemo(
-    () => [
-      { label: "View", type: "default", icon: <FiEye />, onClick: (row) => { /* TODO: route to /admin-dashboard/users/:id */ } },
-      { label: "Edit", type: "edit", icon: <FiEdit2 />, onClick: (row) => { /* TODO: open edit user */ } },
-      { label: "Delete", type: "delete", icon: <FiTrash2 />, onClick: (row) => { /* TODO: confirm + delete */ } },
-    ],
-    []
-  );
-
-  // ---------- Fetch (replace with your API) ----------
-  const fetchUsers = async () => {
+  // Load list
+  const fetchUsers = async (params = {}) => {
     setLoading(true);
     try {
-      // Example (replace with your backend):
-      // const params = new URLSearchParams({ query, occupation });
-      // const res = await fetch(`/api/admin/users?${params.toString()}`);
-      // const data = await res.json();
-      // setUsers(data.items ?? []);
-      setUsers([]); // keep empty until wired
+      const res = unwrap(await api.get("/admin/users", { params }));
+      const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      setRows(items);
+
+      const m = res?.meta ?? {};
+      setMeta({
+        current_page: m.current_page ?? params.page ?? 1,
+        last_page: m.last_page ?? 1,
+        per_page: m.per_page ?? params.per_page ?? 15,
+        total: m.total ?? items.length,
+      });
     } catch (e) {
-      console.error("Failed to fetch users", e);
-      setUsers([]);
+      console.error("Failed to load users", e);
+      Swal.fire("Failed to load users", e?.response?.data?.message || "", "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, [query, occupation]);
+    fetchUsers({ q, page, per_page: perPage });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // ---------- Handlers ----------
-  const handleAdd = () => {
-    // TODO: navigate to user-create or open modal
+  const goPage = (p) => fetchUsers({ q, page: p, per_page: perPage });
+
+  // —— Modal open/close
+  const openCreate = () => {
+    setMode("create");
+    setEditingId(null);
+    setInitial(emptyInitial);
+    setOpen(true);
   };
 
+  const openEdit = async (row) => {
+    try {
+      setSaving(true);
+      const res = unwrap(await api.get(`/admin/users/${row.id}`));
+      const user = res?.data ?? res;
+
+      // Prefer resource's global_role; fall back to roles[] pivot scan
+      let role = user?.global_role ?? "";
+      if (!role && Array.isArray(user?.roles)) {
+        const g = user.roles.find((r) => r?.tenant_id == null || r?.pivot?.tenant_id == null);
+        role = g?.name || "";
+      }
+
+      setMode("edit");
+      setEditingId(user.id);
+      setInitial({
+        name: user.name || "",
+        email: user.email || "",
+        password: "",
+        role: role,
+      });
+      setOpen(true);
+    } catch (e) {
+      console.error("Failed to load user", e);
+      Swal.fire("Failed to load user", e?.response?.data?.message || "", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const closeModal = () => {
+    if (saving) return;
+    setOpen(false);
+    setInitial(emptyInitial);
+    setEditingId(null);
+    setMode("create");
+  };
+
+  // —— CRUD
+  const submitForm = async (payload) => {
+    // Ensure payload uses 'role' not 'global_role'
+    if (payload.global_role) {
+      payload.role = payload.global_role;
+      delete payload.global_role;
+    }
+    const verb = mode === "edit" ? "Update" : "Create";
+    const { isConfirmed } = await Swal.fire({
+      title: `${verb} user?`,
+      text: mode === "edit" ? `Apply changes to ${payload.email}?` : `Create new user ${payload.email}?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: verb,
+      confirmButtonColor: "#2563eb",
+    });
+    if (!isConfirmed) return;
+
+    setSaving(true);
+    try {
+      if (mode === "edit" && editingId) {
+        await api.put(`/admin/users/${editingId}`, payload);
+        toast("User updated");
+      } else {
+        await api.post("/admin/users", payload);
+        toast("User created");
+      }
+      closeModal();
+      await fetchUsers({ q, page: 1, per_page: perPage });
+    } catch (e) {
+      console.error("Save failed", e);
+      const detail =
+        e?.response?.data?.message ||
+        Object.values(e?.response?.data?.errors ?? {})?.flat()?.join(", ") ||
+        "";
+      Swal.fire("Save failed", detail, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteUser = async (row) => {
+    const { isConfirmed } = await Swal.fire({
+      title: "Delete user?",
+      text: `This will permanently delete ${row.email}.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!isConfirmed) return;
+
+    try {
+      await api.delete(`/admin/users/${row.id}`);
+      toast("User deleted");
+      const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
+      await fetchUsers({ q, page: nextPage, per_page: perPage });
+    } catch (e) {
+      console.error("Delete failed", e);
+      Swal.fire("Delete failed", e?.response?.data?.message || "", "error");
+    }
+  };
+
+  // —— UI
   return (
-    <div className="dashboard-card">
-      {/* Toolbar (reuses org-toolbar styles) */}
-      <div className="dashboard-card-header org-toolbar">
-        <div className="org-search">
-          <FiSearch className="toolbar-icon" />
-          <input
-            type="text"
-            placeholder="Search by name or email…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search users"
-          />
-        </div>
+    <div className="container" style={{ padding: 16 }}>
+      <div className="flex-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>Admin · Users</h2>
+        <button className="pill-btn" onClick={openCreate}>+ New User</button>
+      </div>
 
-        <div className="org-filter">
-          <FiFilter className="toolbar-icon" />
-          <select
-            value={occupation}
-            onChange={(e) => setOccupation(e.target.value)}
-            aria-label="Filter by occupation"
-          >
-            <option value="">All Occupations</option>
-            <option value="Student">Student</option>
-            <option value="Researcher">Researcher</option>
-            <option value="Professional">Professional</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        <div className="org-actions-right">
-          <button
-            className="pill-btn ghost"
-            onClick={fetchUsers}
-            title="Refresh"
-            aria-label="Refresh users list"
-          >
-            <FiRefreshCw />
-          </button>
-          <button
-            className="pill-btn primary"
-            onClick={handleAdd}
-            title="Add user"
-          >
-            <FiPlus />
-            <span className="hide-sm">Add</span>
-          </button>
-        </div>
+      {/* Toolbar */}
+      <div className="card" style={{ padding: 12, borderRadius: 12, marginBottom: 12 }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            fetchUsers({ q, page: 1, per_page: perPage });
+          }}
+          className="row"
+          style={{ marginBottom: 0 }}
+        >
+          <div className="input-field col s12 m6">
+            <label className="active">Search (name / email)</label>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g., maria@example.com" />
+          </div>
+          <div className="col s12 m6" style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+            <button className="pill-btn" type="submit" disabled={loading}>Search</button>
+            <button
+              className="pill-btn ghost"
+              type="button"
+              disabled={loading}
+              onClick={() => { setQ(""); fetchUsers({ q: "", page: 1, per_page: perPage }); }}
+            >
+              Reset
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Table */}
-      <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
-        {loading && <div className="no-data" style={{ paddingTop: 8 }}>Loading…</div>}
-
-        <div className="table-wrapper">
-          <TableLayout
-            columns={columns}
-            data={users}
-            pageSize={10}
-            actions={actions}
-          />
+      <div className="table-wrapper">
+        <div className="lv-table-wrap">
+          <div className="lv-table-scroller">
+            <table className="lv-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ width: 56, textAlign: 'left', padding: '8px 12px' }}>#</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Name</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Email</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Role</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Verified</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Created</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px' }}>Updated</th>
+                  <th style={{ width: 200, textAlign: 'right', padding: '8px 12px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="8" style={{ textAlign: 'center', padding: 16 }}>Loading…</td></tr>
+                ) : rows.length === 0 ? (
+                  <tr><td colSpan="8" className="lv-empty" style={{ textAlign: 'center', padding: 16 }}>No users found</td></tr>
+                ) : (
+                  rows.map((u, i) => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '8px 12px' }}>{(page - 1) * perPage + i + 1}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.name}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.email}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.role || "—"}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.email_verified_at ? new Date(u.email_verified_at).toLocaleString() : "—"}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.created_at ? new Date(u.created_at).toLocaleString() : "—"}</td>
+                      <td style={{ padding: '8px 12px' }}>{u.updated_at ? new Date(u.updated_at).toLocaleString() : "—"}</td>
+                      <td style={{ padding: '8px 12px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button className="pill-btn ghost sm" onClick={() => openEdit(u)}>Edit</button>
+                        <button className="pill-btn ghost sm red-text" onClick={() => deleteUser(u)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      {/* Pager */}
+      <div className="lv-table-pager" style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+        <button className="pill-btn ghost sm" disabled={page <= 1} onClick={() => goPage(page - 1)}>&lt; Prev</button>
+        <span className="pager-text">Page {page} of {meta.last_page} · {meta.total} total</span>
+        <button className="pill-btn ghost sm" disabled={page >= meta.last_page} onClick={() => goPage(page + 1)}>Next &gt;</button>
+      </div>
+
+      {/* Modal (uses `open`) */}
+      <Modal
+        open={open}
+        onClose={closeModal}
+        title={mode === "edit" ? "Edit User" : "Create User"}
+        ariaLabel="User Form"
+        width={600}
+        footer={
+          <div className="lv-modal-actions">
+            <button type="button" className="pill-btn ghost" onClick={closeModal} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className="pill-btn primary" form="lv-admin-user-form" disabled={saving}>
+              {saving ? "Saving…" : (mode === "edit" ? "Update User" : "Create User")}
+            </button>
+          </div>
+        }
+      >
+        <AdminUsersForm
+          key={mode + (editingId ?? "new")}
+          formId="lv-admin-user-form"
+          initialValues={initial}
+          mode={mode}
+          saving={saving}
+          onSubmit={submitForm}
+          onCancel={closeModal}
+        />
+      </Modal>
     </div>
   );
 }
