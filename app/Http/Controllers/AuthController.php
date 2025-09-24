@@ -89,6 +89,16 @@ class AuthController extends Controller
 
         $token = $user->createToken("lv_token", $abilities, $expiry)->plainTextToken;
 
+        // Auto-select tenant for org_admins/contributors with only one tenant
+        $tenantId = null;
+        if (in_array($role, ["org_admin", "contributor"])) {
+            $tenants = $user->tenants()->wherePivot('is_active', true)->get();
+            if ($tenants->count() === 1) {
+                $tenantId = $tenants->first()->id;
+                session(["tenant_id" => $tenantId]);
+            }
+        }
+
         return response()->json([
             "token" => $token,
             "user"  => [
@@ -98,6 +108,7 @@ class AuthController extends Controller
                 "role"  => $role,
                 "occupation" => $user->occupation,
                 "occupation_other" => $user->occupation_other,
+                "tenant_id" => $tenantId,
             ],
         ]);
     }
@@ -105,13 +116,20 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         $u = $request->user();
+        $role = $u->highestRoleName();
+        $tenantId = null;
+        if (in_array($role, ["org_admin", "contributor"])) {
+            $tenant = $u->tenants()->wherePivot('is_active', true)->first();
+            if ($tenant) $tenantId = $tenant->id;
+        }
         return response()->json([
             "id"    => $u->id,
             "email" => $u->email,
             "name"  => $u->name,
-            "role"  => $u->highestRoleName(),
+            "role"  => $role,
             "occupation" => $u->occupation,
             "occupation_other" => $u->occupation_other,
+            "tenant_id" => $tenantId,
         ]);
     }
 

@@ -18,8 +18,8 @@ export default function RequireRole({ allowed = [], children }) {
         const roleAllowed = allowed.length === 0 || allowed.includes(me.role);
         setOk(roleAllowed);
 
-        // tenant check (optional, adjust depending on your API response)
-        if (!me.tenant && me.role !== "superadmin") {
+        // tenant check: org_admins and contributors must have tenant_id
+        if ((me.role === "org_admin" || me.role === "contributor") && !me.tenant_id) {
           setTenantOk(false);
         }
       } catch {

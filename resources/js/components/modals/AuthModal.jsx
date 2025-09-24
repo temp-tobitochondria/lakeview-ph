@@ -122,10 +122,17 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
       if (res?.token) {
         setToken(res.token, { remember });
       }
-      const me = await api("/auth/me");
+
+      // Use tenant_id from login response if present
+      if (res?.user?.tenant_id) {
+        // Store tenant_id in localStorage or your app state
+        localStorage.setItem("tenant_id", res.user.tenant_id);
+      } else {
+        localStorage.removeItem("tenant_id");
+      }
 
       alertSuccess("Welcome back!", "Login successful.");
-      redirectByRole(me);
+      redirectByRole(res.user);
       onClose?.();
     } catch (e2) {
       const msg = extractMessage(e2, "Invalid email or password.");
