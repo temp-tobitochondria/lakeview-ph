@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\Stats\TTestService;
+use App\Services\Stats\AdaptiveStatsService;
 use Carbon\Carbon;
 
 class StatsController extends Controller
@@ -46,7 +47,8 @@ class StatsController extends Controller
             'aggregation' => 'nullable|in:month,raw,daily',
             'station_ids' => 'nullable|array',
             'station_ids.*' => 'integer',
-            'manual_mu0' => 'nullable|numeric'
+            'manual_mu0' => 'nullable|numeric',
+            'applied_standard_id' => 'nullable|integer|exists:wq_standards,id'
         ]);
 
         $mode = $data['mode'] ?? 'compliance';
@@ -132,29 +134,47 @@ class StatsController extends Controller
             $sample = collect($rows)->pluck('agg_value')->filter(fn($v) => is_numeric($v))->values()->all();
             // Lookup threshold
             $class = $data['class_code'] ?? DB::table('lakes')->where('id', $data['lake_id'])->value('class_code');
-            // Robust threshold lookup (case-insensitive class, prioritize current standards, prefer rows with actual values)
-            $thrQuery = DB::table('parameter_thresholds as pt')
-                ->leftJoin('wq_standards as ws', 'pt.standard_id', '=', 'ws.id')
-                ->where('pt.parameter_id', $param->id);
-            if ($class) {
-                $thrQuery->whereRaw('LOWER(pt.class_code) = ?', [strtolower($class)]);
-            }
-            $thrRow = $thrQuery
-                ->orderByDesc('ws.is_current')
-                ->orderBy('ws.priority')
-                ->orderByRaw('pt.min_value IS NULL')
-                ->orderByRaw('pt.max_value IS NULL')
-                ->first(['pt.*', 'ws.code as standard_code', 'ws.is_current']);
-            if (!$thrRow && $class) {
-                // fallback WITHOUT class constraint
-                $thrRow = DB::table('parameter_thresholds as pt')
+            // Threshold lookup with optional applied standard restriction + fallback
+            $requestedStdId = $data['applied_standard_id'] ?? null;
+            $thrRow = null; $standardFallback = false; $classFallback = false; $stdRequested = $requestedStdId;
+            $baseQuery = function($withClass) use ($param, $class) {
+                $q = DB::table('parameter_thresholds as pt')
                     ->leftJoin('wq_standards as ws', 'pt.standard_id', '=', 'ws.id')
-                    ->where('pt.parameter_id', $param->id)
+                    ->where('pt.parameter_id', $param->id);
+                if ($withClass && $class) {
+                    $q->whereRaw('LOWER(pt.class_code) = ?', [strtolower($class)]);
+                }
+                return $q;
+            };
+            if ($requestedStdId) {
+                // try exact standard + class
+                $try = $baseQuery(true)->where('pt.standard_id', $requestedStdId);
+                $thrRow = $try->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if (!$thrRow) {
+                    // try exact standard without class
+                    $thrRow = $baseQuery(false)->where('pt.standard_id', $requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                    if ($thrRow) $classFallback = true;
+                }
+            }
+            if (!$thrRow) {
+                // fallback to priority ordering (with class first)
+                $q1 = $baseQuery(true)
+                    ->orderByDesc('ws.is_current')
+                    ->orderBy('ws.priority')
+                    ->orderByRaw('pt.min_value IS NULL')
+                    ->orderByRaw('pt.max_value IS NULL');
+                $thrRow = $q1->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if ($thrRow && $requestedStdId && $thrRow->standard_id != $requestedStdId) $standardFallback = true;
+            }
+            if (!$thrRow && $class) {
+                // final fallback without class constraint
+                $thrRow = $baseQuery(false)
                     ->orderByDesc('ws.is_current')
                     ->orderBy('ws.priority')
                     ->orderByRaw('pt.min_value IS NULL')
                     ->orderByRaw('pt.max_value IS NULL')
-                    ->first(['pt.*', 'ws.code as standard_code', 'ws.is_current']);
+                    ->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if ($thrRow) { $classFallback = true; if ($requestedStdId && $thrRow->standard_id != $requestedStdId) $standardFallback = true; }
             }
             $thrMin = $thrRow->min_value ?? null;
             $thrMax = $thrRow->max_value ?? null;
@@ -248,10 +268,18 @@ class StatsController extends Controller
                 'class_used' => $thrRow->class_code ?? null,
                 'requested_class' => $class,
                 'standard_code' => $thrRow->standard_code ?? null,
+                'standard_id_used' => $thrRow->standard_id ?? null,
+                'standard_id_requested' => $stdRequested,
+                'standard_fallback' => $standardFallback,
+                'class_fallback' => $classFallback,
                 'min_value' => $thrMin,
                 'max_value' => $thrMax,
                 'fallback_note' => $fallbackNote ?? null,
             ];
+            $result['applied_standard_id_requested'] = $stdRequested;
+            $result['applied_standard_id_used'] = $thrRow->standard_id ?? null;
+            $result['standard_fallback'] = $standardFallback;
+            $result['class_fallback'] = $classFallback;
             $result['aggregation'] = $aggregation;
             $result['interpretation_detail'] = $this->interpretOneSample($result, $evalType, $mode);
             return response()->json($result);
@@ -281,6 +309,181 @@ class StatsController extends Controller
         $res['aggregation'] = $aggregation;
         $res['interpretation_detail'] = $this->interpretTwoSample($res);
         return response()->json($res);
+    }
+
+    /**
+     * POST /api/stats/adaptive
+     * Same body as t-test but auto-selects parametric vs non-parametric.
+     * Decides with simple normality diagnostics; returns unified structure.
+     */
+    public function adaptive(Request $request)
+    {
+        $data = $request->validate([
+            'mode' => 'nullable|in:compliance,improvement',
+            'test' => 'required|in:one-sample,two-sample',
+            'parameter_code' => 'required|string',
+            'lake_id' => 'required_if:test,one-sample|integer',
+            'lake_ids' => 'required_if:test,two-sample|array|min:2|max:2',
+            'lake_ids.*' => 'integer',
+            'class_code' => 'nullable|string',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+            'confidence_level' => 'nullable|in:0.9,0.95,0.99',
+            'station_ids' => 'nullable|array',
+            'station_ids.*' => 'integer',
+            'aggregation' => 'nullable|in:month,raw,daily',
+            'manual_mu0' => 'nullable|numeric',
+            'applied_standard_id' => 'nullable|integer|exists:wq_standards,id'
+        ]);
+
+        // Re-use underlying tTest collection but intercept before returning.
+        // We'll replicate necessary query subset (simpler than refactor now).
+        $alpha = 1 - floatval($data['confidence_level'] ?? 0.95);
+        $param = \DB::table('parameters')->whereRaw('LOWER(code)=?', [strtolower($data['parameter_code'])])->first();
+        if (!$param) return response()->json(['error'=>'Parameter not found'],404);
+        $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
+        $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
+        $aggregation = $data['aggregation'] ?? 'month';
+
+        $query = \DB::table('sample_results as sr')
+            ->join('sampling_events as se','sr.sampling_event_id','=','se.id')
+            ->join('parameters as p','sr.parameter_id','=','p.id')
+            ->where('p.code','=',$data['parameter_code'])
+            ->whereNotNull('sr.value');
+        if (!empty($data['station_ids'])) $query->whereIn('se.station_id',$data['station_ids']);
+        $driver = \DB::getDriverName();
+        if ($aggregation==='month') {
+            if ($driver==='pgsql') {
+                $query->selectRaw("se.lake_id, to_char(date_trunc('month', timezone('Asia/Manila', se.sampled_at)), 'YYYY-MM-01') as bucket_key, AVG(sr.value) as agg_value")
+                    ->groupByRaw("se.lake_id, date_trunc('month', timezone('Asia/Manila', se.sampled_at))");
+            } else {
+                $query->selectRaw("se.lake_id, DATE_FORMAT(CONVERT_TZ(se.sampled_at, 'UTC','Asia/Manila'), '%Y-%m-01') as bucket_key, AVG(sr.value) as agg_value")
+                    ->groupBy('se.lake_id','bucket_key');
+            }
+        } elseif ($aggregation==='daily') {
+            if ($driver==='pgsql') {
+                $query->selectRaw("se.lake_id, to_char(date_trunc('day', timezone('Asia/Manila', se.sampled_at)), 'YYYY-MM-DD') as bucket_key, AVG(sr.value) as agg_value")
+                    ->groupByRaw("se.lake_id, date_trunc('day', timezone('Asia/Manila', se.sampled_at))");
+            } else {
+                $query->selectRaw("se.lake_id, DATE_FORMAT(CONVERT_TZ(se.sampled_at, 'UTC','Asia/Manila'), '%Y-%m-%d') as bucket_key, AVG(sr.value) as agg_value")
+                    ->groupBy('se.lake_id','bucket_key');
+            }
+        } else {
+            if ($driver==='pgsql') {
+                $query->selectRaw("se.lake_id, timezone('Asia/Manila', se.sampled_at) as bucket_key, sr.value as agg_value");
+            } else {
+                $query->selectRaw("se.lake_id, CONVERT_TZ(se.sampled_at,'UTC','Asia/Manila') as bucket_key, sr.value as agg_value");
+            }
+        }
+        if ($from) $query->where('se.sampled_at','>=',$from->copy()->timezone('UTC'));
+        if ($to) $query->where('se.sampled_at','<=',$to->copy()->timezone('UTC'));
+        if ($data['test']==='one-sample') $query->where('se.lake_id',$data['lake_id']); else $query->whereIn('se.lake_id',$data['lake_ids']);
+        $rows = $query->get();
+
+        if ($data['test']==='one-sample') {
+            $sample = collect($rows)->pluck('agg_value')->filter(fn($v)=>is_numeric($v))->values()->all();
+            if (count($sample) < 3) return response()->json(['error'=>'insufficient_data','n'=>count($sample),'min_required'=>3],422);
+            $class = $data['class_code'] ?? \DB::table('lakes')->where('id',$data['lake_id'])->value('class_code');
+            // Find threshold (reuse logic simplified)
+            $requestedStdId = $data['applied_standard_id'] ?? null;
+            $thrRow = null; $standardFallback = false; $classFallback = false;
+            $base = function($withClass) use ($param,$class){
+                $q = \DB::table('parameter_thresholds as pt')
+                    ->leftJoin('wq_standards as ws','pt.standard_id','=','ws.id')
+                    ->where('pt.parameter_id',$param->id);
+                if ($withClass && $class) $q->whereRaw('LOWER(pt.class_code)=?', [strtolower($class)]);
+                return $q;
+            };
+            if ($requestedStdId) {
+                $thrRow = $base(true)->where('pt.standard_id',$requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if (!$thrRow) {
+                    $thrRow = $base(false)->where('pt.standard_id',$requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                    if ($thrRow) $classFallback = true;
+                }
+            }
+            if (!$thrRow) {
+                $thrRow = $base(true)
+                    ->orderByDesc('ws.is_current')
+                    ->orderBy('ws.priority')
+                    ->orderByRaw('pt.min_value IS NULL')
+                    ->orderByRaw('pt.max_value IS NULL')
+                    ->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if ($thrRow && $requestedStdId && $thrRow->standard_id != $requestedStdId) $standardFallback = true;
+            }
+            if (!$thrRow && $class) {
+                $thrRow = $base(false)
+                    ->orderByDesc('ws.is_current')
+                    ->orderBy('ws.priority')
+                    ->orderByRaw('pt.min_value IS NULL')
+                    ->orderByRaw('pt.max_value IS NULL')
+                    ->first(['pt.*','ws.code as standard_code','ws.is_current']);
+                if ($thrRow) { $classFallback = true; if ($requestedStdId && $thrRow->standard_id != $requestedStdId) $standardFallback = true; }
+            }
+            $thrMin = $thrRow->min_value ?? null; $thrMax = $thrRow->max_value ?? null;
+            $mu0 = $thrRow? ($thrRow->max_value ?? $thrRow->min_value ?? null) : null;
+            if ($data['manual_mu0'] ?? null) $mu0 = (float)$data['manual_mu0'];
+            if ($mu0===null) return response()->json(['error'=>'threshold_missing'],422);
+            $norm = AdaptiveStatsService::isNormal($sample);
+            $testUsed = null; $result = [];
+            if ($norm['normal']) {
+                $tt = TTestService::oneSample($sample,$mu0,$alpha,'two-sided');
+                $testUsed = $tt['type']; $result = $tt + ['distribution_assumption'=>'normal','normality_test'=>$norm];
+                $result['interpretation_detail'] = $this->friendlyAdaptiveOne($result,$mu0);
+            } else {
+                $wil = AdaptiveStatsService::wilcoxonSignedRank($sample,$mu0); $testUsed='wilcoxon';
+                $result = [
+                    'type'=>'one-sample-nonparam','test_used'=>'wilcoxon-signed-rank','mu0'=>$mu0,
+                    'median'=>AdaptiveStatsService::median($sample),'n'=>$wil['n'],'statistic'=>$wil['statistic'],'p_value'=>$wil['p_value'],'alpha'=>$alpha,'significant'=>$wil['p_value']<$alpha,
+                    'distribution_assumption'=>'non-normal','normality_test'=>$norm
+                ];
+                $result['interpretation_detail'] = $this->friendlyAdaptiveOne($result,$mu0);
+            }
+            $result['threshold_min'] = $thrMin; $result['threshold_max'] = $thrMax; $result['standard_code'] = $thrRow->standard_code ?? null; $result['class_code_used'] = $thrRow->class_code ?? $class; 
+            $result['applied_standard_id_requested'] = $requestedStdId; $result['applied_standard_id_used'] = $thrRow->standard_id ?? null; $result['standard_fallback'] = $standardFallback; $result['class_fallback'] = $classFallback;
+            return response()->json($result);
+        }
+        // two-sample
+        $byLake = collect($rows)->groupBy('lake_id');
+        $lakeIds=$data['lake_ids'];
+        $s1 = ($byLake[$lakeIds[0]] ?? collect())->pluck('agg_value')->filter(fn($v)=>is_numeric($v))->values()->all();
+        $s2 = ($byLake[$lakeIds[1]] ?? collect())->pluck('agg_value')->filter(fn($v)=>is_numeric($v))->values()->all();
+        if (count($s1)<3 || count($s2)<3) return response()->json(['error'=>'insufficient_data','n1'=>count($s1),'n2'=>count($s2),'min_required'=>3],422);
+        $norm1 = AdaptiveStatsService::isNormal($s1); $norm2 = AdaptiveStatsService::isNormal($s2);
+        $bothNormal = $norm1['normal'] && $norm2['normal'];
+        if ($bothNormal) {
+            $tt = TTestService::twoSampleWelch($s1,$s2,$alpha,'two-sided');
+            $tt['distribution_assumption']='normal';
+            $tt['normality_test']=['sample1'=>$norm1,'sample2'=>$norm2];
+            $tt['interpretation_detail']=$this->friendlyAdaptiveTwo($tt);
+            return response()->json($tt);
+        }
+        $mw = AdaptiveStatsService::mannWhitney($s1,$s2);
+        $res=[
+            'type'=>'two-sample-nonparam','test_used'=>'mann-whitney','U'=>$mw['U'],'U1'=>$mw['U1'],'U2'=>$mw['U2'],'n1'=>$mw['n1'],'n2'=>$mw['n2'],'p_value'=>$mw['p_value'],'alpha'=>$alpha,'significant'=>$mw['p_value']<$alpha,
+            'distribution_assumption'=>'non-normal','normality_test'=>['sample1'=>$norm1,'sample2'=>$norm2],
+            'median1'=>AdaptiveStatsService::median($s1),'median2'=>AdaptiveStatsService::median($s2)
+        ];
+        $res['interpretation_detail']=$this->friendlyAdaptiveTwo($res);
+        return response()->json($res);
+    }
+
+    private function friendlyAdaptiveOne(array $r, $mu0): string
+    {
+        $p = $r['p_value'] ?? null; $sig = $r['significant'] ?? false; $median = $r['median'] ?? null; $mean = $r['mean'] ?? null;
+        $center = $mean ?? $median; if ($center===null || $p===null) return '';
+        if ($sig) {
+            if ($center > $mu0) return 'The central tendency (mean/median) is significantly ABOVE the threshold.';
+            if ($center < $mu0) return 'The central tendency (mean/median) is significantly BELOW the threshold.';
+        }
+        return 'No statistically significant difference from the threshold detected.';
+    }
+    private function friendlyAdaptiveTwo(array $r): string
+    {
+        $sig = $r['significant'] ?? false; $m1 = $r['mean1'] ?? $r['median1'] ?? null; $m2 = $r['mean2'] ?? $r['median2'] ?? null; if ($m1===null||$m2===null) return '';
+        if (!$sig) return 'No significant difference detected between the two lakes.';
+        if ($m1 > $m2) return 'Lake 1 shows a significantly higher central tendency than Lake 2.';
+        if ($m2 > $m1) return 'Lake 2 shows a significantly higher central tendency than Lake 1.';
+        return 'Significant difference detected.';
     }
 
     private function interpretOneSample(array $r, ?string $evalType, string $mode): string

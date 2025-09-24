@@ -99,5 +99,6 @@ Route::get('/options/municipalities', [OptionsController::class, 'municipalities
 
 // Statistics endpoints (public for now; consider auth later)
 Route::post('/stats/t-test', [StatsController::class, 'tTest']);
+Route::post('/stats/adaptive', [StatsController::class, 'adaptive']);
 
 

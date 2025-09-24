@@ -27,22 +27,36 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
       label: pr.label || pr.long_name || pr.full_name || pr.display_name || pr.name || pr.code || String(pr.id),
       unit: pr.unit || pr.parameter?.unit || ''
     }));
+    const shallowEq = (a,b) => {
+      if (a.length !== b.length) return false;
+      for (let i=0;i<a.length;i++) {
+        if (a[i].key !== b[i].key || a[i].code !== b[i].code || a[i].label !== b[i].label || a[i].unit !== b[i].unit) return false;
+      }
+      return true;
+    };
     const load = async () => {
       const parentRows = Array.isArray(parentParamOptions) && parentParamOptions.length ? parentParamOptions : (Array.isArray(params) && params.length ? params : null);
       if (parentRows) {
-        setParamOptions(normalize(parentRows));
+        const norm = normalize(parentRows);
+        setParamOptions(prev => shallowEq(prev, norm) ? prev : norm);
         return;
       }
       try {
         const list = await fetchParameters();
-        if (!aborted) setParamOptions(list);
+        if (!aborted) {
+          setParamOptions(prev => shallowEq(prev, list) ? prev : list);
+        }
       } catch {
         if (!aborted) setParamOptions([]);
       }
     };
     load();
     return () => { aborted = true; };
-  }, [params, parentParamOptions]);
+    // We intentionally stringify only minimal signatures to avoid infinite loops due to new array identities from parent
+  }, [
+    JSON.stringify((Array.isArray(parentParamOptions)?parentParamOptions:[]).map(r=>r.id||r.key||r.code)),
+    JSON.stringify((Array.isArray(params)?params:[]).map(r=>r.id||r.key||r.code))
+  ]);
 
   const [classCode, setClassCode] = useState('');
   const [compareValue, setCompareValue] = useState(''); // format: "class:CODE" or "lake:ID"
@@ -144,15 +158,24 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
     return () => { mounted = false; };
   }, [lakeId]);
 
-  // Auto-pair lake -> class (if lake record contains class info)
+  // Auto-select class + compare target from lake's class. Fires only when lake changes.
   useEffect(() => {
-  if (!lakeId) return;
+    if (!lakeId) return;
     const lake = lakes.find(l => String(l.id) === String(lakeId));
     if (!lake) return;
-    const code = lake.class_code || lake.class || lake.class?.code;
-  if (code) setClassCode(String(code));
-  // if the user hasn't selected a compare target, keep the classCode in sync with the lake
-  if (!compareValue && code) setClassCode(String(code));
+    const raw = lake.class_code || (lake.class && (lake.class.code || lake.class)) || lake.class; // support different shapes
+    if (!raw) return;
+    const code = String(raw);
+    setClassCode(prev => prev === code ? prev : code);
+    // If user has NOT chosen a different compare target (or existing compare is a class but mismatched), sync it.
+    setCompareValue(prev => {
+      if (!prev) return `class:${code}`;
+      if (prev.startsWith('class:')) {
+        const current = prev.split(':')[1];
+        if (current !== code) return `class:${code}`;
+      }
+      return prev;
+    });
   }, [lakeId, lakes]);
 
   const run = async () => {
@@ -163,33 +186,30 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         test: inferredTest,
         parameter_code: paramCode,
         confidence_level: Number(cl),
-        year_from: yearFrom || undefined,
-        year_to: yearTo || undefined,
+        date_from: yearFrom ? `${yearFrom}-01-01` : undefined,
+        date_to: yearTo ? `${yearTo}-12-31` : undefined,
         station_ids: stationsArr,
         applied_standard_id: appliedStandardId || undefined
       };
       if (inferredTest === 'one-sample') {
         body.lake_id = Number(lakeId);
-        // prefer explicit classCode, otherwise derive from compareValue
         if (classCode) body.class_code = String(classCode);
         else if (compareValue && String(compareValue).startsWith('class:')) body.class_code = String(compareValue).split(':')[1];
       } else {
-        // two-sample: derive second lake id from compareValue
         const other = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : undefined;
         body.lake_ids = [Number(lakeId), other].filter(Boolean);
       }
-      const res = await apiPublic('/stats/t-test', { method: 'POST', body });
+      const res = await apiPublic('/stats/adaptive', { method: 'POST', body });
       setResult(res);
       if (res && (res.sample_values || res.samples || res.values || res.sample1_values || res.sample2_values)) {
         const pick = res.sample_values || res.samples || res.values || res.sample1_values || res.sample2_values || [];
         if (Array.isArray(pick)) setSamplePreview(pick.slice(0, 200));
       }
       setNeedsManual(false);
-      if (res && (res.sample_n || res.sample1_n || res.type === 'tost')) {
+      if (res && (res.n || res.n1 || res.type === 'tost' || res.sample_n || res.sample1_n)) {
         let msg = 'Test completed successfully.';
         if (res.warn_low_n) msg = 'Test completed but sample size is low — interpret with caution.';
         alertSuccess('Test Result', msg);
-        console.log('[Stats] Result debug:', res);
       } else {
         alertSuccess('Test Result', 'Test completed.');
       }
@@ -211,7 +231,6 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         } else {
           alertError('Not enough data', `Insufficient data to run the test (need at least ${minReq} observations).`);
         }
-        console.debug('[Stats] insufficient_data payload:', body);
       }
       else {
         alertError('Test Error', msg);
@@ -282,46 +301,50 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
 
   const renderResult = () => {
     if (!result) return null;
-
-    const friendlyInterpretation = (r) => {
-      // Prefer server-provided interpretation_detail when available
-      if (r.interpretation_detail) return r.interpretation_detail;
-      // TOST: convey equivalence in plain language
-      if (r.type === 'tost') {
-        const ok = r.significant || (typeof r.interpretation === 'string' && r.interpretation.toLowerCase().includes('equiv'));
-        return ok ? 'Samples are statistically equivalent within the specified range (no meaningful difference).' : 'Samples are not equivalent within the specified range.';
-      }
-      // One- or two-sample: translate significance
-      if (r.significant) {
-        if (r.type === 'two-sample') return 'The two lakes show a statistically significant difference in their means (unlikely due to random variation).';
-        return 'The observed mean is statistically different from the comparison value (unlikely due to random variation).';
-      }
-      return 'No statistically significant difference detected; observed differences could reasonably be due to chance.';
-    };
-
-    // Create a simple 2-column grid of key/value pairs for readability
     const gridItems = [];
     const push = (k, v) => gridItems.push({ k, v });
-    push('Test Type', result.type?.toUpperCase() || '');
-    push('Alpha (CL)', result.alpha != null ? String(result.alpha) : String(result.ci_level || ''));
-    if ('n' in result) push('N', result.n);
-    if ('n1' in result) push('N1', result.n1);
-    if ('n2' in result) push('N2', result.n2);
+    const typeLabelMap = {
+      'one-sample':'One-sample t-test',
+      'one-sample-nonparam':'Wilcoxon signed-rank',
+      'two-sample-welch':'Two-sample Welch t-test',
+      'two-sample-nonparam':'Mann-Whitney U test',
+      'tost':'Equivalence TOST'
+    };
+    push('Test Selected', typeLabelMap[result.type] || result.type);
+    if (result.normality_test) {
+      if (result.normality_test.sample1) {
+        push('Normality S1', result.normality_test.sample1.normal ? 'Normal' : 'Non-normal');
+        push('Normality S2', result.normality_test.sample2.normal ? 'Normal' : 'Non-normal');
+      } else if (result.normality_test.normal !== undefined) {
+        push('Normality', result.normality_test.normal ? 'Normal' : 'Non-normal');
+      }
+    }
+    if ('n' in result) push('N', result.n || result.sample_n);
+    if ('n1' in result) push('N1', result.n1 || result.sample1_n);
+    if ('n2' in result) push('N2', result.n2 || result.sample2_n);
     if ('mean' in result) push('Mean', fmt(result.mean));
+    if ('median' in result) push('Median', fmt(result.median));
+    if ('mean1' in result) push('Mean (Lake 1)', fmt(result.mean1));
+    if ('median1' in result) push('Median (Lake 1)', fmt(result.median1));
+    if ('mean2' in result) push('Mean (Lake 2)', fmt(result.mean2));
+    if ('median2' in result) push('Median (Lake 2)', fmt(result.median2));
     if ('sd' in result) push('SD', fmt(result.sd));
-    if ('mean1' in result) push('Mean (Group 1)', fmt(result.mean1));
-    if ('sd1' in result) push('SD (Group 1)', fmt(result.sd1));
-    if ('mean2' in result) push('Mean (Group 2)', fmt(result.mean2));
-    if ('sd2' in result) push('SD (Group 2)', fmt(result.sd2));
+    if ('sd1' in result) push('SD (Lake 1)', fmt(result.sd1));
+    if ('sd2' in result) push('SD (Lake 2)', fmt(result.sd2));
     if ('t' in result) push('t statistic', fmt(result.t));
+    if ('U' in result) push('U', fmt(result.U));
+    if ('z' in result) push('z', fmt(result.z));
     if ('df' in result) push('Degrees Freedom', fmt(result.df));
     if ('p_value' in result) push('p-value', sci(result.p_value));
-    if ('t_lower' in result) push('TOST Lower t', fmt(result.t_lower));
-    if ('t_upper' in result) push('TOST Upper t', fmt(result.t_upper));
+    if ('mu0' in result) push('Threshold (μ0)', fmt(result.mu0));
     if (result.threshold_min != null) push('Threshold Min', result.threshold_min);
     if (result.threshold_max != null) push('Threshold Max', result.threshold_max);
-    if (result.evaluation_type) push('Evaluation', result.evaluation_type);
-    if (result.warn_low_n) push('Warning', 'Low sample size — interpret cautiously');
+    if (result.standard_code) push('Standard', result.standard_code);
+    if (result.class_code_used) push('Class Used', result.class_code_used);
+    if (result.standard_fallback) push('Std Fallback', 'Yes');
+    if (result.class_fallback) push('Class Fallback', 'Yes');
+
+    const interpretation = result.interpretation_detail || result.interpretation || '';
 
     return (
       <div className="stat-box">
@@ -336,8 +359,12 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         {ciLine(result)}
         <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
           <strong>Interpretation:</strong>
-          <div style={{ marginTop:6 }}>{friendlyInterpretation(result)}</div>
-          {result.interpretation && <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>Server note: {result.interpretation}</div>}
+          <div style={{ marginTop:6 }}>{interpretation}</div>
+          {result.significant != null && (
+            <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>
+              Statistical decision: {result.significant ? 'Reject null hypothesis (difference detected).' : 'Fail to reject null hypothesis.'}
+            </div>
+          )}
         </div>
       </div>
     );
