@@ -188,9 +188,7 @@ export default function SingleLake({
     };
   }, [chartData, chartOptions]);
 
-  const isComplete = Boolean(
-    selectedLake && (selectedStations && selectedStations.length) && selectedParam
-  );
+  const isComplete = Boolean(selectedLake && selectedStations && selectedStations.length && selectedParam);
 
   return (
     <div className="insight-card">

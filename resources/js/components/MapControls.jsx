@@ -6,7 +6,7 @@ import { FaLocationDot } from "react-icons/fa6"; // filled location dot
 import L from "leaflet";
 import { alertError, alertSuccess } from "../lib/alerts";
 import ReactDOMServer from "react-dom/server";
-import StatsModal from "./modals/StatsModal";
+import StatsModal from "./stats-modal/StatsModal";
 
 
 // Filled location icon

@@ -1,6 +1,7 @@
 // resources/js/components/modals/StatsModal.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { api, apiPublic, buildQuery } from "../../lib/api";
+import { fetchParameters, fetchSampleEvents, fetchStationsForLake, deriveOrgOptions, deriveParamOptions } from "./data/fetchers";
 import Modal from "../Modal";
 import SingleLake from "./SingleLake";
 import CompareLake from "./CompareLake";
@@ -42,6 +43,7 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
   const [orgOptions, setOrgOptions] = useState([]);
   const singleChartRef = useRef(null);
   const compareChartRef = useRef(null);
+  const [compareSelectedParam, setCompareSelectedParam] = useState("");
   // Compare tab now fetches on-demand inside CompareLake to avoid rate limits
 
   const fmtIso = (d) => {
@@ -98,10 +100,9 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
       if (!url) return;
       const lakeName = lakeOptions.find((l) => String(l.id) === String(selectedLake))?.name || "lake";
       const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      const label =
-        activeTab === "single"
-          ? `${lakeName}-${selectedParam || "param"}`
-          : `compare-${selectedParamCompare || "param"}`;
+      const label = activeTab === "single"
+        ? `${lakeName}-${selectedParam || "param"}`
+        : `compare-${compareSelectedParam || "param"}`;
       const a = document.createElement("a");
       a.href = url;
       a.download = `stats-${label}-${ts}.png`;
@@ -111,7 +112,7 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     } catch {}
   };
 
-  // Fetch lakes + parameter options when modal opens
+  // Fetch lakes + parameter options when modal opens (centralized fetching)
   useEffect(() => {
     let mounted = true;
     if (!open) return;
@@ -129,92 +130,34 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
         console.debug("[StatsModal] failed to fetch lakes", e);
         if (mounted) setLakeOptions([]);
       }
-
-      try {
-        const p = await api("/options/parameters");
-        const rows = Array.isArray(p) ? p : Array.isArray(p?.data) ? p.data : [];
-        if (!mounted) return;
-        if (rows.length) {
-          const normalized = rows.map((pr) => ({
-            id: pr.id,
-            key: pr.code || pr.key || String(pr.id),
-            code: pr.code || pr.key || String(pr.id),
-            label: pr.name || pr.code || String(pr.id),
-            unit: pr.unit || pr.parameter?.unit || "",
-          }));
-          setParamOptions(normalized);
-        } else {
-          setParamOptions([]);
-        }
-      } catch (e) {
-        console.debug("[StatsModal] failed to fetch parameters", e);
-        setParamOptions([]);
-      }
+      try { const list = await fetchParameters(); if (mounted) setParamOptions(list); }
+      catch { if (mounted) setParamOptions([]); }
     })();
 
     return () => { mounted = false; };
   }, [open]);
 
-  // Stations list for Single tab (lake-based)
+  // Stations list for Single tab (lake-based) via centralized fetcher
   useEffect(() => {
     let mounted = true;
     if (!selectedLake) { setStations([]); return; }
 
     (async () => {
       try {
-        const res = await api(`/admin/stations?lake_id=${encodeURIComponent(selectedLake)}`);
-        const list = Array.isArray(res?.data) ? res.data : [];
-        const normalized = list.map((s) => {
-          const latRaw = s.latitude ?? s.lat ?? null;
-          const lngRaw = s.longitude ?? s.lng ?? null;
-          const name = s.name || (latRaw != null && lngRaw != null
-            ? `${Number(latRaw).toFixed(6)}, ${Number(lngRaw).toFixed(6)}`
-            : `Station ${s.id || ""}`);
-          return name;
-        });
-        if (mounted && normalized.length) { setStations(normalized); return; }
-      } catch (e) {
-        console.debug("[StatsModal] admin/stations failed", e);
-      }
-
-      // Fallback via public sample-events
-      try {
         const lim = (timeRange === "all" || timeRange === "custom") ? 5000 : 1000;
-        // For 'all' we intentionally do not apply sampled_from/to to get full history
-        let fromEff = undefined;
-        let toEff = undefined;
-        if (timeRange === 'all') {
-          fromEff = undefined;
-          toEff = undefined;
-        } else if (!dateFrom && !dateTo) {
-          const d = new Date(); d.setFullYear(d.getFullYear() - 5); fromEff = fmtIso(d); toEff = fmtIso(new Date());
-        } else {
-          fromEff = dateFrom || undefined;
-          toEff = dateTo || undefined;
-        }
-        const qs = buildQuery({ lake_id: selectedLake, sampled_from: fromEff, sampled_to: toEff, limit: lim });
-        const res2 = await apiPublic(`/public/sample-events${qs}`);
-        const rows = Array.isArray(res2) ? res2 : Array.isArray(res2?.data) ? res2.data : [];
-        const uniq = new Map();
-        rows.forEach((r) => {
-          const name = r?.station?.name || r?.station_name ||
-            (r.latitude != null && r.longitude != null
-              ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}`
-              : null);
-          if (name && !uniq.has(name)) uniq.set(name, name);
-        });
-        const derived = Array.from(uniq.values());
-        if (mounted) setStations(derived);
-      } catch (e) {
-        console.debug("[StatsModal] fallback sample-events failed", e);
-        if (mounted) setStations([]);
-      }
+        let fromEff, toEff;
+        if (timeRange === 'all') { fromEff = undefined; toEff = undefined; }
+        else if (!dateFrom && !dateTo) { const d = new Date(); d.setFullYear(d.getFullYear() - 5); fromEff = fmtIso(d); toEff = fmtIso(new Date()); }
+        else { fromEff = dateFrom || undefined; toEff = dateTo || undefined; }
+        const list = await fetchStationsForLake({ lakeId: selectedLake, from: fromEff, to: toEff, limit: lim });
+        if (mounted) setStations(list);
+      } catch { if (mounted) setStations([]); }
     })();
 
     return () => { mounted = false; };
   }, [selectedLake, dateFrom, dateTo, timeRange]);
 
-  // Records for Single tab
+  // Records for Single tab via centralized fetcher
   useEffect(() => {
     let mounted = true;
     if (!selectedLake) { setEffectiveAllRecords([]); return; }
@@ -222,78 +165,24 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     (async () => {
       try {
         const lim = (timeRange === "all" || timeRange === "custom") ? 5000 : 1000;
-        // All Time => no sampled_from/to; otherwise use explicit dates or 5y fallback
-        let fromEff = undefined;
-        let toEff = undefined;
-        if (timeRange === 'all') {
-          fromEff = undefined; toEff = undefined;
-        } else if (!dateFrom && !dateTo) {
-          const d = new Date(); d.setFullYear(d.getFullYear() - 5); fromEff = fmtIso(d); toEff = fmtIso(new Date());
-        } else {
-          fromEff = dateFrom || undefined; toEff = dateTo || undefined;
-        }
-        const qs = buildQuery({
-          lake_id: selectedLake,
-          organization_id: selectedOrg || undefined,
-          sampled_from: fromEff,
-          sampled_to: toEff,
-          limit: lim
-        });
-        const res = await apiPublic(`/public/sample-events${qs}`);
-        const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
-
-        const uniqOrgs = new Map();
-        const uniqParams = new Map();
-        const recs = [];
-
-        for (const ev of rows) {
-          const oid = ev.organization_id ?? ev.organization?.id;
-          const oname = ev.organization_name ?? ev.organization?.name;
-          if (oid && oname && !uniqOrgs.has(String(oid))) uniqOrgs.set(String(oid), { id: oid, name: oname });
-
-          const sampled = ev.sampled_at ? new Date(ev.sampled_at) : null;
-          if (!sampled) continue;
-
-          const stationName =
-            ev?.station?.name ||
-            ev?.station_name ||
-            (ev.latitude != null && ev.longitude != null
-              ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}`
-              : "");
-          const stationCode = ev?.station?.code || ev?.station_code || ev?.station_id || "";
-          const results = Array.isArray(ev?.results) ? ev.results : [];
-
-          const paramObj = {};
-          for (const r of results) {
-            if (!r || !r.parameter) continue;
-            const pid = r.parameter_id || r.parameter?.id;
-            const code = r.parameter?.code || r.parameter?.name || String(pid || "");
-            const val = r.value == null ? null : (Number.isFinite(Number(r.value)) ? Number(r.value) : null);
-            const thrMin = r?.threshold?.min_value != null ? Number(r.threshold.min_value) : null;
-            const thrMax = r?.threshold?.max_value != null ? Number(r.threshold.max_value) : null;
-            const key = code || String(pid || "");
-            paramObj[key] = { value: val, unit: r.parameter?.unit || r.unit || "", threshold: { min: thrMin, max: thrMax } };
-            if (!uniqParams.has(key)) uniqParams.set(key, { id: pid, key, code, label: r.parameter?.name || code, unit: r.parameter?.unit || "" });
-          }
-
-          recs.push({
-            lake: String(ev.lake_id ?? ev.lake?.id ?? selectedLake),
-            stationCode: String(stationCode || ""),
-            area: stationName || "",
-            date: sampled,
-            ...paramObj,
+        let fromEff, toEff;
+        if (timeRange === 'all') { fromEff = undefined; toEff = undefined; }
+        else if (!dateFrom && !dateTo) { const d = new Date(); d.setFullYear(d.getFullYear() - 5); fromEff = fmtIso(d); toEff = fmtIso(new Date()); }
+        else { fromEff = dateFrom || undefined; toEff = dateTo || undefined; }
+        const recs = await fetchSampleEvents({ lakeId: selectedLake, from: fromEff, to: toEff, limit: lim, organizationId: selectedOrg || undefined });
+        if (!mounted) return;
+        setEffectiveAllRecords(recs);
+        setOrgOptions(deriveOrgOptions(recs));
+        // merge derived params if new ones appear
+        const derived = deriveParamOptions(recs);
+        if (derived.length) {
+          setParamOptions(prev => {
+            const seen = new Set(prev.map(p => p.key || p.code));
+            const add = derived.filter(d => !seen.has(d.key || d.code));
+            return add.length ? [...prev, ...add] : prev;
           });
         }
-
-        if (mounted) {
-          setEffectiveAllRecords(recs);
-          setOrgOptions(Array.from(uniqOrgs.values()));
-          if (uniqParams.size) setParamOptions(Array.from(uniqParams.values()));
-        }
-      } catch (e) {
-        console.debug("[StatsModal] failed to fetch sample-events for records", e);
-        if (mounted) setEffectiveAllRecords([]);
-      }
+      } catch (e) { if (mounted) setEffectiveAllRecords([]); }
     })();
 
     return () => { mounted = false; };
@@ -368,14 +257,7 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     </button>
   );
 
-  // Auto-select first param after stations in Single
-  useEffect(() => {
-    if (!selectedParam && Array.isArray(selectedStations) && selectedStations.length && Array.isArray(paramOptions) && paramOptions.length) {
-      const first = paramOptions[0];
-      const k = first?.key || first?.code || String(first?.id || "");
-      if (k) setSelectedParam(k);
-    }
-  }, [selectedStations, paramOptions, selectedParam]);
+  // Removed auto-selection: user must manually choose parameter
 
   return (
     <Modal open={open} onClose={onClose} title={title} ariaLabel="Lake statistics modal" width={1100} style={modalStyle}>
@@ -464,6 +346,7 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
           timeRange={timeRange}
           dateFrom={dateFrom}
           dateTo={dateTo}
+          onParamChange={setCompareSelectedParam}
         />
       )}
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api, apiPublic, buildQuery } from "../../lib/api";
+import { fetchParameters } from "./data/fetchers";
 import { alertSuccess, alertError, alertInfo } from '../../utils/alerts';
 
 export default function AdvancedStat({ lakes = [], params = [], staticThresholds = {} }) {
@@ -14,7 +15,7 @@ export default function AdvancedStat({ lakes = [], params = [], staticThresholds
   const [paramOptions, setParamOptions] = useState([]); // available parameter list
   const [paramCode, setParamCode] = useState('');
 
-  // Adopt parent-provided params first; otherwise fetch (auth then public) similar to CompareLake.jsx
+  // Adopt parent-provided params first; otherwise fetch via shared fetcher
   useEffect(() => {
     let aborted = false;
     const normalize = (rows) => rows.map(pr => ({
@@ -29,30 +30,15 @@ export default function AdvancedStat({ lakes = [], params = [], staticThresholds
         setParamOptions(normalize(params));
         return;
       }
-      try {
-        let res;
-        try { res = await api('/options/parameters'); }
-        catch (_) { res = await apiPublic('/options/parameters'); }
-        const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
-        if (!aborted) setParamOptions(normalize(rows));
-      } catch (e) {
-        if (!aborted) setParamOptions([]);
-      }
+      try { const list = await fetchParameters(); if (!aborted) setParamOptions(list); }
+      catch { if (!aborted) setParamOptions([]); }
     };
     load();
     return () => { aborted = true; };
   }, [params]);
 
   // Ensure a selected parameter exists whenever paramOptions changes
-  useEffect(() => {
-    if (!paramOptions.length) {
-      if (!paramCode) setParamCode('DO'); // fallback default
-      return;
-    }
-    if (!paramCode || !paramOptions.some(p => p.code === paramCode)) {
-      setParamCode(paramOptions[0].code);
-    }
-  }, [paramOptions]);
+  // Removed auto default parameter; user must choose manually
   const [classCode, setClassCode] = useState('C');
   const [manualMu0, setManualMu0] = useState('');
   const [from, setFrom] = useState('');
@@ -84,14 +70,7 @@ export default function AdvancedStat({ lakes = [], params = [], staticThresholds
     return () => { mounted = false; };
   }, []);
 
-  // Auto-detect lake class on change (one-sample)
-  useEffect(() => {
-    if (test === 'one-sample' && lakeId) {
-      const lk = lakes.find(l => String(l.id) === String(lakeId));
-      const lkClass = lk?.class_code || lk?.classCode || lk?.class || null;
-      if (lkClass && lkClass !== classCode) setClassCode(lkClass);
-    }
-  }, [lakeId, test, lakes]);
+  // Removed auto-detect class; user must set manually
 
   // Fetch stations for currently relevant lake (only one-sample for now)
   useEffect(() => {
@@ -392,12 +371,10 @@ export default function AdvancedStat({ lakes = [], params = [], staticThresholds
             <option value="improvement">Improvement</option>
           </select>
           <select className="pill-btn" value={paramCode} onChange={e=>{setParamCode(e.target.value); setResult(null);}}>
+            <option value="">Parameter</option>
             {paramOptions.length ? (
               paramOptions.map(p => <option key={p.code} value={p.code}>{p.label || p.code}</option>)
-            ) : (
-              // Fallback static list if fetch not yet available
-              [ 'DO','BOD','TSS','TP','NH3','pH' ].map(c => <option key={c} value={c}>{c}</option>)
-            )}
+            ) : null}
           </select>
           <select className="pill-btn" value={cl} onChange={e=>{setCl(e.target.value); setResult(null);}}>
             <option value="0.9">90% CL</option>
@@ -409,7 +386,7 @@ export default function AdvancedStat({ lakes = [], params = [], staticThresholds
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               <select className="pill-btn" value={lakeId} onChange={e=>{setLakeId(e.target.value); setResult(null);}}>
-                <option value="">Select Lake</option>
+                <option value="">Lake</option>
                 {lakes.map(l => <option key={l.id} value={l.id}>{l.name || `Lake ${l.id}`}</option>)}
               </select>
               {classes.length ? (

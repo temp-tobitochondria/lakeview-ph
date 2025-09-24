@@ -4,7 +4,8 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 
 // Ensure Chart.js components are registered for this module regardless of import order
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
-import { api, apiPublic, buildQuery } from "../../lib/api";
+import { apiPublic, buildQuery } from "../../lib/api";
+import { fetchParameters, fetchSampleEvents } from "./data/fetchers";
 
 export default function CompareLake({
   // options
@@ -18,6 +19,7 @@ export default function CompareLake({
   timeRange = "all",
   dateFrom = "",
   dateTo = "",
+  onParamChange = () => {},
 }) {
   // Internal state
   const [lakeA, setLakeA] = useState("");
@@ -42,23 +44,13 @@ export default function CompareLake({
 
   // Do not auto-select lakes; user must choose manually
 
-  // Ensure parameters are available: use props or fetch as fallback (try auth, then public)
+  // Ensure parameters are available: use props or shared fetcher
   useEffect(() => {
     let aborted = false;
     const run = async () => {
       if (params && params.length) { setLocalParams(params); return; }
-      try {
-        let res;
-        try {
-          res = await api('/options/parameters');
-        } catch (_) {
-          res = await apiPublic('/options/parameters');
-        }
-        const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
-        if (!aborted) setLocalParams(rows);
-      } catch (_) {
-        if (!aborted) setLocalParams([]);
-      }
+      try { const list = await fetchParameters(); if (!aborted) setLocalParams(list); }
+      catch { if (!aborted) setLocalParams([]); }
     };
     run();
     return () => { aborted = true; };
@@ -66,7 +58,7 @@ export default function CompareLake({
 
   const paramList = useMemo(() => (params && params.length ? params : localParams), [params, localParams]);
 
-  // Fetch records only for the two selected lakes
+  // Fetch records only for the two selected lakes via shared fetcher
   useEffect(() => {
     let aborted = false;
     const run = async () => {
@@ -86,52 +78,12 @@ export default function CompareLake({
         const limit = (timeRange === 'all' || timeRange === 'custom') ? 5000 : 1000;
 
         const lakes = [lakeA, lakeB].filter(Boolean).map(String);
-        const combined = [];
+        const all = [];
         for (const lk of lakes) {
-          const qs = buildQuery({ lake_id: lk, sampled_from: fromEff, sampled_to: toEff, limit });
-          let res;
-          try {
-            res = await apiPublic(`/public/sample-events${qs}`);
-          } catch (e) {
-            if (e?.status === 429) {
-              await sleep(600);
-              res = await apiPublic(`/public/sample-events${qs}`);
-            } else {
-              throw e;
-            }
-          }
-          const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
-          for (const ev of rows) {
-            const sampled = ev.sampled_at ? new Date(ev.sampled_at) : null;
-            if (!sampled) continue;
-            const oid = ev.organization_id ?? ev.organization?.id ?? null;
-            const oname = ev.organization_name ?? ev.organization?.name ?? null;
-            const stationName = ev?.station?.name || ev?.station_name || (ev.latitude != null && ev.longitude != null ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}` : "");
-            const stationCode = ev?.station?.code || ev?.station_code || ev?.station_id || "";
-            const results = Array.isArray(ev?.results) ? ev.results : [];
-            const paramObj = {};
-            for (const r of results) {
-              if (!r || !r.parameter) continue;
-              const pid = r.parameter_id || r.parameter?.id;
-              const code = r.parameter?.code || r.parameter?.name || String(pid || "");
-              const val = r.value == null ? null : (Number.isFinite(Number(r.value)) ? Number(r.value) : null);
-              const thrMin = r?.threshold?.min_value != null ? Number(r.threshold.min_value) : null;
-              const thrMax = r?.threshold?.max_value != null ? Number(r.threshold.max_value) : null;
-              const key = code || String(pid || "");
-              paramObj[key] = { value: val, unit: r.parameter?.unit || r.unit || "", threshold: { min: thrMin, max: thrMax } };
-            }
-            combined.push({
-              lake: String(ev.lake_id ?? ev.lake?.id ?? lk),
-              organization_id: oid,
-              organization_name: oname,
-              stationCode: String(stationCode || ""),
-              area: stationName || "",
-              date: sampled,
-              ...paramObj,
-            });
-          }
+          const part = await fetchSampleEvents({ lakeId: lk, from: fromEff, to: toEff, limit });
+          all.push(...part);
         }
-        if (!aborted) setRecords(combined);
+        if (!aborted) setRecords(all);
       } catch (_) {
         if (!aborted) setRecords([]);
       } finally {
@@ -240,9 +192,10 @@ export default function CompareLake({
   // Do not auto-pick parameter; user must choose manually
 
   // Reset Apply gating when inputs change
-  useEffect(() => {
-    setApplied(false);
-  }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket]);
+  useEffect(() => { setApplied(false); }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket]);
+
+  // notify parent on parameter change
+  useEffect(() => { onParamChange(selectedParam); }, [selectedParam, onParamChange]);
 
   const isComplete = useMemo(() => {
     return Boolean(lakeA && lakeB && selectedParam && selectedStationsA?.length && selectedStationsB?.length);
