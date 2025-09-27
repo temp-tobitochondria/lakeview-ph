@@ -6,6 +6,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 import { apiPublic, buildQuery } from "../../lib/api";
 import { fetchParameters, fetchSampleEvents } from "./data/fetchers";
+import { FiMap } from 'react-icons/fi';
 
 export default function CompareLake({
   // options
@@ -497,38 +498,37 @@ export default function CompareLake({
     <div className="insight-card">
       <h4>Compare Lakes</h4>
 
-  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
-        {/* Lake A */}
-  <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }}>
-          <option value="">Lake A</option>
-          {lakeOptions.map((l) => (
-            <option key={l.id} value={String(l.id)}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-        <select
+  <div style={{ marginBottom: 8 }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
+      {/* Row for Lake A controls */}
+      <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
+        <option value="">Lake A</option>
+        {lakeOptions.map((l) => (
+          <option key={l.id} value={String(l.id)}>
+            {l.name}
+          </option>
+        ))}
+      </select>
+      <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ minWidth: 160, flex: '0 0 auto' }}>
+        <option value="">All orgs</option>
+        {orgOptionsA.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+      <div style={{ position: "relative", flex: '0 0 auto' }}>
+        <button
+          type="button"
           className="pill-btn"
-          value={selectedOrgA}
-          onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }}
           disabled={!lakeA}
+          onClick={() => setStationsOpenA((v) => !v)}
+          aria-label="Select locations for Lake A"
+          title="Select locations"
+          style={{ minWidth: 140 }}
         >
-          <option value="">All orgs</option>
-          {orgOptionsA.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            className="pill-btn"
-            disabled={!lakeA}
-            onClick={() => setStationsOpenA((v) => !v)}
-          >
-            {selectedStationsA.length ? `${selectedStationsA.length} selected` : "Select locations"}
-          </button>
+          {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
+        </button>
           {stationsOpenA && (
             <div
               style={{
@@ -584,10 +584,13 @@ export default function CompareLake({
               </div>
             </div>
           )}
-        </div>
+      </div>
 
-        {/* Lake B */}
-  <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }}>
+    </div>
+
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0, marginTop: 6 }}>
+      {/* Row for Lake B controls */}
+      <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
           <option value="">Lake B</option>
           {lakeOptions.map((l) => (
             <option key={l.id} value={String(l.id)}>
@@ -595,12 +598,7 @@ export default function CompareLake({
             </option>
           ))}
         </select>
-        <select
-          className="pill-btn"
-          value={selectedOrgB}
-          onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }}
-          disabled={!lakeB}
-        >
+        <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ minWidth: 160, flex: '0 0 auto' }}>
           <option value="">All orgs</option>
           {orgOptionsB.map((o) => (
             <option key={o.id} value={o.id}>
@@ -608,15 +606,18 @@ export default function CompareLake({
             </option>
           ))}
         </select>
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            className="pill-btn"
-            disabled={!lakeB}
-            onClick={() => setStationsOpenB((v) => !v)}
-          >
-            {selectedStationsB.length ? `${selectedStationsB.length} selected` : "Select locations"}
-          </button>
+      <div style={{ position: "relative", flex: '0 0 auto' }}>
+        <button
+          type="button"
+          className="pill-btn"
+          disabled={!lakeB}
+          onClick={() => setStationsOpenB((v) => !v)}
+          aria-label="Select locations for Lake B"
+          title="Select locations"
+          style={{ minWidth: 140 }}
+        >
+          {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
+        </button>
           {stationsOpenB && (
             <div
               style={{
@@ -672,15 +673,10 @@ export default function CompareLake({
               </div>
             </div>
           )}
-        </div>
+      </div>
 
-        {/* Parameter */}
-        <select
-          className="pill-btn"
-          value={selectedParam}
-          onChange={(e) => setSelectedParam(e.target.value)}
-          disabled={!paramList?.length || (!lakeA && !lakeB)}
-        >
+      {/* Parameter + Apply (kept on same row as Lake B to align right) */}
+      <select className="pill-btn" value={selectedParam} onChange={(e) => setSelectedParam(e.target.value)} disabled={!paramList?.length || (!lakeA && !lakeB)} style={{ minWidth: 160, flex: '0 0 auto' }}>
           <option value="">Select parameter</option>
           {paramList.map((p) => (
             <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>
@@ -688,16 +684,13 @@ export default function CompareLake({
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          className="pill-btn liquid"
-          disabled={!isComplete}
-          onClick={() => setApplied(true)}
-        >
+      <div style={{ marginLeft: 'auto', flex: '0 0 auto' }}>
+        <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)} style={{ minWidth: 96 }}>
           Apply
         </button>
       </div>
-
+      </div>
+    </div>
       <div
         className="wq-chart"
         style={{ height: 300, borderRadius: 8, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", padding: 8 }}

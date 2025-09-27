@@ -755,7 +755,7 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
     {showGearPopover && (
       <div ref={popoverRef} style={{ position:'absolute', zIndex:999, width:340, padding:12, background:'#164479', border:'1px solid rgba(255,255,255,0.06)', borderRadius:8, boxShadow:'0 8px 24px rgba(0,0,0,0.35)', right:12, top:48 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:'#f0f6fb' }}>Advanced</div>
+          <div style={{ fontSize:13, fontWeight:600, color:'#f0f6fb' }}>Year Range & Confidence Level</div>
           <button aria-label="Close advanced options" title="Close" onClick={() => setShowGearPopover(false)} className="pill-btn" style={{ padding:'4px 8px', height:30, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
             <FiX size={14} />
           </button>

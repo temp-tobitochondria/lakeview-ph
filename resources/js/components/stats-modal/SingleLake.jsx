@@ -193,57 +193,60 @@ export default function SingleLake({
   return (
     <div className="insight-card">
       <h4>Single Lake</h4>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }}>
-          <option value="">Select lake</option>
-          {lakeOptions.map((l) => (
-            <option key={l.id} value={l.id}>{l.name}</option>
-          ))}
-        </select>
-        <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); setApplied(false); }} disabled={!selectedLake}>
-          <option value="">All orgs</option>
-          {orgOptions.map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-        {/* Stations checkbox dropdown */}
-        <div style={{ position: 'relative' }}>
-          <button type="button" className="pill-btn" disabled={!selectedLake} onClick={() => setStationsOpen((v) => !v)}>
-            {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
-          </button>
-          {stationsOpen && (
-            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 1000, minWidth: 220, maxHeight: 200, overflowY: 'auto', background: 'rgba(20,40,80,0.95)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: 8 }}>
-              {stations.length ? stations.map((s) => {
-                const checked = selectedStations.includes(s);
-                return (
-                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={checked} onChange={() => {
-                      const next = checked ? selectedStations.filter((x) => x !== s) : [...selectedStations, s];
-                      onStationsChange(next);
-                      onParamChange("");
-                      setApplied(false);
-                    }} />
-                    <span>{s}</span>
-                  </label>
-                );
-              }) : (
-                <div style={{ opacity: 0.8 }}>No locations…</div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
-                <button type="button" className="pill-btn" onClick={() => { onStationsChange(stations.slice()); setApplied(false); }}>Select All</button>
-                <button type="button" className="pill-btn" onClick={() => { onStationsChange([]); setApplied(false); }}>Clear</button>
-                <button type="button" className="pill-btn liquid" onClick={() => setStationsOpen(false)}>Done</button>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
+          <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
+            <option value="">Select lake</option>
+            {lakeOptions.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+          <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); setApplied(false); }} disabled={!selectedLake} style={{ minWidth: 160, flex: '0 0 auto' }}>
+            <option value="">All orgs</option>
+            {orgOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+          <div style={{ position: 'relative', flex: '0 0 auto' }}>
+            <button type="button" className="pill-btn" disabled={!selectedLake} onClick={() => setStationsOpen((v) => !v)} style={{ minWidth: 140 }}>
+              {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
+            </button>
+            {stationsOpen && (
+              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 1000, minWidth: 220, maxHeight: 200, overflowY: 'auto', background: 'rgba(20,40,80,0.95)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: 8 }}>
+                {stations.length ? stations.map((s) => {
+                  const checked = selectedStations.includes(s);
+                  return (
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={checked} onChange={() => {
+                        const next = checked ? selectedStations.filter((x) => x !== s) : [...selectedStations, s];
+                        onStationsChange(next);
+                        onParamChange("");
+                        setApplied(false);
+                      }} />
+                      <span>{s}</span>
+                    </label>
+                  );
+                }) : (
+                  <div style={{ opacity: 0.8 }}>No locations…</div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
+                  <button type="button" className="pill-btn" onClick={() => { onStationsChange(stations.slice()); setApplied(false); }}>Select All</button>
+                  <button type="button" className="pill-btn" onClick={() => { onStationsChange([]); setApplied(false); }}>Clear</button>
+                  <button type="button" className="pill-btn liquid" onClick={() => setStationsOpen(false)}>Done</button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!(selectedStations && selectedStations.length)} style={{ minWidth: 160, flex: '0 0 auto' }}>
+            <option value="">Select parameter</option>
+            {paramOptions.map((p) => (
+              <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
+            ))}
+          </select>
+          <div style={{ marginLeft: 'auto', flex: '0 0 auto' }}>
+            <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)} style={{ minWidth: 96 }}>Apply</button>
+          </div>
         </div>
-        <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!(selectedStations && selectedStations.length)}>
-          <option value="">Select parameter</option>
-          {paramOptions.map((p) => (
-            <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
-          ))}
-        </select>
-        <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)}>Apply</button>
       </div>
       <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", padding: 8 }}>
         {applied && chartData && chartData.datasets.length ? (
