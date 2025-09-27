@@ -255,7 +255,9 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
           seriesBody.organization_ids = padded;
         }
       }
-      const series = await apiPublic('/stats/series', { method: 'POST', body: seriesBody });
+  const series = await apiPublic('/stats/series', { method: 'POST', body: seriesBody });
+  // expose server-declared evaluation type for downstream logic (min/max/range)
+  const evalType = series?.evaluation_type;
   // debug: log server series response to verify events payload
   try { console.debug('[Stats] series response:', series); } catch(e) {}
 
@@ -270,9 +272,8 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
           setResult(null);
           return;
         }
-        // Determine mu0 for one-sample tests
-        let mu0 = null; // prefer server-provided threshold
-        const evalType = series?.evaluation_type;
+  // Determine mu0 for one-sample tests
+  let mu0 = null; // prefer server-provided threshold
           if (evalType === 'range') {
           const thrMin = series?.threshold_min; const thrMax = series?.threshold_max;
           if (thrMin == null || thrMax == null) {
@@ -305,19 +306,20 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
               sample_values: values,
               threshold_min: thrMin ?? null,
               threshold_max: thrMax ?? null,
+              evaluation_type: evalType || null,
               standard_code: series?.standard_code || null,
               class_code_used: series?.class_code_used || null
             };
           } else if (selectedTest === 't_one_sample') {
             const tp = await tOneSampleAsync(values, Number(mu0), alpha, 'two-sided');
-            computed = { type: 'one-sample', test_used: 't_one_sample', ...tp, mu0: mu0, sample_values: values };
+            computed = { type: 'one-sample', test_used: 't_one_sample', ...tp, mu0: mu0, sample_values: values, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, evaluation_type: evalType || null };
           } else if (selectedTest === 'sign_test') {
             const sp = await signTestAsync(values, Number(mu0), alpha, 'two-sided');
-            computed = { type: 'one-sample-nonparam', test_used: 'sign_test', ...sp, mu0: mu0, sample_values: values };
+            computed = { type: 'one-sample-nonparam', test_used: 'sign_test', ...sp, mu0: mu0, sample_values: values, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, evaluation_type: evalType || null };
           } else {
             // default to t_one_sample
             const tp = await tOneSampleAsync(values, Number(mu0), alpha, 'two-sided');
-            computed = { type: 'one-sample', test_used: 't_one_sample', ...tp, mu0: mu0, sample_values: values };
+            computed = { type: 'one-sample', test_used: 't_one_sample', ...tp, mu0: mu0, sample_values: values, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, evaluation_type: evalType || null };
           }
         }
       } else {
@@ -331,16 +333,16 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         }
         if (selectedTest === 'mann_whitney') {
           const mp = mannWhitney(x, y, alpha, 'two-sided');
-          computed = { type: 'two-sample-nonparam', test_used: 'mann_whitney', ...mp, sample1_values: x, sample2_values: y };
+          computed = { type: 'two-sample-nonparam', test_used: 'mann_whitney', ...mp, sample1_values: x, sample2_values: y, evaluation_type: evalType || null };
         } else if (selectedTest === 't_student') {
           const tp = await tTwoSampleStudentAsync(x, y, alpha, 'two-sided');
-          computed = { type: 'two-sample-t', test_used: 't_student', ...tp, sample1_values: x, sample2_values: y };
+          computed = { type: 'two-sample-t', test_used: 't_student', ...tp, sample1_values: x, sample2_values: y, evaluation_type: evalType || null };
         } else if (selectedTest === 'mood_median_test') {
           const mp = await moodMedianAsync(x, y, alpha);
-          computed = { type: 'two-sample-nonparam', test_used: 'mood_median_test', ...mp, sample1_values: x, sample2_values: y };
+          computed = { type: 'two-sample-nonparam', test_used: 'mood_median_test', ...mp, sample1_values: x, sample2_values: y, evaluation_type: evalType || null };
         } else { // default welch
           const tp = await tTwoSampleWelchAsync(x, y, alpha, 'two-sided');
-          computed = { type: 'two-sample-welch', test_used: 't_welch', ...tp, sample1_values: x, sample2_values: y };
+          computed = { type: 'two-sample-welch', test_used: 't_welch', ...tp, sample1_values: x, sample2_values: y, evaluation_type: evalType || null };
         }
       }
 
@@ -376,6 +378,24 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
 
   // Preview removal: no preview fetcher
 
+  const fmt = (v) => (v == null ? '' : Number(v).toFixed(2));
+  const sci = (v) => (v == null ? '' : (v < 0.001 ? Number(v).toExponential(2) : v.toFixed(4)));
+  const ciLine = (r) => (r.ci_lower != null && r.ci_upper != null ? <div>CI ({Math.round((r.ci_level||0)*100)}%): [{fmt(r.ci_lower)}, {fmt(r.ci_upper)}]</div> : null);
+
+  // basic stats helpers for fallbacks
+  const basicStats = (arr) => {
+    if (!Array.isArray(arr)) return null;
+    const xs = arr.map(Number).filter(Number.isFinite);
+    const n = xs.length;
+    if (n === 0) return null;
+    const mean = xs.reduce((a,b)=>a+b,0)/n;
+    const sorted = xs.slice().sort((a,b)=>a-b);
+    const mid = Math.floor(n/2);
+    const median = n % 2 ? sorted[mid] : (sorted[mid-1] + sorted[mid]) / 2;
+    const sd = n > 1 ? Math.sqrt(xs.reduce((a,b)=>a + Math.pow(b-mean,2), 0)/(n-1)) : 0;
+    return { n, mean, median, sd };
+  };
+
   const renderResult = () => {
     if (!result) return null;
     const gridItems = [];
@@ -406,18 +426,49 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         push('Normality', result.normality_test.normal ? 'Normal' : 'Non-normal');
       }
     }
-    if ('n' in result) push('N', result.n || result.sample_n);
-    if ('n1' in result) push('N1', result.n1 || result.sample1_n);
-    if ('n2' in result) push('N2', result.n2 || result.sample2_n);
-    if ('mean' in result) push('Mean', fmt(result.mean));
-    if ('median' in result) push('Median', fmt(result.median));
-    if ('mean1' in result) push('Mean (Lake 1)', fmt(result.mean1));
-    if ('median1' in result) push('Median (Lake 1)', fmt(result.median1));
-    if ('mean2' in result) push('Mean (Lake 2)', fmt(result.mean2));
-    if ('median2' in result) push('Median (Lake 2)', fmt(result.median2));
-    if ('sd' in result) push('SD', fmt(result.sd));
-    if ('sd1' in result) push('SD (Lake 1)', fmt(result.sd1));
-    if ('sd2' in result) push('SD (Lake 2)', fmt(result.sd2));
+  // Ensure core descriptive stats are present for all tests using fallbacks from raw samples
+  const one = Array.isArray(result.sample_values) ? result.sample_values : null;
+  const two1 = Array.isArray(result.sample1_values) ? result.sample1_values : null;
+  const two2 = Array.isArray(result.sample2_values) ? result.sample2_values : null;
+  const oneStats = one ? basicStats(one) : null;
+  const stats1 = two1 ? basicStats(two1) : null;
+  const stats2 = two2 ? basicStats(two2) : null;
+
+  if ('n' in result) push('N', result.n || result.sample_n);
+  else if (oneStats) push('N', oneStats.n);
+
+  if ('n1' in result) push('N1', result.n1 || result.sample1_n);
+  else if (stats1) push('N1', stats1.n);
+
+  if ('n2' in result) push('N2', result.n2 || result.sample2_n);
+  else if (stats2) push('N2', stats2.n);
+
+  if ('mean' in result) push('Mean', fmt(result.mean));
+  else if (oneStats) push('Mean', fmt(oneStats.mean));
+
+  if ('median' in result) push('Median', fmt(result.median));
+  else if (oneStats) push('Median', fmt(oneStats.median));
+
+  if ('mean1' in result) push('Mean (Lake 1)', fmt(result.mean1));
+  else if (stats1) push('Mean (Lake 1)', fmt(stats1.mean));
+
+  if ('median1' in result) push('Median (Lake 1)', fmt(result.median1));
+  else if (stats1) push('Median (Lake 1)', fmt(stats1.median));
+
+  if ('mean2' in result) push('Mean (Lake 2)', fmt(result.mean2));
+  else if (stats2) push('Mean (Lake 2)', fmt(stats2.mean));
+
+  if ('median2' in result) push('Median (Lake 2)', fmt(result.median2));
+  else if (stats2) push('Median (Lake 2)', fmt(stats2.median));
+
+  if ('sd' in result) push('SD', fmt(result.sd));
+  else if (oneStats) push('SD', fmt(oneStats.sd));
+
+  if ('sd1' in result) push('SD (Lake 1)', fmt(result.sd1));
+  else if (stats1) push('SD (Lake 1)', fmt(stats1.sd));
+
+  if ('sd2' in result) push('SD (Lake 2)', fmt(result.sd2));
+  else if (stats2) push('SD (Lake 2)', fmt(stats2.sd));
     if ('t' in result) push('t statistic', fmt(result.t));
     if ('U' in result) push('U', fmt(result.U));
     if ('z' in result) push('z', fmt(result.z));
@@ -451,6 +502,205 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
 
     const interpretation = result.interpretation_detail || result.interpretation || '';
 
+    // Build a short water-quality context sentence to accompany the statistical interpretation.
+    let wqContext = '';
+    try {
+      if (paramCode) {
+        const p = (paramOptions || []).find(p => String(p.code) === String(paramCode) || String(p.key) === String(paramCode) || String(p.id) === String(paramCode));
+        const paramLabel = p?.label || p?.name || String(paramCode);
+
+        const getThreshold = () => {
+          // Prefer server-provided thresholds
+          if (result.threshold_min != null && result.threshold_max != null) return { type: 'range', min: Number(result.threshold_min), max: Number(result.threshold_max), kind: 'range' };
+          if (result.mu0 != null) {
+            // try to use evaluation_type if provided from server
+            const et = result.evaluation_type || (series && series.evaluation_type) || null;
+            const kind = et === 'min' ? 'min' : (et === 'max' ? 'max' : 'value');
+            return { type: 'value', value: Number(result.mu0), kind };
+          }
+          // static thresholds by class
+          const entry = staticThresholds && staticThresholds[paramCode];
+          if (entry) {
+            if (entry.type === 'range') {
+              const rng = entry[classCode];
+              if (Array.isArray(rng) && rng.length >= 2) return { type: 'range', min: Number(rng[0]), max: Number(rng[1]), kind: 'range' };
+            }
+            const val = entry[classCode];
+            if (val != null) {
+              const kind = entry.type === 'min' || entry.type === 'max' ? entry.type : (entry.type === 'value' ? 'max' : (entry.type || 'max'));
+              return { type: 'value', value: Number(val), kind };
+            }
+          }
+          return null;
+        };
+
+        const thr = getThreshold();
+
+        // One-sample flows (or equivalently when there's a single mean)
+        if (result.test_used === 'tost' || result.type === 'tost') {
+          const mean = result.mean != null ? Number(result.mean) : null;
+          if (result.equivalent) {
+            wqContext = `Equivalence test: mean ${paramLabel} appears within the acceptable range${classCode ? ` for Class ${classCode}` : ''}. This indicates no clear change in water quality.`;
+          } else {
+            // Not equivalent: try use thresholds or heuristic to determine direction
+            if (thr && mean != null) {
+              if (thr.type === 'range') {
+                if (mean < thr.min) wqContext = `Mean ${paramLabel} (${fmt(mean)}) is below the acceptable range [${fmt(thr.min)}, ${fmt(thr.max)}]${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.`;
+                else if (mean > thr.max) wqContext = `Mean ${paramLabel} (${fmt(mean)}) is above the acceptable range [${fmt(thr.min)}, ${fmt(thr.max)}]${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.`;
+                else wqContext = `Mean ${paramLabel} (${fmt(mean)}) is near the acceptable range but not sufficiently equivalent${classCode ? ` for Class ${classCode}` : ''}.`;
+              } else if (thr.value != null) {
+                const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+                if (kind === 'max') {
+                  wqContext = mean > thr.value ? `Mean ${paramLabel} (${fmt(mean)}) is above threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.` : `Mean ${paramLabel} (${fmt(mean)}) is below threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which does not appear to indicate degradation.`;
+                } else {
+                  wqContext = mean < thr.value ? `Mean ${paramLabel} (${fmt(mean)}) is below minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.` : `Mean ${paramLabel} (${fmt(mean)}) is above minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which does not appear to indicate degradation.`;
+                }
+              }
+            } else {
+              wqContext = `Equivalence test: mean ${paramLabel} did not meet equivalence bounds${classCode ? ` for Class ${classCode}` : ''}; results are inconclusive regarding direction.`; 
+            }
+          }
+        } else if ('n' in result || (!('n1' in result) && !('n2' in result))) {
+          const mean = result.mean != null ? Number(result.mean) : null;
+          const mu0 = result.mu0 != null ? Number(result.mu0) : null;
+          // Decide direction where possible
+          const lowIsWorse = /oxygen|dissolved oxygen|\bdo\b/i.test(paramLabel);
+
+          const decideVerdict = () => {
+            if (mean == null) return 'stable';
+            if (thr) {
+              if (thr.type === 'range') {
+                  if (mean < thr.min) return 'degradation';
+                  if (mean > thr.max) return 'degradation';
+                  return 'stable';
+                }
+              if (thr.value != null) {
+                const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+                if (kind === 'max') return mean > thr.value ? 'degradation' : 'improvement';
+                if (kind === 'min') return mean < thr.value ? 'degradation' : 'improvement';
+                return 'stable';
+              }
+            }
+            // If mu0 available, compare against it
+            if (mu0 != null) {
+              if (lowIsWorse) return mean < mu0 ? 'degradation' : 'improvement';
+              return mean > mu0 ? 'degradation' : 'improvement';
+            }
+            // If significance present without thresholds, derive from sign of mean against 0 or report 'neither'
+            if (result.significant != null) {
+              // compare to median  of sample values? fallback: treat higher as worse unless param indicates otherwise
+              if (lowIsWorse) return result.mean1 != null && result.mean2 != null ? (Number(result.mean1) < Number(result.mean2) ? 'degradation' : (Number(result.mean1) > Number(result.mean2) ? 'improvement' : 'stable')) : (mean > 0 ? 'degradation' : 'stable');
+              return mean > 0 ? 'degradation' : 'stable';
+            }
+            return 'stable';
+          };
+
+          const verdict = decideVerdict();
+
+            if (thr && thr.type === 'range' && mean != null) {
+            if (mean < thr.min || mean > thr.max) wqContext = `Mean ${paramLabel} (${fmt(mean)}) is outside the acceptable range [${fmt(thr.min)}, ${fmt(thr.max)}]${classCode ? ` for Class ${classCode}` : ''}. This may suggest a ${verdict} in water quality.`;
+            else wqContext = `Mean ${paramLabel} (${fmt(mean)}) is within the acceptable range${classCode ? ` for Class ${classCode}` : ''}. This suggests ${verdict === 'stable' ? 'no clear change in water quality' : `a ${verdict}`}.`;
+          } else if (thr && thr.value != null && mean != null) {
+            const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+            if (kind === 'max') {
+              if (mean > thr.value) wqContext = `Mean ${paramLabel} (${fmt(mean)}) is above threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.`;
+              else wqContext = `Mean ${paramLabel} (${fmt(mean)}) is below threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which does not appear to indicate degradation.`;
+            } else {
+              if (mean < thr.value) wqContext = `Mean ${paramLabel} (${fmt(mean)}) is below minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which may indicate a degradation.`;
+              else wqContext = `Mean ${paramLabel} (${fmt(mean)}) is above minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}, which does not appear to indicate degradation.`;
+            }
+          } else {
+            if (result.significant != null) {
+              if (result.significant) {
+                // Build a clearer water-quality sentence using thresholds when available
+                if (verdict === 'degradation') {
+                  if (thr && thr.type === 'range') {
+                    wqContext = `Statistical evidence suggests a possible degradation in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) falls outside the acceptable range [${fmt(thr.min)}, ${fmt(thr.max)}]${classCode ? ` for Class ${classCode}` : ''}, which may be of concern.`;
+                  } else if (thr && thr.value != null) {
+                    const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+                    if (kind === 'max') wqContext = `Statistical evidence suggests a possible degradation in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) is above the threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}.`;
+                    else wqContext = `Statistical evidence suggests a possible degradation in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) is below the minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}.`;
+                  } else {
+                    wqContext = `Statistical evidence suggests a possible degradation in water quality for ${paramLabel} (mean ${fmt(mean)}).`;
+                  }
+                } else if (verdict === 'improvement') {
+                  if (thr && thr.type === 'range') {
+                    wqContext = `Statistical evidence suggests a possible improvement in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) is closer to the acceptable range [${fmt(thr.min)}, ${fmt(thr.max)}]${classCode ? ` for Class ${classCode}` : ''}.`;
+                  } else if (thr && thr.value != null) {
+                    const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+                    if (kind === 'max') wqContext = `Statistical evidence suggests a possible improvement in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) is below the threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}.`;
+                    else wqContext = `Statistical evidence suggests a possible improvement in water quality for ${paramLabel}. The sample mean (${fmt(mean)}) is above the minimum threshold ${fmt(thr.value)}${classCode ? ` for Class ${classCode}` : ''}.`;
+                  } else {
+                    wqContext = `Statistical evidence suggests a possible improvement in water quality for ${paramLabel} (mean ${fmt(mean)}).`;
+                  }
+                } else {
+                  wqContext = `Statistical evidence indicates a difference for ${paramLabel}, but does not point clearly to degradation or improvement; water quality appears relatively stable.`;
+                }
+              } else {
+                wqContext = `No statistical evidence of difference for ${paramLabel} compared to reference; water quality appears stable with respect to this parameter.`;
+              }
+            }
+          }
+        } else if ('n1' in result && 'n2' in result) {
+          const m1 = result.mean1 != null ? Number(result.mean1) : null;
+          const m2 = result.mean2 != null ? Number(result.mean2) : null;
+          if (m1 != null && m2 != null) {
+            // Resolve lake names from provided lakes list
+            const lakeNameById = (id) => {
+              const lk = lakes.find(l => String(l.id) === String(id));
+              return lk ? (lk.name || `Lake ${lk.id}`) : (id == null ? '' : `Lake ${id}`);
+            };
+            const lake1Name = lakeNameById(lakeId);
+            const otherId = (compareValue && String(compareValue).startsWith('lake:')) ? String(compareValue).split(':')[1] : null;
+            const lake2Name = lakeNameById(otherId);
+
+            if (result.significant) {
+              // Decide degradation/improvement/stable using thresholds when available, otherwise heuristics
+              let verdict = 'stable';
+              if (thr) {
+                if (thr.type === 'range') {
+                  const dist = (m, t) => {
+                    if (m < t.min) return t.min - m;
+                    if (m > t.max) return m - t.max;
+                    return 0;
+                  };
+                  const d1 = dist(m1, thr);
+                  const d2 = dist(m2, thr);
+                  if (d1 > d2) verdict = 'degradation';
+                  else if (d1 < d2) verdict = 'improvement';
+                  else verdict = 'stable';
+                } else if (thr.value != null) {
+                  const kind = thr.kind || (thr.type === 'value' ? 'max' : thr.type);
+                  if (kind === 'max') {
+                    if (m1 > m2) verdict = 'degradation'; else if (m1 < m2) verdict = 'improvement';
+                  } else if (kind === 'min') {
+                    if (m1 < m2) verdict = 'degradation'; else if (m1 > m2) verdict = 'improvement';
+                  }
+                }
+              } else {
+                // Heuristic: for oxygen-like params lower is worse; otherwise assume higher is worse
+                const lowIsWorse = /oxygen|dissolved oxygen|do\b/i.test(paramLabel);
+                if (lowIsWorse) {
+                  if (m1 < m2) verdict = 'degradation'; else if (m1 > m2) verdict = 'improvement';
+                } else {
+                  if (m1 > m2) verdict = 'degradation'; else if (m1 < m2) verdict = 'improvement';
+                }
+              }
+
+              const dir = m1 > m2 ? 'higher' : (m1 < m2 ? 'lower' : 'similar');
+              wqContext = `${lake1Name} mean ${paramLabel} (${fmt(m1)}) is ${dir} than ${lake2Name} (${fmt(m2)}). This may suggest a ${verdict} in water quality for ${lake1Name} relative to ${lake2Name}.`;
+            } else {
+              wqContext = `No significant difference between ${lake1Name} and ${lake2Name} for ${paramLabel}; no clear change detected.`;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to build water-quality context', e);
+    }
+
+    const finalInterpretation = [interpretation, wqContext].filter(Boolean).join(' ');
+
     return (
       <div className="stat-box">
         <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
@@ -464,7 +714,7 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
         {ciLine(result)}
         <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
           <strong>Interpretation:</strong>
-          <div style={{ marginTop:6 }}>{interpretation}</div>
+          <div style={{ marginTop:6 }}>{finalInterpretation}</div>
           {result.significant != null && (
             <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>
               Statistical decision: {result.significant ? 'Reject null hypothesis (difference detected).' : 'Fail to reject null hypothesis.'}
@@ -476,10 +726,6 @@ export default function AdvancedStat({ lakes = [], params = [], paramOptions: pa
       </div>
     );
   };
-
-  const fmt = (v) => (v == null ? '' : Number(v).toFixed(2));
-  const sci = (v) => (v == null ? '' : (v < 0.001 ? Number(v).toExponential(2) : v.toFixed(4)));
-  const ciLine = (r) => (r.ci_lower != null && r.ci_upper != null ? <div>CI ({Math.round((r.ci_level||0)*100)}%): [{fmt(r.ci_lower)}, {fmt(r.ci_upper)}]</div> : null);
 
   const renderValuesUsed = (r) => {
     // Prefer events array (contains sampled_at, station_id, lake_id, value) if available
