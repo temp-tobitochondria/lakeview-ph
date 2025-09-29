@@ -56,6 +56,7 @@ export default function OrgWQTestModal({
   editable = false,
   onSave,
   parameterCatalog = [],
+  basePath = '/admin/sample-events', // injected by pages so modal stays agnostic
 }) {
   const [draft, setDraft] = useState(record || null);
   const [loading, setLoading] = useState(false);
@@ -74,7 +75,7 @@ export default function OrgWQTestModal({
       try {
         setLoading(true);
         setError(null);
-        const res = await api(`/admin/sample-events/${encodeURIComponent(record.id)}`);
+  const res = await api(`${basePath}/${encodeURIComponent(record.id)}`);
         const data = res?.data || res || {};
 
         const normalizedResults = Array.isArray(data.results)
@@ -212,7 +213,7 @@ export default function OrgWQTestModal({
           })),
         };
 
-        const res = await api(`/admin/sample-events/${draft.id}`, { method: 'PUT', body: payload });
+  const res = await api(`${basePath}/${draft.id}`, { method: 'PUT', body: payload });
         const updated = res.data || draft;
         onSave?.(updated);
         await alertSuccess('Saved', 'Sampling event updated successfully.');

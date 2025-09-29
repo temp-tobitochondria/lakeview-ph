@@ -32,6 +32,7 @@ function yqmFrom(record) {
 export default function ContribWQTests() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentOrgId, setCurrentOrgId] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   const [lakes, setLakes] = useState([]);
   const [tests, setTests] = useState([]);
@@ -62,7 +63,6 @@ export default function ContribWQTests() {
         const me = await api("/auth/me");
         if (!mounted) return;
         setCurrentUserId(me?.id ?? null);
-        // organization may be under different fields
         const org = me?.organization || (me?.tenant ? me.tenant : null);
         if (org?.id) setCurrentOrgId(org.id);
         else if (me?.organization_id) setCurrentOrgId(me.organization_id);
@@ -72,6 +72,8 @@ export default function ContribWQTests() {
           setCurrentUserId(null);
           setCurrentOrgId(null);
         }
+      } finally {
+        if (mounted) setAuthLoaded(true);
       }
     })();
     return () => { mounted = false; };
@@ -108,29 +110,23 @@ export default function ContribWQTests() {
   // fetch tests for this contributor's organization
   useEffect(() => {
     let mounted = true;
+    if (!authLoaded) return () => {};
+    if (!currentOrgId) return () => {};
     setLoading(true);
     (async () => {
       try {
-  const path = currentOrgId ? `/admin/sample-events?organization_id=${encodeURIComponent(currentOrgId)}` : '/admin/sample-events';
-  const res = await api(path);
+        const basePath = `/contrib/${currentOrgId}/sample-events`;
+        const res = await api(basePath);
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
-        // If we know the currentOrgId, filter client-side; otherwise rely on the
-        // server to have returned only org-scoped events (server resolves tenant
-        // membership from the access token). This avoids discarding results when
-        // `/auth/me` does not include tenant/org fields.
-        let filtered;
-        if (currentOrgId) {
-          const orgId = currentOrgId;
-          filtered = data.filter((t) => (
-            (t.organization_id && String(t.organization_id) === String(orgId)) ||
-            (t.tenant_id && String(t.tenant_id) === String(orgId)) ||
-            (t.organization && t.organization.id && String(t.organization.id) === String(orgId)) ||
-            (t.tenant && t.tenant.id && String(t.tenant.id) === String(orgId))
-          ));
-        } else {
-          filtered = data;
-        }
+        // All events should already be tenant-scoped; still keep defensive filter
+        const orgId = currentOrgId;
+        const filtered = data.filter((t) => (
+          (t.organization_id && String(t.organization_id) === String(orgId)) ||
+          (t.tenant_id && String(t.tenant_id) === String(orgId)) ||
+          (t.organization && t.organization.id && String(t.organization.id) === String(orgId)) ||
+          (t.tenant && t.tenant.id && String(t.tenant.id) === String(orgId))
+        ));
         setTests(filtered);
       } catch (e) {
         console.error('[ContribWQTests] failed to fetch tests', e);
@@ -140,14 +136,15 @@ export default function ContribWQTests() {
       }
     })();
     return () => { mounted = false; };
-  }, [currentOrgId, resetSignal]);
+  }, [authLoaded, currentOrgId, resetSignal]);
 
   const doRefresh = async () => {
     setLoading(true);
     try {
-      const eventsPath = currentOrgId ? `/admin/sample-events?organization_id=${encodeURIComponent(currentOrgId)}` : '/admin/sample-events';
+  const eventsPath = currentOrgId ? `/contrib/${currentOrgId}/sample-events` : null;
+      if (!currentOrgId) return;
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        api(eventsPath),
+        api(`/contrib/${currentOrgId}/sample-events`),
         fetchLakeOptions(),
         api('/options/parameters'),
       ]);
@@ -259,7 +256,9 @@ export default function ContribWQTests() {
         const ok = await swalConfirm({ title: 'Delete this test?', text: `This cannot be undone.`, icon: 'warning', confirmButtonText: 'Delete' });
         if (!ok) return;
         try {
-          await api(`/admin/sample-events/${row.id}`, { method: "DELETE" });
+          if (!currentOrgId) return;
+          const basePath = `/contrib/${currentOrgId}/sample-events`;
+          await api(`${basePath}/${row.id}`, { method: "DELETE" });
           setTests((prev) => prev.filter((t) => t.id !== row.id));
           await alertSuccess('Deleted', 'The test was removed.');
         } catch (e) {
@@ -322,6 +321,7 @@ export default function ContribWQTests() {
         editable={editing}
         parameterCatalog={paramCatalog}
         canPublish={false}
+        basePath={currentOrgId ? `/contrib/${currentOrgId}/sample-events` : '/admin/sample-events'}
         onSave={async (updated) => {
           setTests((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
           setSelected(updated);

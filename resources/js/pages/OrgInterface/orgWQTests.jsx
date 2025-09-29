@@ -38,6 +38,8 @@ export default function OrgWQTests({
 }) {
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentTenantId, setCurrentTenantId] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -53,9 +55,15 @@ export default function OrgWQTests({
           .replace(/-/g, "_");
         setCurrentUserRole(role || null);
           setCurrentUserId(me?.id ?? null);
+        // Derive tenant / organization id from multiple possible shapes
+        const org = me?.tenant || me?.organization || null;
+        if (org?.id) setCurrentTenantId(org.id);
+        else if (me?.tenant_id) setCurrentTenantId(me.tenant_id);
+        else if (me?.organization_id) setCurrentTenantId(me.organization_id);
       } catch (e) {
         if (mounted) setCurrentUserRole(null);
       }
+      if (mounted) setAuthLoaded(true);
     })();
     return () => { mounted = false; };
   }, []);
@@ -118,10 +126,13 @@ export default function OrgWQTests({
   // fetch tests when the page mounts or when resetSignal increments
   useEffect(() => {
     let mounted = true;
+    // Wait until authLoaded so we know whether we should use tenant path or admin fallback
+    if (!authLoaded) return () => {};
     setLoading(true);
     (async () => {
       try {
-        const res = await api('/admin/sample-events');
+        const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
+  const res = await api(basePath);
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
         setTests(data);
@@ -195,14 +206,15 @@ export default function OrgWQTests({
     })();
 
     return () => { mounted = false; };
-  }, [resetSignal]);
+  }, [authLoaded, currentTenantId, resetSignal]);
 
   // Full refresh handler: reload tests, lakes and parameter catalog
   const doRefresh = async () => {
     setLoading(true);
     try {
+      const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        api('/admin/sample-events'),
+        api(basePath),
         fetchLakeOptions(),
         api('/options/parameters'),
       ]);
@@ -348,6 +360,7 @@ export default function OrgWQTests({
     });
   }, [tests, q, lakeId, status, year, quarter, month, dateFrom, dateTo]);
 
+  const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
   const actions = [
     {
       label: "View",
@@ -381,7 +394,7 @@ export default function OrgWQTests({
         });
         if (!ok) return;
         try {
-          await api(`/admin/sample-events/${row.id}`, { method: "DELETE" });
+          await api(`${basePath}/${row.id}`, { method: "DELETE" });
           setTests((prev) => prev.filter((t) => t.id !== row.id));
           await alertSuccess('Deleted', 'The test was removed.');
         } catch (e) {
@@ -472,7 +485,7 @@ export default function OrgWQTests({
           if (!selected) return;
           (async () => {
             try {
-              const res = await api(`/admin/sample-events/${selected.id}/toggle-publish`, { method: 'POST' });
+              const res = await api(`${basePath}/${selected.id}/toggle-publish`, { method: 'POST' });
               // backend returns updated record
               setTests((prev) => prev.map((t) => (t.id === res.data.id ? res.data : t)));
               setSelected(res.data);
@@ -493,6 +506,7 @@ export default function OrgWQTests({
             }
           })();
         }}
+        basePath={basePath}
         onSave={(updated) => {                 // <-- persist edits from modal
           setTests((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
           setSelected(updated);

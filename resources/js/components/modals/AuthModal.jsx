@@ -8,7 +8,7 @@ import {
 import { setCurrentUser } from "../../lib/authState";
 import { alertSuccess, alertError, alertInfo } from "../../utils/alerts";
 import Modal from "../../components/Modal";
-import { FiX } from "react-icons/fi";
+import { FiX, FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function AuthModal({ open, onClose, mode: initialMode = "login" }) {
   const navigate = useNavigate();
@@ -43,6 +43,15 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
   // Reset confirm password
   const [password2, setPassword2] = useState(""); // <-- added
 
+  // Show / hide password toggles
+  const [showPwd, setShowPwd] = useState({
+    login: false,
+    reg1: false,
+    reg2: false,
+    reset1: false,
+    reset2: false,
+  });
+
   // Derived
   const passwordsMatch = regPassword.length > 0 && regPassword === regPassword2;
   const canResend = resendIn <= 0;
@@ -76,6 +85,9 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
 
       // reset password fields
       setPassword2("");
+
+      // reset visibility toggles
+      setShowPwd({ login: false, reg1: false, reg2: false, reset1: false, reset2: false });
     }
   }, [open]);
 
@@ -349,7 +361,24 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
           {mode === "login" && (
             <form onSubmit={handleLogin}>
               <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+              <div className="pw-wrapper">
+                <input
+                  type={showPwd.login ? "text" : "password"}
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  aria-label={showPwd.login ? "Hide password" : "Show password"}
+                  onClick={() => setShowPwd((p) => ({ ...p, login: !p.login }))}
+                >
+                  {showPwd.login ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
 
               <label className="auth-remember">
                 <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
@@ -374,8 +403,42 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
             <form onSubmit={handleRegister}>
               <input type="text" placeholder="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required />
               <input type="email" placeholder="Email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} autoComplete="email" required />
-              <input type="password" placeholder="Password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} autoComplete="new-password" required />
-              <input type="password" placeholder="Confirm Password" value={regPassword2} onChange={(e) => setRegPassword2(e.target.value)} autoComplete="new-password" required />
+              <div className="pw-wrapper">
+                <input
+                  type={showPwd.reg1 ? "text" : "password"}
+                  placeholder="Password"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  aria-label={showPwd.reg1 ? "Hide password" : "Show password"}
+                  onClick={() => setShowPwd((p) => ({ ...p, reg1: !p.reg1 }))}
+                >
+                  {showPwd.reg1 ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
+              <div className="pw-wrapper">
+                <input
+                  type={showPwd.reg2 ? "text" : "password"}
+                  placeholder="Confirm Password"
+                  value={regPassword2}
+                  onChange={(e) => setRegPassword2(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  aria-label={showPwd.reg2 ? "Hide confirm password" : "Show confirm password"}
+                  onClick={() => setShowPwd((p) => ({ ...p, reg2: !p.reg2 }))}
+                >
+                  {showPwd.reg2 ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
               {!passwordsMatch && regPassword2.length > 0 && (<div className="auth-error" role="alert">Passwords do not match.</div>)}
 
               <label className="auth-label" htmlFor="occupation">Occupation</label>
@@ -438,8 +501,42 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
           {/* ===== RESET ===== */}
           {mode === "reset" && (
             <form onSubmit={handleReset}>
-              <input type="password" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
-              <input type="password" placeholder="Confirm new password" value={password2} onChange={(e) => setPassword2(e.target.value)} autoComplete="new-password" required />
+              <div className="pw-wrapper">
+                <input
+                  type={showPwd.reset1 ? "text" : "password"}
+                  placeholder="New password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  aria-label={showPwd.reset1 ? "Hide new password" : "Show new password"}
+                  onClick={() => setShowPwd((p) => ({ ...p, reset1: !p.reset1 }))}
+                >
+                  {showPwd.reset1 ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
+              <div className="pw-wrapper">
+                <input
+                  type={showPwd.reset2 ? "text" : "password"}
+                  placeholder="Confirm new password"
+                  value={password2}
+                  onChange={(e) => setPassword2(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  aria-label={showPwd.reset2 ? "Hide confirm new password" : "Show confirm new password"}
+                  onClick={() => setShowPwd((p) => ({ ...p, reset2: !p.reset2 }))}
+                >
+                  {showPwd.reset2 ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
               {password !== password2 && password2.length > 0 && (<div className="auth-error" role="alert">Passwords do not match.</div>)}
               <button type="submit" className="auth-btn" disabled={loading || password !== password2}>{loading ? "Updating..." : "UPDATE PASSWORD"}</button>
               <p className="auth-switch">Back to <button type="button" className="auth-link" onClick={() => setMode("login")}>Log In</button></p>

@@ -29,7 +29,14 @@ class SamplingEventController extends Controller
 
     public function index(Request $request)
     {
+        // Accept organization_id from query OR fallback to route parameter {tenant} for org/contrib prefixed routes.
         $requestedTenant = $request->input('organization_id');
+        if ($requestedTenant === null) {
+            $routeTenant = $request->route('tenant');
+            if ($routeTenant !== null) {
+                $requestedTenant = (int) $routeTenant;
+            }
+        }
         $requestedTenant = $requestedTenant !== null ? (int) $requestedTenant : null;
 
         $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], $requestedTenant, false);
@@ -113,8 +120,9 @@ class SamplingEventController extends Controller
     public function store(Request $request)
     {
         $data = $this->validatePayload($request, false);
-
-        $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], $data['organization_id'] ?? null);
+        // Fallback to route tenant when payload omits organization_id (tenant-scoped routes)
+        $explicitTenant = $data['organization_id'] ?? $request->route('tenant');
+        $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], $explicitTenant !== null ? (int)$explicitTenant : null);
         $tenantId = (int) $context['tenant_id'];
 
         if (($context['role'] ?? null) === 'contributor' && ($data['status'] ?? 'draft') === 'public') {
@@ -155,8 +163,8 @@ class SamplingEventController extends Controller
     public function update(Request $request, SamplingEvent $samplingEvent)
     {
         $data = $this->validatePayload($request, true);
-
-        $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], $samplingEvent->organization_id);
+        // Allow route tenant param to validate scoping (though organization_id is inherent to the model)
+        $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], (int)$samplingEvent->organization_id);
         $tenantId = (int) $context['tenant_id'];
 
         if ($samplingEvent->organization_id !== $tenantId) {

@@ -112,6 +112,14 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
         Route::get('/users/{user}',          [OrgUserController::class, 'show'])->whereNumber('user');
         Route::put('/users/{user}',          [OrgUserController::class, 'update'])->whereNumber('user');
         Route::delete('/users/{user}',       [OrgUserController::class, 'destroy'])->whereNumber('user');
+
+        // Sampling Events (tenant scoped) accessible to org_admin + contributor + superadmin (superadmin passes role middleware automatically)
+        Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
+        Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'show'])->whereNumber('samplingEvent');
+        Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
+        Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'update'])->whereNumber('samplingEvent');
+        Route::delete('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroy'])->whereNumber('samplingEvent');
+        Route::post  ('/sample-events/{samplingEvent}/toggle-publish',[AdminSamplingEventController::class, 'togglePublish'])->whereNumber('samplingEvent');
     });
 
 /*
@@ -125,6 +133,13 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:contributor'])
     ->group(function () {
         Route::get('/whoami', fn() => ['ok' => true]);
         // tenant-scoped contribution endpoints here
+        // Sampling Events (limited contributor access). Reuse same controller; controller enforces fine-grained rules.
+        Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
+        Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'show'])->whereNumber('samplingEvent');
+        Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
+        Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'update'])->whereNumber('samplingEvent');
+        Route::delete('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroy'])->whereNumber('samplingEvent');
+        Route::post  ('/sample-events/{samplingEvent}/toggle-publish',[AdminSamplingEventController::class, 'togglePublish'])->whereNumber('samplingEvent');
     });
 
 /*
