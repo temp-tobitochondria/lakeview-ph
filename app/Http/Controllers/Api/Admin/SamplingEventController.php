@@ -117,6 +117,12 @@ class SamplingEventController extends Controller
         return response()->json(['data' => $resource]);
     }
 
+    // Wrapper for tenant-scoped routes to satisfy route parameter order: /org/{tenant}/sample-events/{samplingEvent}
+    public function showOrg(Request $request, $tenant, SamplingEvent $samplingEvent)
+    {
+        return $this->show($request, $samplingEvent);
+    }
+
     public function store(Request $request)
     {
         $data = $this->validatePayload($request, false);
@@ -224,6 +230,12 @@ class SamplingEventController extends Controller
         return response()->json(['data' => $resource]);
     }
 
+    // Wrapper for tenant-scoped routes to satisfy route parameter order: /org/{tenant}/sample-events/{samplingEvent}
+    public function updateOrg(Request $request, $tenant, SamplingEvent $samplingEvent)
+    {
+        return $this->update($request, $samplingEvent);
+    }
+
     public function destroy(Request $request, SamplingEvent $samplingEvent)
     {
         // Resolve tenant membership for org_admins and contributors. We will
@@ -260,6 +272,12 @@ class SamplingEventController extends Controller
         });
 
         return response()->json(['message' => 'Sampling event deleted']);
+    }
+
+    // Wrapper for tenant-scoped routes to satisfy route parameter order: /org/{tenant}/sample-events/{samplingEvent}
+    public function destroyOrg(Request $request, $tenant, SamplingEvent $samplingEvent)
+    {
+        return $this->destroy($request, $samplingEvent);
     }
 
     protected function validatePayload(Request $request, bool $isUpdate): array
@@ -501,6 +519,12 @@ class SamplingEventController extends Controller
 
         $resource = $this->eventDetailQuery()->findOrFail($samplingEvent->id);
         return response()->json(['data' => $resource]);
+    }
+
+    // Wrapper for tenant-scoped routes to satisfy route parameter order: /org/{tenant}/sample-events/{samplingEvent}
+    public function togglePublishOrg(Request $request, $tenant, SamplingEvent $samplingEvent)
+    {
+        return $this->togglePublish($request, $samplingEvent);
     }
 
     protected function assertLakeExists(int $lakeId): void
