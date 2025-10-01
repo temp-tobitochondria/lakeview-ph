@@ -331,7 +331,7 @@ class SamplingEventController extends Controller
                 'results' => function ($query) {
                     $query->with([
                         'parameter:id,code,name,unit,group',
-                        'threshold:id,parameter_id,class_code,standard_id,unit,min_value,max_value,notes',
+                        'threshold:id,parameter_id,class_code,standard_id,min_value,max_value,notes',
                     ]);
                 },
                 'createdBy:id,name',
