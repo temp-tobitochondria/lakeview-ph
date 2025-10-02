@@ -30,7 +30,7 @@ export default function AdminAuditLogsPage() {
 	};
 	const [me, setMe] = useState(null);
 	const [rows, setRows] = useState([]);
-	// Cache for hydrated entity names: key => displayName
+	// Legacy hydration cache (kept for backward compatibility but backend now provides entity_name)
 	const [entityNameCache, setEntityNameCache] = useState({});
 	const pendingHydrateRef = useRef(new Set());
 	const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
@@ -261,36 +261,7 @@ export default function AdminAuditLogsPage() {
 
 	const columns = useMemo(() => {
 		const truncate = (s, max = 60) => (s && s.length > max ? s.slice(0, max) + '…' : s);
-		const candidateKeys = ['name','title','label','lake_name','alt_name','subject','description','parameter_name','key','code','identifier','slug','email','username','full_name','org_name','company_name','tenant_name','message','content','comment','text'];
-		const extractEntityName = (r) => {
-			const after = r.after || {}; const before = r.before || {};
-			// User special case
-			const modelBase = r.model_type ? r.model_type.split('\\').pop() : '';
-			if (modelBase === 'User') {
-				const fn = after.first_name || before.first_name || '';
-				const ln = after.last_name || before.last_name || '';
-				const full = `${fn} ${ln}`.trim();
-				if (full) return full;
-			}
-			// Check hydrated cache
-			const cacheKey = r.model_type + '::' + r.model_id;
-			if (entityNameCache[cacheKey]) return entityNameCache[cacheKey];
-			// Scan candidate keys
-			for (const k of candidateKeys) {
-				const v = after[k] || before[k];
-				if (typeof v === 'string' && v.trim()) return v.trim();
-			}
-			// Fallback: first non-empty string value
-			const pickGeneric = (obj) => {
-				for (const [k,v] of Object.entries(obj)) {
-					if (!v) continue;
-					if (k.match(/id$/i)) continue;
-					if (typeof v === 'string' && v.trim().length > 0 && v.length <= 120) return v.trim();
-				}
-				return null;
-			};
-			return pickGeneric(after) || pickGeneric(before) || null;
-		};
+		const extractEntityName = (r) => r.entity_name || null;
 		return [
 			{ id: 'summary', header: 'Summary', render: r => {
 				const actor = r.actor_name || 'System Admin';
@@ -306,9 +277,13 @@ export default function AdminAuditLogsPage() {
 					default: verb = (r.action || 'Did').replace(/\b\w/g, c=>c.toUpperCase());
 				}
 				const entityName = extractEntityName(r);
-				if (entityName) return `${actor} ${verb} ${truncate(entityName)} (${idTag})`;
-				return `${actor} ${verb} ${idTag}`;
+				if (entityName) return `${actor} ${verb} ${truncate(entityName)}`; // show entity without parentheses
+				return `${actor} ${verb} ${idTag}`; // fallback with id when no entity name
 			}, width: 560 },
+			{ id: 'target', header: 'Target', render: r => {
+				const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
+				return modelBase;
+			}, width: 140 },
 			{ id: 'actions', header: 'Action', width: 80, render: r => (
 				<button className="pill-btn ghost sm" title="View Details" onClick={() => openDetail(r)} style={{ display:'flex', alignItems:'center', gap:4 }}>
 					<FiEye />
@@ -317,46 +292,9 @@ export default function AdminAuditLogsPage() {
 		];
 	}, [openDetail, entityNameCache]);
 
-	// Hydration logic: fetch entity name when missing in before/after
-	const hydrateEntityName = async (row) => {
-		if (!row || !row.model_type || !row.model_id) return;
-		const cacheKey = row.model_type + '::' + row.model_id;
-		if (entityNameCache[cacheKey]) return; // already cached
-		if (pendingHydrateRef.current.has(cacheKey)) return; // already queued
-		pendingHydrateRef.current.add(cacheKey);
-		// Map model_type to API endpoint heuristically
-		let endpoint = null;
-		const base = row.model_type.split('\\').pop();
-		switch (base) {
-			case 'Lake': endpoint = `/lakes/${row.model_id}`; break;
-			case 'Tenant': endpoint = `/tenants/${row.model_id}`; break;
-			case 'User': endpoint = `/users/${row.model_id}`; break;
-			case 'Parameter': endpoint = `/parameters/${row.model_id}`; break;
-			default: endpoint = null; break;
-		}
-		if (!endpoint) return;
-		try {
-			const res = await api.get(endpoint);
-			const data = res?.data || res;
-			if (data) {
-				const nameCandidate = data.name || data.title || data.label || data.full_name || (data.first_name && data.last_name ? `${data.first_name} ${data.last_name}` : null) || data.slug || data.code || null;
-				if (nameCandidate) {
-					setEntityNameCache(prev => ({ ...prev, [cacheKey]: nameCandidate }));
-				}
-			}
-		} catch {/* ignore hydration errors */}
-	};
-
-	const queueHydration = (rowsArr) => {
-		if (!Array.isArray(rowsArr) || !rowsArr.length) return;
-		// Only hydrate rows lacking an entityName already in cache and lacking identifying keys in before/after
-		for (const r of rowsArr) {
-			const before = r.before || {}; const after = r.after || {};
-			const hasName = ['name','title','label','lake_name','alt_name','full_name','tenant_name'].some(k => (after[k] || before[k]));
-			if (hasName) continue;
-			hydrateEntityName(r);
-		}
-	};
+	// Backend now provides entity_name; legacy hydration no-op
+	const hydrateEntityName = async () => {};
+	const queueHydration = () => {};
 
 	const visibleColumns = useMemo(() => columns.filter(c => visibleMap[c.id] !== false), [columns, visibleMap]);
 

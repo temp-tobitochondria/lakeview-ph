@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Role;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 
 class AuditLogController extends Controller
@@ -37,19 +38,90 @@ class AuditLogController extends Controller
         $qb->orderByDesc('event_at');
 
         $paginator = $qb->paginate($pp);
-        $paginator->getCollection()->transform(function (AuditLog $log) {
-            // Determine if actor is superadmin (avoid N+1 by relying on loaded relation)
+
+        // First pass: build collection & gather unresolved entity names
+        $collection = $paginator->getCollection();
+        $needLookup = []; // [ modelType => [ids...] ]
+        $candidateKeys = config('audit.identity_fields', []);
+        $fallbackKeys = array_unique(array_merge($candidateKeys, [
+            'name','title','label','lake_name','alt_name','subject','description','parameter_name','code','identifier','slug','email','username','full_name','org_name','company_name','tenant_name','message','content'
+        ]));
+
+        // Helper to extract inline name from before/after snapshots
+        $inlineName = function (AuditLog $log) use ($fallbackKeys) {
+            $before = $log->before ?? [];
+            $after = $log->after ?? [];
+            // User special case with first+last
+            if (str_ends_with($log->model_type, '\\User')) {
+                $fn = $after['first_name'] ?? $before['first_name'] ?? '';
+                $ln = $after['last_name'] ?? $before['last_name'] ?? '';
+                $full = trim($fn.' '.$ln);
+                if ($full !== '') { return $full; }
+            }
+            foreach ($fallbackKeys as $k) {
+                $v = $after[$k] ?? $before[$k] ?? null;
+                if (is_string($v) && trim($v) !== '') { return trim($v); }
+            }
+            return null;
+        };
+
+        // Pass 1: detect which logs need external lookup
+        foreach ($collection as $log) {
+            if (!$log instanceof AuditLog) { continue; }
+            $name = $inlineName($log);
+            if ($name) { $log->resolved_entity_name = $name; continue; }
+            // No inline name; queue lookup if model class exists
+            if (class_exists($log->model_type)) {
+                $needLookup[$log->model_type][] = $log->model_id; // keep as string
+            }
+        }
+
+        // Batch lookup per model_type (avoid N+1). We select only likely name columns.
+        $nameMap = []; // key: "FQCN::id" => name
+        foreach ($needLookup as $fqcn => $ids) {
+            try {
+                $ids = array_values(array_unique($ids));
+                /** @var \Illuminate\Database\Eloquent\Model $model */
+                $model = new $fqcn();
+                $table = $model->getTable();
+                // Determine existing columns among candidates
+                $candidateCols = ['id','name','title','label','alt_name','lake_name','full_name','first_name','last_name','code','slug'];
+                $existing = [];
+                foreach ($candidateCols as $c) { if (Schema::hasColumn($table, $c)) { $existing[] = $c; } }
+                if (empty($existing)) { continue; }
+                $rows = $fqcn::query()->select($existing)->whereIn('id', $ids)->get();
+                foreach ($rows as $row) {
+                    $nm = null;
+                    foreach (['alt_name','name','title','label','lake_name','code','slug'] as $pref) {
+                        if (isset($row->$pref) && is_string($row->$pref) && trim($row->$pref) !== '') { $nm = trim($row->$pref); break; }
+                    }
+                    if (!$nm && isset($row->first_name) || isset($row->last_name)) {
+                        $nm = trim(($row->first_name ?? '').' '.($row->last_name ?? '')) ?: null;
+                    }
+                    if ($nm) { $nameMap[$fqcn.'::'.$row->id] = $nm; }
+                }
+            } catch (\Throwable $e) {
+                // Swallow lookup errors; keep graceful
+            }
+        }
+
+        // Transform payload
+        $collection->transform(function (AuditLog $log) use ($nameMap) {
             $actorName = $log->actor?->name;
-            $actorRole = $log->actor?->role?->name; // may be null if relation not eager loaded; lightweight guard
+            $actorRole = $log->actor?->role?->name;
             $tenantName = ($actorRole === \App\Models\Role::SUPERADMIN) ? '' : ($log->tenant?->name ?? '');
+            $entityName = $log->resolved_entity_name ?? ($nameMap[$log->model_type.'::'.$log->model_id] ?? null);
             return [
-                'id' => $log->id, // keep id for modal fetch
+                'id' => $log->id,
                 'event_at' => optional($log->event_at)->toIso8601String(),
                 'actor_name' => $actorName,
+                'actor_role' => $actorRole,
+                'tenant_id' => $log->tenant_id,
                 'tenant_name' => $tenantName,
                 'action' => $log->action,
                 'model_type' => $log->model_type,
                 'model_id' => $log->model_id,
+                'entity_name' => $entityName,
                 'diff_keys' => $log->diff_keys,
                 'before' => $log->before,
                 'after' => $log->after,
@@ -68,18 +140,39 @@ class AuditLogController extends Controller
         if (!$user || !in_array($user->role?->name, [Role::SUPERADMIN, Role::ORG_ADMIN])) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
-    $log = AuditLog::with(['actor:id,name','tenant:id,name'])->findOrFail($id);
+    $log = AuditLog::with(['actor:id,name,role_id','actor.role:id,name','tenant:id,name'])->findOrFail($id);
         if ($user->isOrgAdmin() && $log->tenant_id !== $user->tenant_id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         $actorRole = $log->actor?->role?->name;
         $tenantName = ($actorRole === \App\Models\Role::SUPERADMIN) ? '' : ($log->tenant?->name ?? '');
+        // Inline name resolution (reuse logic from index simplified)
+        $entityName = null;
+        $before = $log->before ?? [];
+        $after = $log->after ?? [];
+        if (str_ends_with($log->model_type, '\\User')) {
+            $fn = $after['first_name'] ?? $before['first_name'] ?? '';
+            $ln = $after['last_name'] ?? $before['last_name'] ?? '';
+            $entityName = trim($fn.' '.$ln) ?: null;
+        }
+        if (!$entityName) {
+            foreach (config('audit.identity_fields', []) as $k) {
+                $v = $after[$k] ?? $before[$k] ?? null;
+                if (is_string($v) && trim($v) !== '') { $entityName = trim($v); break; }
+            }
+        }
         return response()->json(['data' => [
             'id' => $log->id,
             'event_at' => optional($log->event_at)->toIso8601String(),
             'actor_name' => $log->actor?->name,
+            'actor_role' => $actorRole,
+            'tenant_id' => $log->tenant_id,
             'tenant_name' => $tenantName,
             'action' => $log->action,
+            'model_type' => $log->model_type,
+            'model_id' => $log->model_id,
+            'entity_name' => $entityName,
+            'diff_keys' => $log->diff_keys,
             'before' => $log->before,
             'after' => $log->after,
         ]]);
