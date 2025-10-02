@@ -152,6 +152,9 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
         Route::put('/users/{user}',          [OrgUserController::class, 'update'])->whereNumber('user');
         Route::delete('/users/{user}',       [OrgUserController::class, 'destroy'])->whereNumber('user');
 
+    // Tenant rename (org_admin scope)
+    Route::patch('/tenant', [TenantController::class, 'orgScopedRename']);
+
         // Sampling Events (tenant scoped) accessible to org_admin + contributor + superadmin (superadmin passes role middleware automatically)
     Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
     Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent');

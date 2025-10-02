@@ -188,6 +188,33 @@ class TenantController extends Controller
         return response()->json(['data' => $user]);
     }
 
+    /**
+     * PATCH /api/org/{tenant}/tenant
+     * Allow an org_admin (scoped to tenant) or superadmin to update only the tenant name.
+     */
+    public function orgScopedRename(Request $request, $tenant)
+    {
+        // Ensure we have a Tenant model (manual resolve to control error messaging)
+        $tenantModel = $tenant instanceof Tenant ? $tenant : Tenant::findOrFail((int)$tenant);
+        // Must be tenant admin (org_admin) or superadmin already allowed by authorizeTenantAccess
+        $this->authorizeTenantAccess($request, $tenantModel, requireAdmin: true);
+        $data = $request->validate([
+            'name' => 'required|string|max:255|unique:tenants,name,' . $tenantModel->id,
+        ]);
+        $old = $tenantModel->only(['name']);
+        $tenantModel->name = $data['name'];
+        $tenantModel->save();
+        // Minimal resource payload for UI update
+        return response()->json([
+            'data' => [
+                'id' => $tenantModel->id,
+                'name' => $tenantModel->name,
+                'updated_at' => optional($tenantModel->updated_at)->toIso8601String(),
+                'previous_name' => $old['name']
+            ]
+        ]);
+    }
+
     protected function authorizeTenantAccess(Request $request, Tenant $tenant, bool $requireAdmin = false): void
     {
         $user = $request->user();
