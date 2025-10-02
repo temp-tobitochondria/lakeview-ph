@@ -4,7 +4,7 @@ import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
 import OrgWQTestModal from "../../components/water-quality-test/OrgWQTestModal";
-import { FiEye, FiEdit2, FiTrash2, FiDroplet } from "react-icons/fi";
+import { FiEye, FiTrash2, FiDroplet } from "react-icons/fi";
 
 import { api } from "../../lib/api";
 import { fetchLakeOptions } from "../../lib/layers";
@@ -54,7 +54,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
   // modal state
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [editing, setEditing] = useState(false);
+  // Editing capability removed per request; modal will open in view-only mode.
 
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -164,7 +164,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
 
   const isSuper = currentUserRole === 'superadmin';
   const canPublishAny = isSuper; // only superadmins may publish across orgs
-  const canEditAny = currentUserRole === 'org_admin' || isSuper;
+  // const canEditAny removed alongside edit functionality.
 
   const baseColumns = useMemo(() => [
     { id: 'organization', header: 'Organization', width: 220, render: (r) => r?.organization?.name ?? r?.organization_name ?? '—', sortValue: (r) => r?.organization?.name ?? r?.organization_name ?? '' },
@@ -224,23 +224,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
   }, [tests, q, lakeId, organizationId, status, year, quarter, month, dateFrom, dateTo]);
 
   const actions = [
-    { label: 'View', title: 'View', icon: <FiEye />, onClick: async (row) => { try { const res = await api(`/admin/sample-events/${row.id}`); setSelected(res.data); setEditing(false); setOpen(true); } catch (e) { console.error('Failed to fetch event detail', e); await alertError('Failed', 'Could not load event details.'); } } },
-    { label: 'Edit', title: 'Edit', icon: <FiEdit2 />, onClick: async (row) => {
-        // Allow superadmin or org_admin; fall back to creator ownership for other roles (if any)
-        if (!(isSuper || currentUserRole === 'org_admin' || (currentUserId && row.created_by_user_id === currentUserId))) {
-          await alertError('Permission denied', 'You cannot edit this test.');
-          return;
-        }
-        try {
-          const res = await api(`/admin/sample-events/${row.id}`);
-          setSelected(res.data);
-          setEditing(true);
-          setOpen(true);
-        } catch (e) {
-          console.error('Failed to fetch event detail', e);
-          await alertError('Failed', 'Could not load event details.');
-        }
-      } },
+    { label: 'View', title: 'View', icon: <FiEye />, onClick: async (row) => { try { const res = await api(`/admin/sample-events/${row.id}`); setSelected(res.data); setOpen(true); } catch (e) { console.error('Failed to fetch event detail', e); await alertError('Failed', 'Could not load event details.'); } } },
     { label: 'Delete', title: 'Delete', type: 'delete', icon: <FiTrash2 />, onClick: async (row) => {
         // superadmins may delete any, org_admins may delete within org
         const ok = await swalConfirm({ title: 'Delete this test?', text: `This cannot be undone.`, icon: 'warning', confirmButtonText: 'Delete' });
@@ -300,7 +284,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
         </div>
       </div>
 
-      <OrgWQTestModal open={open} onClose={() => setOpen(false)} record={selected} editable={editing} parameterCatalog={paramCatalog} canPublish={canPublishAny}
+      <OrgWQTestModal open={open} onClose={() => setOpen(false)} record={selected} editable={false} parameterCatalog={paramCatalog} canPublish={canPublishAny}
         onTogglePublish={async () => {
           if (!selected) return;
           try {
