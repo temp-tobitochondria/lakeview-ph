@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Feedback extends Model
 {
+    use \App\Support\Audit\Auditable;
     protected $table = 'feedback';
 
     protected $fillable = [

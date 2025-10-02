@@ -24,6 +24,7 @@ import AdminParameters from "./adminParams";
 import AdminWQTests from "./adminWQTests";
 import AdminSettingsPage from "./adminSettings.jsx";
 import AdminFeedback from './AdminFeedback';
+import AdminAuditLogsPage from './adminLogs';
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -78,8 +79,8 @@ export default function AdminDashboard() {
         {/* Feedback */}
         <Route path="feedback" element={<AdminFeedback />} />
 
-        {/* Audit Logs */}
-        <Route path="audit" element={<Page title="Audit Logs" />} />
+  {/* Audit Logs */}
+  <Route path="audit" element={<AdminAuditLogsPage />} />
 
   {/* System Settings */}
   <Route path="settings" element={<AdminSettingsPage />} />

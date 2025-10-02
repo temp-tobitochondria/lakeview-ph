@@ -102,6 +102,10 @@ Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(fu
         $rows = \App\Models\Tenant::query()->select(['id', 'name'])->orderBy('name')->get();
         return response()->json(['data' => $rows]);
     });
+
+    // Audit logs (superadmin only here; org_admin has implicit scoping below if added later)
+    Route::get('/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
+    Route::get('/audit-logs/{id}', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'show'])->whereNumber('id');
 });
 
 /*
@@ -114,6 +118,10 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
     ->whereNumber('tenant')
     ->group(function () {
         Route::get('/whoami', fn() => ['ok' => true]);
+
+        // Audit logs scoped to this tenant (org_admin visibility)
+        Route::get('/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
+        Route::get('/audit-logs/{id}', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'show'])->whereNumber('id');
 
         // Manage users inside this org
         Route::get('/users',                 [OrgUserController::class, 'index']);
@@ -182,6 +190,9 @@ Route::post('/public/feedback', [FeedbackController::class, 'publicStore'])->mid
 
 // Authenticated layer operations
 Route::middleware('auth:sanctum')->group(function () {
+    // Audit logs (superadmin global, org_admin scoped)
+    Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
+    Route::get('/admin/audit-logs/{id}', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'show']);
     Route::get('/layers',           [ApiLayerController::class, 'index'])->name('layers.index');
     Route::get('/layers/active',    [ApiLayerController::class, 'active']);
 
