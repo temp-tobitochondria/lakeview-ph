@@ -4,7 +4,7 @@ import api, { buildQuery } from '../../lib/api';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
 import FilterPanel from '../../components/table/FilterPanel';
-import { FiRefreshCw, FiClock } from 'react-icons/fi';
+import { FiRefreshCw, FiEye } from 'react-icons/fi';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 // Local storage keys
@@ -21,6 +21,11 @@ export default function AdminAuditLogsPage() {
 	const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState(null);
+
+	// Detail modal state
+	const [detailRow, setDetailRow] = useState(null);
+	const openDetail = (row) => setDetailRow(row);
+	const closeDetail = () => setDetailRow(null);
 
 	// Basic search placeholder (not wired to API param yet – backend has no generic q)
 	const [q, setQ] = useState('');
@@ -53,7 +58,7 @@ export default function AdminAuditLogsPage() {
 	}, [fAction, fModelType, fActorId, fDateRange]);
 
 	// Column visibility
-	const defaultsVisible = useMemo(() => ({ event_at: true, model_type: true, model_id: true, action: true, actor_id: true, tenant_id: true, diff_keys: true }), []);
+	const defaultsVisible = useMemo(() => ({ summary: true, actions: true }), []);
 	const [visibleMap, setVisibleMap] = useState(() => {
 		try { const raw = localStorage.getItem(VIS_KEY); return raw ? JSON.parse(raw) : defaultsVisible; } catch { return defaultsVisible; }
 	});
@@ -124,12 +129,25 @@ export default function AdminAuditLogsPage() {
 // openDetail removed
 
 	const columns = useMemo(() => {
-		const truncate = (s, max=40) => (s.length > max ? s.slice(0, max) + '…' : s);
+		// Helper utils for improved summaries
+		const truncate = (s, max = 80) => (s && s.length > max ? s.slice(0, max) + '…' : s);
+		const labelize = (k) => {
+			if (!k) return k;
+			const overrides = { phone: 'Phone', address: 'Address', type: 'Type', tenant_type: 'Type' };
+			if (overrides[k]) return overrides[k];
+			return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+		};
 		const summarize = (r) => {
 			const actor = r.actor_name || 'System';
-			const model = r.model_type ? r.model_type.split('\\').pop() : 'Record';
-			const idPart = r.model_id ? `#${r.model_id}` : '';
-			const tenantFrag = r.tenant_name ? ` in tenant "${r.tenant_name}"` : '';
+			const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
+			const modelIdPart = r.model_id ? `#${r.model_id}` : '';
+			const entityName = (
+				// Prefer an explicit name (after -> before fallbacks)
+				(r.after && (r.after.name || r.after.title)) ||
+				(r.before && (r.before.name || r.before.title)) ||
+				r.tenant_name ||
+				null
+			);
 			let verb;
 			switch (r.action) {
 				case 'created': verb = 'created'; break;
@@ -139,40 +157,90 @@ export default function AdminAuditLogsPage() {
 				case 'restored': verb = 'restored'; break;
 				default: verb = r.action || 'acted on';
 			}
-			// Build change snippet for updated
-			let changeFrag = '';
-			if (r.action === 'updated' && r.before && r.after) {
+			// Special richer formatting for updates w/ before & after
+			if (verb === 'updated' && r.before && r.after) {
 				try {
-					const keys = new Set([...Object.keys(r.before), ...Object.keys(r.after)]);
+					const keys = r.diff_keys && Array.isArray(r.diff_keys) && r.diff_keys.length
+						? r.diff_keys
+						: Array.from(new Set([...Object.keys(r.before), ...Object.keys(r.after)]));
 					const diffs = [];
 					for (const k of keys) {
 						const bv = r.before[k];
 						const av = r.after[k];
-						if (JSON.stringify(bv) !== JSON.stringify(av)) {
-							const safeB = truncate(bv === null ? 'NULL' : String(bv));
-							const safeA = truncate(av === null ? 'NULL' : String(av));
-							diffs.push(`${k}: '${safeB}' -> '${safeA}'`);
-						}
-						if (diffs.length >= 3) break; // limit
+						if (JSON.stringify(bv) === JSON.stringify(av)) continue;
+						const safeB = truncate(bv === null ? 'NULL' : String(bv));
+						const safeA = truncate(av === null ? 'NULL' : String(av));
+						diffs.push(`${labelize(k)} from '${safeB}' to '${safeA}'`);
 					}
-					if (diffs.length) {
-						changeFrag = ' (' + diffs.join('; ') + (r.diff_keys && r.diff_keys.length > diffs.length ? ` +${r.diff_keys.length - diffs.length} more` : '') + ')';
+					// Limit very long lists but show +N more
+					const MAX_SHOW = 8;
+					let changesTxt;
+					if (diffs.length > MAX_SHOW) {
+						changesTxt = diffs.slice(0, MAX_SHOW).join('; ') + `; +${diffs.length - MAX_SHOW} more`;
+					} else {
+						changesTxt = diffs.join('; ');
 					}
-				} catch {}
+					const displayEntity = entityName
+						? `${entityName}${modelIdPart ? ` (${modelBase}${modelIdPart})` : ''}`
+						: `${modelBase}${modelIdPart}`;
+					return `${actor} updated ${displayEntity}. Changes: ${changesTxt} at ${fmt(r.event_at)}.`;
+				} catch (e) {
+					// Fallback to generic below
+				}
 			}
-			const time = fmt(r.event_at);
-			return `${actor} ${verb} ${model}${idPart}${tenantFrag}${changeFrag} at ${time}.`;
+			// Generic fallback (create/delete/etc or failed diff)
+			const displayEntity = entityName
+				? `${entityName}${modelIdPart ? ` (${modelBase}${modelIdPart})` : ''}`
+				: `${modelBase}${modelIdPart}`;
+			return `${actor} ${verb} ${displayEntity} at ${fmt(r.event_at)}.`;
 		};
 		return [
-			{ id: 'summary', header: 'Summary', render: r => summarize(r), width: 880 },
+			{ id: 'summary', header: 'Summary', render: r => {
+				const actor = r.actor_name || 'System Admin';
+				const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
+				const idPart = r.model_id ? `#${r.model_id}` : '';
+				let verb;
+				switch (r.action) {
+					case 'created': verb = 'Created'; break;
+					case 'updated': verb = 'Updated'; break;
+					case 'deleted': verb = 'Deleted'; break;
+					case 'force_deleted': verb = 'Force Deleted'; break;
+					case 'restored': verb = 'Restored'; break;
+					default: verb = (r.action || 'Did').replace(/\b\w/g, c=>c.toUpperCase());
+				}
+				return `${actor} ${verb} ${modelBase} ${idPart}`.trim();
+			}, width: 520 },
+			{ id: 'actions', header: 'Action', width: 80, render: r => (
+				<button className="pill-btn ghost sm" title="View Details" onClick={() => openDetail(r)} style={{ display:'flex', alignItems:'center', gap:4 }}>
+					<FiEye />
+				</button>
+			)},
 		];
-	}, []);
+	}, [openDetail]);
 
 	const visibleColumns = useMemo(() => columns.filter(c => visibleMap[c.id] !== false), [columns, visibleMap]);
 
 	const normalized = useMemo(() => rows, [rows]);
 
-const actions = [];
+	const actions = [];
+
+	// Build change lines for modal
+	const buildChanges = (row) => {
+		if (!row || !row.before || !row.after) return [];
+		const keys = row.diff_keys && Array.isArray(row.diff_keys) && row.diff_keys.length
+			? row.diff_keys
+			: Array.from(new Set([...Object.keys(row.before), ...Object.keys(row.after)]));
+		const lines = [];
+		const prettify = (k) => k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+		for (const k of keys) {
+			const b = row.before[k];
+			const a = row.after[k];
+			if (JSON.stringify(b) === JSON.stringify(a)) continue;
+			const show = (v) => (v === null || v === undefined || v === '') ? 'NULL' : String(v);
+			lines.push(`${prettify(k)}: ${show(b)} → ${show(a)}`);
+		}
+		return lines;
+	};
 
 	const columnPickerAdapter = {
 		columns: columns.map(c => ({ id: c.id, header: c.header })),
@@ -196,16 +264,11 @@ const actions = [];
 	const goPage = (p) => fetchLogs(buildParams({ page: p }));
 
 	return (
-		<div className="container" style={{ padding: 16 }}>
-			<div className="dashboard-card" style={{ marginBottom: 16 }}>
-				<div className="dashboard-card-header">
-					<div className="dashboard-card-title">
-						<FiClock />
-						<span>Audit Logs</span>
-					</div>
-					<div className="org-actions-right">
-						<button className="pill-btn ghost" onClick={() => fetchLogs(buildParams())} title="Refresh"><FiRefreshCw /></button>
-					</div>
+		<div className="container" style={{ padding: 16, position:'relative' }}>
+			<div className="flex-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+				<h2 style={{ margin: 0 }}>Audit Logs</h2>
+				<div style={{ display: 'flex', gap: 8 }}>
+					<button className="pill-btn ghost" onClick={() => fetchLogs(buildParams())} title="Refresh"><FiRefreshCw /></button>
 				</div>
 				<p style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>View system audit logs and activity history.</p>
 			</div>
@@ -248,8 +311,35 @@ const actions = [];
 				</div>
 			</div>
 
-			{/* Modal removed */}
-		</div>
+		{detailRow && (
+			<div className="lv-modal-backdrop" style={{ position:'absolute', inset:0, background:'transparent', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 20px', zIndex:20 }} onClick={closeDetail}>
+				<div className="lv-modal" style={{ background:'#fff', borderRadius:14, padding:24, maxWidth:720, width:'100%', position:'relative', boxShadow:'0 10px 24px -4px rgba(0,0,0,0.25)', animation:'fadeInScale .18s ease' }} onClick={e=>e.stopPropagation()}>
+					<button onClick={closeDetail} style={{ position:'absolute', top:10, right:10 }} className="pill-btn ghost sm">✕</button>
+					<h3 style={{ marginTop:0, marginBottom:16, fontSize:20 }}>Audit Log Details</h3>
+					<div style={{ fontSize:14, lineHeight:1.55, display:'grid', rowGap:6, paddingBottom:12, borderBottom:'1px solid #e5e7eb' }}>
+						<div style={{ padding:'4px 0' }}><strong style={{ width:90, display:'inline-block' }}>User:</strong> {detailRow.actor_name || 'System Admin'}</div>
+						<div style={{ padding:'4px 0' }}><strong style={{ width:90, display:'inline-block' }}>Action:</strong> {(() => {
+							const model = detailRow.model_type ? detailRow.model_type.split('\\').pop() : 'Record';
+							return `${(detailRow.action || 'updated').replace(/_/g,' ')} ${model} #${detailRow.model_id || ''}`.trim();
+						})()}</div>
+						<div style={{ padding:'4px 0' }}><strong style={{ width:90, display:'inline-block' }}>Timestamp:</strong> {fmt(detailRow.event_at)}</div>
+					</div>
+					{detailRow.action === 'updated' && detailRow.before && detailRow.after && (
+						<div style={{ marginTop:18 }}>
+							<strong style={{ fontSize:13, letterSpacing:0.5, textTransform:'uppercase', color:'#374151' }}>Changes</strong>
+							<ul style={{ marginTop:10, paddingLeft:18, display:'flex', flexDirection:'column', gap:6 }}>
+								{buildChanges(detailRow).map((ln,i)=>(<li key={i} style={{ fontSize:13.5, background:'#f9fafb', padding:'6px 10px', borderRadius:6, border:'1px solid #f0f2f5' }}>{ln}</li>))}
+								{buildChanges(detailRow).length === 0 && <li style={{ fontSize:14 }}>No field differences detected.</li>}
+							</ul>
+						</div>
+					)}
+					{detailRow.action !== 'updated' && (
+						<div style={{ marginTop:18, fontSize:13.5, fontStyle:'italic', color:'#4b5563' }}>No granular change list for this action.</div>
+					)}
+				</div>
+			</div>
+		)}
+	</div>
 	);
 }
 
