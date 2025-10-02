@@ -62,6 +62,18 @@ trait Auditable
                     $after[$k] = $v;
                     $diffKeys[] = $k;
                 }
+                // Always include identity fields snapshot so UI can display names even if not changed
+                $identityGlobal = $conf['identity_fields'] ?? [];
+                $identityModel = $modelConf['identity'] ?? [];
+                $identity = array_unique(array_filter(array_merge($identityGlobal, $identityModel)));
+                foreach ($identity as $idField) {
+                    if (!array_key_exists($idField, $filtered)) continue; // field not present on model
+                    // If it wasn't a dirty field, add a non-diff snapshot (do not append to diffKeys)
+                    if (!array_key_exists($idField, $after ?? [])) {
+                        $before[$idField] = $model->getOriginal($idField);
+                        $after[$idField] = $filtered[$idField];
+                    }
+                }
                 if (empty($diffKeys)) { return; }
             }
 

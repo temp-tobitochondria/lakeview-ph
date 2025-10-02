@@ -26,7 +26,35 @@ export default function FilterPanel({ open, fields = [], onClearAll }) {
       </div>
 
       <div className="advanced-filters-grid">
-        {fields.map((f) => {
+  {fields.map((f) => {
+          if (f.type === 'group' && Array.isArray(f.children)) {
+            return (
+              <div key={f.id} className="af-field" style={{ gridColumn:'1 / -1' }}>
+                {f.label && <span style={{ display:'block', fontWeight:600, marginBottom:4 }}>{f.label}</span>}
+                <div style={{ display:'flex', gap:8 }}>
+                  {f.children.map(child => {
+                    if (child.type === 'select') {
+                      return (
+                        <label key={child.id} className="af-field" style={{ flex:1 }}>
+                          <span>{child.label}</span>
+                          <select value={child.value ?? ''} onChange={(e) => child.onChange?.(e.target.value)}>
+                            {(child.options || []).map((opt) => (
+                              <option key={opt.value ?? opt} value={opt.value ?? opt}>
+                                {opt.label ?? opt}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    }
+                    // fallback: render nothing for unsupported child types in group
+                    return null;
+                  })}
+                </div>
+              </div>
+            );
+          }
+          // date type removed
           if (f.type === "text") {
             return (
               <label key={f.id} className="af-field">

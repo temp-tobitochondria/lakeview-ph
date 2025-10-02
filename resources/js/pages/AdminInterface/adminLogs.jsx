@@ -16,11 +16,31 @@ const ADV_KEY = `${TABLE_ID}::filters_advanced`;
 const fmt = (s) => (s ? new Date(s).toLocaleString() : '—');
 
 export default function AdminAuditLogsPage() {
+	// Helper to coerce before/after payloads into plain objects
+	const parseMaybeJSON = (v) => {
+		if (v === null || v === undefined || v === '') return {};
+		if (typeof v === 'string') {
+			try {
+				const parsed = JSON.parse(v);
+				return parsed && typeof parsed === 'object' ? parsed : {};
+			} catch { return {}; }
+		}
+		if (typeof v === 'object') return v; // already object / array
+		return {};
+	};
 	const [me, setMe] = useState(null);
 	const [rows, setRows] = useState([]);
+	// Cache for hydrated entity names: key => displayName
+	const [entityNameCache, setEntityNameCache] = useState({});
+	const pendingHydrateRef = useRef(new Set());
 	const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState(null);
+
+	// Stable (union) option catalogs so selects don't collapse when a filter narrows rows
+	const [allRoles, setAllRoles] = useState([]); // array of strings
+	const [allTenants, setAllTenants] = useState([]); // array of { value, label }
+	const [allEntities, setAllEntities] = useState([]); // array of { base, full }
 
 	// Detail modal state
 	const [detailRow, setDetailRow] = useState(null);
@@ -30,18 +50,27 @@ export default function AdminAuditLogsPage() {
 	// Basic search placeholder (not wired to API param yet – backend has no generic q)
 	const [q, setQ] = useState('');
 
-	// Advanced filters
+	// Advanced filters (revised)
+	// action: dropdown; name: actor_name text; date: single date (event date)
 	const [fAction, setFAction] = useState(() => {
 		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').action || ''; } catch { return ''; }
 	});
-	const [fModelType, setFModelType] = useState(() => {
+	const [fActorName, setFActorName] = useState(() => {
+		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').actor_name || ''; } catch { return ''; }
+	});
+	// Additional new filters: role, tenant, entity, time window preset
+	const [fRole, setFRole] = useState(() => {
+		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').role || ''; } catch { return ''; }
+	});
+	const [fTenant, setFTenant] = useState(() => {
+		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').tenant_id || ''; } catch { return ''; }
+	});
+	const [fEntity, setFEntity] = useState(() => {
 		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').model_type || ''; } catch { return ''; }
 	});
-	const [fActorId, setFActorId] = useState(() => {
-		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').actor_id || ''; } catch { return ''; }
-	});
-	const [fDateRange, setFDateRange] = useState(() => {
-		try { const v = JSON.parse(localStorage.getItem(ADV_KEY) || '{}').date_range; return Array.isArray(v) ? v : [null,null]; } catch { return [null,null]; }
+	// time window presets: '', '24h', '7d', '30d'
+	const [fTimeWindow, setFTimeWindow] = useState(() => {
+		try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').time_window || ''; } catch { return ''; }
 	});
 	const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -50,12 +79,14 @@ export default function AdminAuditLogsPage() {
 		try {
 			localStorage.setItem(ADV_KEY, JSON.stringify({
 				action: fAction || '',
-				model_type: fModelType || '',
-				actor_id: fActorId || '',
-				date_range: fDateRange,
+				actor_name: fActorName || '',
+				role: fRole || '',
+				tenant_id: fTenant || '',
+				model_type: fEntity || '',
+				time_window: fTimeWindow || '',
 			}));
 		} catch {}
-	}, [fAction, fModelType, fActorId, fDateRange]);
+	}, [fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow]);
 
 	// Column visibility
 	const defaultsVisible = useMemo(() => ({ summary: true, actions: true }), []);
@@ -76,11 +107,24 @@ export default function AdminAuditLogsPage() {
 	const buildParams = (overrides = {}) => {
 		const params = { page, per_page: perPage, ...overrides };
 		if (fAction) params.action = fAction;
-		if (fModelType) params.model_type = fModelType;
-		if (fActorId) params.actor_id = fActorId;
-		const [from, to] = fDateRange;
-		if (from) params.date_from = from;
-		if (to) params.date_to = to;
+		if (fActorName) params.actor_name = fActorName; // assuming backend supports actor_name; if not, will filter client-side
+		if (fRole) params.role = fRole;
+		if (fTenant) params.tenant_id = fTenant;
+		if (fEntity) params.model_type = fEntity; // fEntity now stores full FQCN
+		if (fTimeWindow) {
+			const now = new Date();
+			let from;
+			switch (fTimeWindow) {
+				case '24h': from = new Date(now.getTime() - 24*60*60*1000); break;
+				case '7d': from = new Date(now.getTime() - 7*24*60*60*1000); break;
+				case '30d': from = new Date(now.getTime() - 30*24*60*60*1000); break;
+				default: from = null;
+			}
+			if (from) {
+				const two = (n)=> String(n).padStart(2,'0');
+				params.date_from = `${from.getFullYear()}-${two(from.getMonth()+1)}-${two(from.getDate())}`;
+			}
+		}
 		return params;
 	};
 
@@ -97,13 +141,55 @@ export default function AdminAuditLogsPage() {
 		try {
 			const res = await api.get(effectiveBase, { params });
 			const items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res); // adapt paginator
-			setRows(items);
+			const normalizedItems = Array.isArray(items)
+				? items.map(r => ({
+					...r,
+					before: parseMaybeJSON(r.before),
+					after: parseMaybeJSON(r.after),
+				}))
+				: [];
+			setRows(normalizedItems);
+			// Schedule hydration for rows missing recognizable name
+			queueHydration(normalizedItems);
+			// Update stable option catalogs (union)
+			if (Array.isArray(normalizedItems)) {
+				// Roles
+				setAllRoles(prev => {
+					const set = new Set(prev);
+					for (const r of normalizedItems) {
+						const role = r.actor_role || (r.actor && r.actor.role);
+						if (role) set.add(role);
+					}
+					return Array.from(set).sort();
+				});
+				// Tenants
+				setAllTenants(prev => {
+					const map = new Map(prev.map(t => [String(t.value), t.label]));
+					for (const r of normalizedItems) {
+						if (r.tenant_id) {
+							const key = String(r.tenant_id);
+							if (!map.has(key)) map.set(key, r.tenant_name || `Tenant ${key}`);
+						}
+					}
+					return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
+				});
+				// Entities (FQCN)
+				setAllEntities(prev => {
+					const map = new Map(prev.map(e => [e.full, e.base])); // full -> base
+					for (const r of normalizedItems) if (r.model_type) {
+						const full = r.model_type;
+						const base = full.split('\\').pop();
+						if (!map.has(full)) map.set(full, base);
+					}
+					return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
+				});
+			}
 			const m = res?.meta || {};
 			setMeta({
 				current_page: m.current_page || params.page || 1,
 				last_page: m.last_page || 1,
 				per_page: m.per_page || params.per_page || perPage,
-				total: m.total || items.length,
+				total: m.total || normalizedItems.length,
 			});
 		} catch (e) {
 			console.error('Failed to load audit logs', e);
@@ -111,9 +197,54 @@ export default function AdminAuditLogsPage() {
 		} finally { setLoading(false); }
 	};
 
+	// Separate light fetch (unfiltered) to seed option catalogs so they aren't empty when filters active
+	const seedOptions = async () => {
+		// Try broader admin scope first (if available) to populate full catalogs, then fallback
+		const candidateBases = me && me.role && me.role.includes('admin')
+			? ['/admin/audit-logs', effectiveBase]
+			: [effectiveBase];
+		for (const base of candidateBases) {
+			try {
+				const res = await api.get(base, { params: { page:1, per_page:100 } });
+				const items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res);
+				if (Array.isArray(items) && items.length) {
+					setAllRoles(prev => {
+						const set = new Set(prev);
+						for (const r of items) {
+							const role = r.actor_role || (r.actor && r.actor.role);
+							if (role) set.add(role);
+						}
+						return Array.from(set).sort();
+					});
+					setAllTenants(prev => {
+						const map = new Map(prev.map(t => [String(t.value), t.label]));
+						for (const r of items) {
+							if (r.tenant_id) {
+								const key = String(r.tenant_id);
+								if (!map.has(key)) map.set(key, r.tenant_name || `Tenant ${key}`);
+							}
+						}
+						return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
+					});
+					setAllEntities(prev => {
+						const map = new Map(prev.map(e => [e.full, e.base]));
+						for (const r of items) if (r.model_type) {
+							const full = r.model_type;
+							const base = full.split('\\').pop();
+							if (!map.has(full)) map.set(full, base);
+						}
+						return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
+					});
+					// If we populated something meaningful, break early
+					if (allRoles.length || allTenants.length || allEntities.length) break;
+				}
+			} catch {/* continue to next base */}
+		}
+	};
+
 	// Initial load (user then logs)
 	useEffect(() => { (async () => { await fetchMe(); })(); }, []);
-	useEffect(() => { if (me) fetchLogs(buildParams({ page: 1 })); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me]);
+	useEffect(() => { if (me) { seedOptions(); fetchLogs(buildParams({ page: 1 })); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me]);
 
 	// Auto refetch on advanced filter changes (debounced)
 	useEffect(() => {
@@ -124,81 +255,47 @@ export default function AdminAuditLogsPage() {
 		}, 400);
 		return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [fAction, fModelType, fActorId, fDateRange]);
+	}, [fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow]);
 
 // openDetail removed
 
 	const columns = useMemo(() => {
-		// Helper utils for improved summaries
-		const truncate = (s, max = 80) => (s && s.length > max ? s.slice(0, max) + '…' : s);
-		const labelize = (k) => {
-			if (!k) return k;
-			const overrides = { phone: 'Phone', address: 'Address', type: 'Type', tenant_type: 'Type' };
-			if (overrides[k]) return overrides[k];
-			return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-		};
-		const summarize = (r) => {
-			const actor = r.actor_name || 'System';
-			const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
-			const modelIdPart = r.model_id ? `#${r.model_id}` : '';
-			const entityName = (
-				// Prefer an explicit name (after -> before fallbacks)
-				(r.after && (r.after.name || r.after.title)) ||
-				(r.before && (r.before.name || r.before.title)) ||
-				r.tenant_name ||
-				null
-			);
-			let verb;
-			switch (r.action) {
-				case 'created': verb = 'created'; break;
-				case 'updated': verb = 'updated'; break;
-				case 'deleted': verb = 'soft-deleted'; break;
-				case 'force_deleted': verb = 'permanently deleted'; break;
-				case 'restored': verb = 'restored'; break;
-				default: verb = r.action || 'acted on';
+		const truncate = (s, max = 60) => (s && s.length > max ? s.slice(0, max) + '…' : s);
+		const candidateKeys = ['name','title','label','lake_name','alt_name','subject','description','parameter_name','key','code','identifier','slug','email','username','full_name','org_name','company_name','tenant_name','message','content','comment','text'];
+		const extractEntityName = (r) => {
+			const after = r.after || {}; const before = r.before || {};
+			// User special case
+			const modelBase = r.model_type ? r.model_type.split('\\').pop() : '';
+			if (modelBase === 'User') {
+				const fn = after.first_name || before.first_name || '';
+				const ln = after.last_name || before.last_name || '';
+				const full = `${fn} ${ln}`.trim();
+				if (full) return full;
 			}
-			// Special richer formatting for updates w/ before & after
-			if (verb === 'updated' && r.before && r.after) {
-				try {
-					const keys = r.diff_keys && Array.isArray(r.diff_keys) && r.diff_keys.length
-						? r.diff_keys
-						: Array.from(new Set([...Object.keys(r.before), ...Object.keys(r.after)]));
-					const diffs = [];
-					for (const k of keys) {
-						const bv = r.before[k];
-						const av = r.after[k];
-						if (JSON.stringify(bv) === JSON.stringify(av)) continue;
-						const safeB = truncate(bv === null ? 'NULL' : String(bv));
-						const safeA = truncate(av === null ? 'NULL' : String(av));
-						diffs.push(`${labelize(k)} from '${safeB}' to '${safeA}'`);
-					}
-					// Limit very long lists but show +N more
-					const MAX_SHOW = 8;
-					let changesTxt;
-					if (diffs.length > MAX_SHOW) {
-						changesTxt = diffs.slice(0, MAX_SHOW).join('; ') + `; +${diffs.length - MAX_SHOW} more`;
-					} else {
-						changesTxt = diffs.join('; ');
-					}
-					const displayEntity = entityName
-						? `${entityName}${modelIdPart ? ` (${modelBase}${modelIdPart})` : ''}`
-						: `${modelBase}${modelIdPart}`;
-					return `${actor} updated ${displayEntity}. Changes: ${changesTxt} at ${fmt(r.event_at)}.`;
-				} catch (e) {
-					// Fallback to generic below
+			// Check hydrated cache
+			const cacheKey = r.model_type + '::' + r.model_id;
+			if (entityNameCache[cacheKey]) return entityNameCache[cacheKey];
+			// Scan candidate keys
+			for (const k of candidateKeys) {
+				const v = after[k] || before[k];
+				if (typeof v === 'string' && v.trim()) return v.trim();
+			}
+			// Fallback: first non-empty string value
+			const pickGeneric = (obj) => {
+				for (const [k,v] of Object.entries(obj)) {
+					if (!v) continue;
+					if (k.match(/id$/i)) continue;
+					if (typeof v === 'string' && v.trim().length > 0 && v.length <= 120) return v.trim();
 				}
-			}
-			// Generic fallback (create/delete/etc or failed diff)
-			const displayEntity = entityName
-				? `${entityName}${modelIdPart ? ` (${modelBase}${modelIdPart})` : ''}`
-				: `${modelBase}${modelIdPart}`;
-			return `${actor} ${verb} ${displayEntity} at ${fmt(r.event_at)}.`;
+				return null;
+			};
+			return pickGeneric(after) || pickGeneric(before) || null;
 		};
 		return [
 			{ id: 'summary', header: 'Summary', render: r => {
 				const actor = r.actor_name || 'System Admin';
 				const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
-				const idPart = r.model_id ? `#${r.model_id}` : '';
+				const idTag = r.model_id ? `${modelBase}#${r.model_id}` : modelBase;
 				let verb;
 				switch (r.action) {
 					case 'created': verb = 'Created'; break;
@@ -208,38 +305,106 @@ export default function AdminAuditLogsPage() {
 					case 'restored': verb = 'Restored'; break;
 					default: verb = (r.action || 'Did').replace(/\b\w/g, c=>c.toUpperCase());
 				}
-				return `${actor} ${verb} ${modelBase} ${idPart}`.trim();
-			}, width: 520 },
+				const entityName = extractEntityName(r);
+				if (entityName) return `${actor} ${verb} ${truncate(entityName)} (${idTag})`;
+				return `${actor} ${verb} ${idTag}`;
+			}, width: 560 },
 			{ id: 'actions', header: 'Action', width: 80, render: r => (
 				<button className="pill-btn ghost sm" title="View Details" onClick={() => openDetail(r)} style={{ display:'flex', alignItems:'center', gap:4 }}>
 					<FiEye />
 				</button>
 			)},
 		];
-	}, [openDetail]);
+	}, [openDetail, entityNameCache]);
+
+	// Hydration logic: fetch entity name when missing in before/after
+	const hydrateEntityName = async (row) => {
+		if (!row || !row.model_type || !row.model_id) return;
+		const cacheKey = row.model_type + '::' + row.model_id;
+		if (entityNameCache[cacheKey]) return; // already cached
+		if (pendingHydrateRef.current.has(cacheKey)) return; // already queued
+		pendingHydrateRef.current.add(cacheKey);
+		// Map model_type to API endpoint heuristically
+		let endpoint = null;
+		const base = row.model_type.split('\\').pop();
+		switch (base) {
+			case 'Lake': endpoint = `/lakes/${row.model_id}`; break;
+			case 'Tenant': endpoint = `/tenants/${row.model_id}`; break;
+			case 'User': endpoint = `/users/${row.model_id}`; break;
+			case 'Parameter': endpoint = `/parameters/${row.model_id}`; break;
+			default: endpoint = null; break;
+		}
+		if (!endpoint) return;
+		try {
+			const res = await api.get(endpoint);
+			const data = res?.data || res;
+			if (data) {
+				const nameCandidate = data.name || data.title || data.label || data.full_name || (data.first_name && data.last_name ? `${data.first_name} ${data.last_name}` : null) || data.slug || data.code || null;
+				if (nameCandidate) {
+					setEntityNameCache(prev => ({ ...prev, [cacheKey]: nameCandidate }));
+				}
+			}
+		} catch {/* ignore hydration errors */}
+	};
+
+	const queueHydration = (rowsArr) => {
+		if (!Array.isArray(rowsArr) || !rowsArr.length) return;
+		// Only hydrate rows lacking an entityName already in cache and lacking identifying keys in before/after
+		for (const r of rowsArr) {
+			const before = r.before || {}; const after = r.after || {};
+			const hasName = ['name','title','label','lake_name','alt_name','full_name','tenant_name'].some(k => (after[k] || before[k]));
+			if (hasName) continue;
+			hydrateEntityName(r);
+		}
+	};
 
 	const visibleColumns = useMemo(() => columns.filter(c => visibleMap[c.id] !== false), [columns, visibleMap]);
 
 	const normalized = useMemo(() => rows, [rows]);
 
+	// Use stable catalogs (do not shrink when filters applied)
+	// Fallback derive from current rows if catalogs are still empty (first render or seed failed)
+	const derivedRoles = allRoles.length ? allRoles : Array.from(new Set(rows.map(r => r.actor_role || (r.actor && r.actor.role)).filter(Boolean))).sort();
+	const derivedTenants = allTenants.length ? allTenants : (() => {
+		const map = new Map();
+		for (const r of rows) if (r.tenant_id) {
+			const key = String(r.tenant_id);
+			if (!map.has(key)) map.set(key, r.tenant_name || `Tenant ${key}`);
+		}
+		return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
+	})();
+	const derivedEntities = allEntities.length ? allEntities : (() => {
+		const map = new Map();
+		for (const r of rows) if (r.model_type) {
+			const full = r.model_type; const base = full.split('\\').pop(); if (!map.has(full)) map.set(full, base);
+		}
+		return Array.from(map.entries()).map(([full, base])=>({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
+	})();
+
 	const actions = [];
 
-	// Build change lines for modal
+	// Build structured changes for modal table: [{fieldLabel, fromVal, toVal}]
 	const buildChanges = (row) => {
 		if (!row || !row.before || !row.after) return [];
 		const keys = row.diff_keys && Array.isArray(row.diff_keys) && row.diff_keys.length
 			? row.diff_keys
 			: Array.from(new Set([...Object.keys(row.before), ...Object.keys(row.after)]));
-		const lines = [];
 		const prettify = (k) => k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+		const normalize = (v) => {
+			if (v === null || v === undefined || v === '') return 'NULL';
+			if (typeof v === 'object') {
+				try { return JSON.stringify(v); } catch { return String(v); }
+			}
+			return String(v);
+		};
+		const changes = [];
 		for (const k of keys) {
-			const b = row.before[k];
-			const a = row.after[k];
-			if (JSON.stringify(b) === JSON.stringify(a)) continue;
-			const show = (v) => (v === null || v === undefined || v === '') ? 'NULL' : String(v);
-			lines.push(`${prettify(k)}: ${show(b)} → ${show(a)}`);
+			const before = row.before[k];
+			const after = row.after[k];
+			if (JSON.stringify(before) === JSON.stringify(after)) continue; // skip unchanged
+			changes.push({ fieldLabel: prettify(k), fromVal: normalize(before), toVal: normalize(after) });
 		}
-		return lines;
+		return changes;
 	};
 
 	const columnPickerAdapter = {
@@ -249,16 +414,29 @@ export default function AdminAuditLogsPage() {
 	};
 
 	const advancedFields = [
-		{ id: 'action', label: 'Action', type: 'text', value: fAction, onChange: v => setFAction(v) },
-		{ id: 'model_type', label: 'Model Type', type: 'text', value: fModelType, onChange: v => setFModelType(v) },
-		{ id: 'actor_id', label: 'Actor ID', type: 'number', value: fActorId, onChange: v => setFActorId(v) },
-		{ id: 'date_range', label: 'Date Range', type: 'date-range', value: fDateRange, onChange: rng => setFDateRange(rng) },
+		{ id: 'action', label: 'Action', type: 'select', value: fAction, onChange: v => setFAction(v), options: [
+			{ value: '', label: 'All' },
+			{ value: 'created', label: 'Created' },
+			{ value: 'updated', label: 'Updated' },
+			{ value: 'deleted', label: 'Deleted' },
+			{ value: 'force_deleted', label: 'Force Deleted' },
+			{ value: 'restored', label: 'Restored' },
+		] },
+		{ id: 'actor_name', label: 'Name', type: 'text', value: fActorName, onChange: v => setFActorName(v) },
+		{ id: 'role', label: 'Role', type: 'select', value: fRole, onChange: v => setFRole(v), options: [ { value:'', label:'All' }, ...derivedRoles.map(r=>({ value:r, label:r })) ] },
+		{ id: 'group_tei', label: 'Scope', type: 'group', children: [
+			{ id: 'tenant_id', label: 'Tenant', type: 'select', value: fTenant, onChange: v => setFTenant(v), options: [ { value:'', label:'All' }, ...derivedTenants ] },
+			{ id: 'model_type', label: 'Entity', type: 'select', value: fEntity, onChange: v => setFEntity(v), options: [ { value:'', label:'All' }, ...derivedEntities.map(e=>({ value:e.full, label:e.base })) ] },
+			{ id: 'time_window', label: 'Time Window', type: 'select', value: fTimeWindow, onChange: v => setFTimeWindow(v), options: [
+				{ value:'', label:'All' }, { value:'24h', label:'Last 24h' }, { value:'7d', label:'Last 7d' }, { value:'30d', label:'Last 30d' }
+			] },
+		]},
 	];
 
-	const activeAdvCount = [fAction, fModelType, fActorId, fDateRange[0], fDateRange[1]].filter(Boolean).length;
+	const activeAdvCount = [fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow].filter(Boolean).length;
 
 	const clearAdvanced = () => {
-		setFAction(''); setFModelType(''); setFActorId(''); setFDateRange([null,null]); fetchLogs(buildParams({ page: 1 }));
+		setFAction(''); setFActorName(''); setFRole(''); setFTenant(''); setFEntity(''); setFTimeWindow(''); fetchLogs(buildParams({ page: 1 }));
 	};
 
 	const goPage = (p) => fetchLogs(buildParams({ page: p }));
@@ -295,9 +473,37 @@ export default function AdminAuditLogsPage() {
 							tableId={TABLE_ID}
 							columns={visibleColumns}
 							data={normalized.filter(r => {
-								if (!q) return true;
-								const summaryText = columns[0].render(r) || '';
-								return summaryText.toLowerCase().includes(q.toLowerCase());
+								// Basic text search on summary
+								if (q) {
+									const summaryText = columns[0].render(r) || '';
+									if (!summaryText.toLowerCase().includes(q.toLowerCase())) return false;
+								}
+								// Client-side fallback filters
+								if (fActorName) {
+									const nm = (r.actor_name || '').toLowerCase();
+									if (!nm.includes(fActorName.toLowerCase())) return false;
+								}
+								if (fRole) {
+									const rv = (r.actor_role || (r.actor && r.actor.role) || '').toLowerCase();
+									if (rv !== fRole.toLowerCase()) return false;
+								}
+								if (fTenant) {
+									if (String(r.tenant_id) !== String(fTenant)) return false;
+								}
+								if (fEntity) {
+									if (r.model_type !== fEntity) return false;
+								}
+								if (fTimeWindow) {
+									const ev = r.event_at ? new Date(r.event_at) : null;
+									if (!ev) return false;
+									const now = new Date();
+									const diff = now - ev;
+									const day = 24*60*60*1000;
+									if (fTimeWindow === '24h' && diff > day) return false;
+									if (fTimeWindow === '7d' && diff > 7*day) return false;
+									if (fTimeWindow === '30d' && diff > 30*day) return false;
+								}
+								return true;
 							})}
 							pageSize={perPage}
 							actions={actions}
@@ -314,7 +520,23 @@ export default function AdminAuditLogsPage() {
 			</div>
 
 		{detailRow && (
-			<div className="lv-modal-backdrop" style={{ position:'absolute', inset:0, background:'transparent', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 20px', zIndex:20 }} onClick={closeDetail}>
+			<div
+				className="lv-modal-backdrop"
+				style={{
+					// Use absolute so it stays within the dashboard container bounds
+					position: 'absolute',
+					inset: 0,
+					// Subtle dark backdrop to emphasize the modal (adjust opacity as needed)
+					background: 'transparent',
+					display: 'flex',
+					alignItems: 'center', // vertical centering
+					justifyContent: 'center', // horizontal centering
+					padding: '40px 20px',
+					zIndex: 20,
+					overflowY: 'auto', // allow scrolling if content grows tall
+				}}
+				onClick={closeDetail}
+			>
 				<div className="lv-modal" style={{ background:'#fff', borderRadius:14, padding:24, maxWidth:720, width:'100%', position:'relative', boxShadow:'0 10px 24px -4px rgba(0,0,0,0.25)', animation:'fadeInScale .18s ease' }} onClick={e=>e.stopPropagation()}>
 					<button onClick={closeDetail} style={{ position:'absolute', top:10, right:10 }} className="pill-btn ghost sm">✕</button>
 					<h3 style={{ marginTop:0, marginBottom:16, fontSize:20 }}>Audit Log Details</h3>
@@ -329,10 +551,36 @@ export default function AdminAuditLogsPage() {
 					{detailRow.action === 'updated' && detailRow.before && detailRow.after && (
 						<div style={{ marginTop:18 }}>
 							<strong style={{ fontSize:13, letterSpacing:0.5, textTransform:'uppercase', color:'#374151' }}>Changes</strong>
-							<ul style={{ marginTop:10, paddingLeft:18, display:'flex', flexDirection:'column', gap:6 }}>
-								{buildChanges(detailRow).map((ln,i)=>(<li key={i} style={{ fontSize:13.5, background:'#f9fafb', padding:'6px 10px', borderRadius:6, border:'1px solid #f0f2f5' }}>{ln}</li>))}
-								{buildChanges(detailRow).length === 0 && <li style={{ fontSize:14 }}>No field differences detected.</li>}
-							</ul>
+							<div style={{ marginTop:10, border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
+								<table style={{ width:'100%', borderCollapse:'collapse', fontSize:13.5 }}>
+									<thead style={{ background:'#f3f4f6' }}>
+										<tr>
+											<th style={{ textAlign:'left', padding:'8px 10px', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:0.5 }}>What</th>
+											<th style={{ textAlign:'left', padding:'8px 10px', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:0.5 }}>From</th>
+											<th style={{ textAlign:'left', padding:'8px 10px', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:0.5 }}>To</th>
+										</tr>
+									</thead>
+									<tbody>
+										{(() => {
+											const changes = buildChanges(detailRow);
+											if (changes.length === 0) {
+												return (
+													<tr>
+														<td colSpan={3} style={{ padding:'10px 12px', fontStyle:'italic', color:'#6b7280' }}>No field differences detected.</td>
+												</tr>
+											);
+											}
+											return changes.map((ch,i) => (
+												<tr key={i} style={{ background: i % 2 ? '#f9fafb' : 'white' }}>
+													<td style={{ padding:'6px 10px', fontWeight:500 }}>{ch.fieldLabel}</td>
+													<td style={{ padding:'6px 10px', color:'#b91c1c', whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{ch.fromVal}</td>
+													<td style={{ padding:'6px 10px', color:'#065f46', whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{ch.toVal}</td>
+												</tr>
+											));
+										})()}
+									</tbody>
+								</table>
+							</div>
 						</div>
 					)}
 					{detailRow.action !== 'updated' && (

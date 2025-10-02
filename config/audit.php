@@ -4,6 +4,11 @@ return [
     'capture_ip' => true,
     'capture_user_agent' => false,
     'max_column_length' => 15000,
+    // Identity fields: always include these (if present) in before/after snapshots for update events
+    // even if they were not part of the dirty attributes, so UI summaries can display meaningful names.
+    'identity_fields' => [
+        'name','title','label','lake_name','full_name','first_name','last_name','tenant_name','code','slug'
+    ],
     'global_exclude' => [
         'password','remember_token','created_at','updated_at','deleted_at'
     ],
@@ -11,8 +16,12 @@ return [
         App\Models\User::class => [
             'exclude' => ['password','remember_token']
         ],
-        App\Models\Tenant::class => [],
-        App\Models\Lake::class => [],
+        App\Models\Tenant::class => [
+            'identity' => ['name']
+        ],
+        App\Models\Lake::class => [
+            'identity' => ['name','alt_name']
+        ],
         App\Models\Layer::class => [],
         App\Models\Station::class => [],
         App\Models\SamplingEvent::class => [],
