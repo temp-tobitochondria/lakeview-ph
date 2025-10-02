@@ -15,7 +15,7 @@ class TenantController extends Controller
 {
     /**
      * GET /api/admin/tenants
-     * ?q=  (search by name/slug/domain)
+     * ?q=  (search by name/slug)
      * ?with_deleted=1  (include soft-deleted)
      * ?per_page=15
      */
@@ -38,13 +38,12 @@ class TenantController extends Controller
 
         $qb = Tenant::query()
             ->when($withDeleted, fn($w) => $w->withTrashed())
-            // Global free-text q across name/slug/domain
+            // Global free-text q across name/slug
             ->when($q !== '', function ($w) use ($q) {
                 $p = "%{$q}%";
                 $w->where(function ($x) use ($p) {
                     $x->where('name', 'ILIKE', $p)
-                      ->orWhere('slug', 'ILIKE', $p)
-                      ->orWhere('domain', 'ILIKE', $p);
+                      ->orWhere('slug', 'ILIKE', $p);
                 });
             })
             // Field-specific filters (AND conditions)
@@ -87,12 +86,10 @@ class TenantController extends Controller
         $data = $request->validate([
             'name'          => 'required|string|max:255|unique:tenants,name',
             'type'          => 'nullable|string|max:255',
-            'domain'        => 'nullable|string|max:255|unique:tenants,domain',
             'contact_email' => 'nullable|email|max:255',
             'phone'         => 'nullable|string|max:255',
             'address'       => 'nullable|string|max:500',
             'active'        => 'sometimes|boolean',
-            'metadata'      => 'nullable|array',
         ]);
         $tenant = Tenant::create($data);
         return response()->json(['data' => $this->tenantResource($tenant)], 201);
@@ -107,12 +104,10 @@ class TenantController extends Controller
         $data = $request->validate([
             'name'          => 'sometimes|string|max:255|unique:tenants,name,' . $tenant->id,
             'type'          => 'sometimes|nullable|string|max:255',
-            'domain'        => 'sometimes|nullable|string|max:255|unique:tenants,domain,' . $tenant->id,
             'contact_email' => 'sometimes|nullable|email|max:255',
             'phone'         => 'sometimes|nullable|string|max:255',
             'address'       => 'sometimes|nullable|string|max:500',
             'active'        => 'sometimes|boolean',
-            'metadata'      => 'sometimes|nullable|array',
         ]);
         $tenant->fill($data);
         $tenant->save();
@@ -240,13 +235,11 @@ class TenantController extends Controller
             'id'            => $t->id,
             'name'          => $t->name,
             'slug'          => $t->slug,
-            'domain'        => $t->domain,
             'type'          => $t->type,
             'phone'         => $t->phone,
             'address'       => $t->address,
             'contact_email' => $t->contact_email,
             'active'        => (bool) $t->active,
-            'metadata'      => $t->metadata,
             'deleted_at'    => optional($t->deleted_at)->toIso8601String(),
             'created_at'    => optional($t->created_at)->toIso8601String(),
             'updated_at'    => optional($t->updated_at)->toIso8601String(),

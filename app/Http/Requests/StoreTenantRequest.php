@@ -49,8 +49,7 @@ class StoreTenantRequest extends FormRequest
             'contact_email' => ['required', 'email', 'max:255'],
             'phone'         => ['nullable', 'string', 'max:20', 'regex:/^\+639\d{9}$/'],
             'address'       => ['nullable', 'string'],
-            'domain'        => ['nullable', 'string', 'max:255', 'unique:tenants,domain'],
-            'metadata'      => ['nullable', 'array'],
+            // Deprecated fields removed: domain, metadata
             'active'        => ['sometimes', 'boolean'],
         ];
     }

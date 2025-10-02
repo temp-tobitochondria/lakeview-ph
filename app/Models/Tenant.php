@@ -10,8 +10,9 @@ class Tenant extends Model
 {
     use HasFactory, SoftDeletes, \App\Support\Audit\Auditable;
 
-    protected $fillable = ['name', 'type', 'phone', 'address', 'active', 'domain', 'contact_email', 'metadata', 'slug'];
-    protected $casts = ['active' => 'boolean', 'metadata' => 'array'];
+    // Deprecated columns removed: domain, metadata
+    protected $fillable = ['name', 'type', 'phone', 'address', 'active', 'contact_email', 'slug'];
+    protected $casts = ['active' => 'boolean'];
 
     public function users()
     {

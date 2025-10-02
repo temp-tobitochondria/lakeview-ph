@@ -23,7 +23,6 @@ class TenantFactory extends Factory
             'phone' => $this->faker->phoneNumber(),
             'address' => $this->faker->address(),
             'slug' => $slug,
-            'domain' => $slug . '.example.test',
             'active' => true,
         ];
     }

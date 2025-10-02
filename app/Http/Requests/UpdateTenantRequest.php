@@ -43,11 +43,7 @@ class UpdateTenantRequest extends FormRequest
             'contact_email' => ['required', 'email', 'max:255'],
             'phone'         => ['nullable', 'string', 'max:20', 'regex:/^\+639\d{9}$/'],
             'address'       => ['nullable', 'string'],
-            'domain'        => [
-                'nullable', 'string', 'max:255',
-                Rule::unique('tenants', 'domain')->ignore($tenantId),
-            ],
-            'metadata'      => ['nullable', 'array'],
+            // Deprecated fields removed: domain, metadata
             'active'        => ['sometimes', 'boolean'],
         ];
     }
