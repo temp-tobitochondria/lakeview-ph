@@ -271,27 +271,6 @@ export default function LayerWizard({
             />
           </div>
 
-            <div className="org-form" style={{ marginTop: 12 }}>
-            <div className="form-group" style={{ flexBasis: "100%" }}>
-              <label>Or paste GeoJSON</label>
-              <textarea
-                rows={8}
-                value={wdata.geomText}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  wSetData((d) => ({ ...d, geomText: text }));
-                  try {
-                    const parsed = JSON.parse(text);
-                    handleParsedGeoJSON(parsed, "");
-                  } catch {
-                    // keep as user types
-                  }
-                }}
-                placeholder='e.g. {"type":"Polygon","coordinates":[...]} or a Feature/FeatureCollection of polygons'
-              />
-            </div>
-          </div>
-
           {error && (
             <div className="alert-note" style={{ marginTop: 8 }}>
               <FiAlertTriangle /> {error}
@@ -462,7 +441,6 @@ export default function LayerWizard({
                   <option value="" disabled>Select category…</option>
                   <option value="Profile">Profile</option>
                   <option value="Boundary">Boundary</option>
-                  <option value="Bathymetry">Bathymetry</option>
                 </select>
               </div>
 
