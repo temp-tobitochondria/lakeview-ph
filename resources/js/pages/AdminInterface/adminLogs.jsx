@@ -29,6 +29,24 @@ export default function AdminAuditLogsPage() {
 		if (typeof v === 'object') return v; // already object / array
 		return {};
 	};
+	// Helper to extract lake name from row or payloads
+	const extractLakeName = (r) => {
+		if (!r) return null;
+		// direct field
+		if (r.lake_name) return r.lake_name;
+		// sometimes backend provides entity_name for lakes
+		if (r.entity_name && /(lake)$/i.test((r.model_type || '').split('\\').pop())) return r.entity_name;
+		// payloads
+		const scan = (obj) => {
+			if (!obj || typeof obj !== 'object') return null;
+			if (obj.lake_name) return obj.lake_name;
+			if (obj.lake && typeof obj.lake === 'object' && obj.lake.name) return obj.lake.name;
+			if (obj.name && typeof obj.name === 'string') return obj.name;
+			return null;
+		};
+		let v = scan(r.after) || scan(r.before) || scan(r);
+		return v || null;
+	};
 	const [me, setMe] = useState(null);
 	const [rows, setRows] = useState([]);
 	// Legacy hydration cache (kept for backward compatibility but backend now provides entity_name)
@@ -141,7 +159,15 @@ export default function AdminAuditLogsPage() {
 		setLoading(true); setError(null);
 		try {
 			const res = await api.get(effectiveBase, { params });
-			const items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res); // adapt paginator
+			let items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res); // adapt paginator
+			// Remove SampleResult rows (database-only artifacts)
+			if (Array.isArray(items)) {
+				items = items.filter(it => {
+					const mt = it.model_type || '';
+					const base = String(mt).split('\\').pop();
+					return base !== 'SampleResult';
+				});
+			}
 			const normalizedItems = Array.isArray(items)
 				? items.map(r => ({
 					...r,
@@ -180,6 +206,8 @@ export default function AdminAuditLogsPage() {
 					for (const r of normalizedItems) if (r.model_type) {
 						const full = r.model_type;
 						const base = full.split('\\').pop();
+						// exclude SampleResult from entity catalog
+						if (base === 'SampleResult') continue;
 						if (!map.has(full)) map.set(full, base);
 					}
 					return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
@@ -232,6 +260,8 @@ export default function AdminAuditLogsPage() {
 						for (const r of items) if (r.model_type) {
 							const full = r.model_type;
 							const base = full.split('\\').pop();
+							// exclude SampleResult from seed catalog
+							if (base === 'SampleResult') continue;
 							if (!map.has(full)) map.set(full, base);
 						}
 						return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
@@ -260,26 +290,33 @@ export default function AdminAuditLogsPage() {
 
 // openDetail removed
 
-	const columns = useMemo(() => {
+		const columns = useMemo(() => {
 		const truncate = (s, max = 60) => (s && s.length > max ? s.slice(0, max) + '…' : s);
-		const extractEntityName = (r) => r.entity_name || null;
+			const extractEntityName = (r) => r.entity_name || null;
 		return [
 			{ id: 'summary', header: 'Summary', render: r => {
-				const actor = r.actor_name || 'System Admin';
-				const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
-				const idTag = r.model_id ? `${modelBase}#${r.model_id}` : modelBase;
-				let verb;
-				switch (r.action) {
-					case 'created': verb = 'Created'; break;
-					case 'updated': verb = 'Updated'; break;
-					case 'deleted': verb = 'Deleted'; break;
-					case 'force_deleted': verb = 'Force Deleted'; break;
-					case 'restored': verb = 'Restored'; break;
-					default: verb = (r.action || 'Did').replace(/\b\w/g, c=>c.toUpperCase());
-				}
-				const entityName = extractEntityName(r);
-				if (entityName) return `${actor} ${verb} ${truncate(entityName)}`; // show entity without parentheses
-				return `${actor} ${verb} ${idTag}`; // fallback with id when no entity name
+					const actor = r.actor_name || 'System Admin';
+					const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
+					let verb;
+					switch (r.action) {
+						case 'created': verb = 'Created'; break;
+						case 'updated': verb = 'Updated'; break;
+						case 'deleted': verb = 'Deleted'; break;
+						case 'force_deleted': verb = 'Force Deleted'; break;
+						case 'restored': verb = 'Restored'; break;
+						default: verb = (r.action || 'Did').replace(/\b\w/g, c=>c.toUpperCase());
+					}
+					// Special formatting for SamplingEvent (show Lake name/id)
+					const base = modelBase;
+					if (base === 'SamplingEvent') {
+						const lakeName = extractLakeName(r);
+						const lakeLabel = lakeName ? `Lake ${truncate(lakeName)}` : (r.model_id ? `Lake #${r.model_id}` : 'Lake');
+						return `${actor} ${verb} ${lakeLabel} at ${fmt(r.event_at)}`;
+					}
+					const entityName = extractEntityName(r);
+					if (entityName) return `${actor} ${verb} ${truncate(entityName)}`;
+					const idTag = r.model_id ? `${modelBase}#${r.model_id}` : modelBase;
+					return `${actor} ${verb} ${idTag}`;
 			}, width: 560 },
 			{ id: 'target', header: 'Target', render: r => {
 				const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
@@ -315,7 +352,10 @@ export default function AdminAuditLogsPage() {
 	const derivedEntities = allEntities.length ? allEntities : (() => {
 		const map = new Map();
 		for (const r of rows) if (r.model_type) {
-			const full = r.model_type; const base = full.split('\\').pop(); if (!map.has(full)) map.set(full, base);
+			const full = r.model_type; const base = full.split('\\').pop();
+			// exclude SampleResult from derived entities
+			if (base === 'SampleResult') continue;
+			if (!map.has(full)) map.set(full, base);
 		}
 		return Array.from(map.entries()).map(([full, base])=>({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
 	})();

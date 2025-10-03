@@ -15,6 +15,21 @@ const ADV_KEY = `${TABLE_ID}::filters_advanced`;
 
 const fmt = (s) => (s ? new Date(s).toLocaleString() : '—');
 
+// Helper to extract lake name from row or payloads
+const extractLakeName = (r) => {
+  if (!r) return null;
+  if (r.lake_name) return r.lake_name;
+  if (r.entity_name && /(lake)$/i.test((r.model_type || '').split('\\').pop())) return r.entity_name;
+  const scan = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (obj.lake_name) return obj.lake_name;
+    if (obj.lake && typeof obj.lake === 'object' && obj.lake.name) return obj.lake.name;
+    if (obj.name && typeof obj.name === 'string') return obj.name;
+    return null;
+  };
+  return scan(r.after) || scan(r.before) || scan(r) || null;
+};
+
 export default function OrgAuditLogsPage() {
   const [me, setMe] = useState(null);
   const [rows, setRows] = useState([]);
@@ -78,7 +93,14 @@ export default function OrgAuditLogsPage() {
     setLoading(true); setError(null);
     try {
       const res = await api.get(`/org/${effectiveTenantId}/audit-logs`, { params });
-      const items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res);
+      let items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res);
+      if (Array.isArray(items)) {
+        items = items.filter(it => {
+          const mt = it.model_type || '';
+          const base = String(mt).split('\\').pop();
+          return base !== 'SampleResult';
+        });
+      }
       setRows(Array.isArray(items) ? items : []);
       const m = res?.meta || res || {};
       setMeta({
@@ -113,7 +135,6 @@ export default function OrgAuditLogsPage() {
       { id: 'summary', header: 'Summary', render: r => {
         const actor = r.actor_name || 'User';
         const modelBase = r.model_type ? r.model_type.split('\\').pop() : 'Record';
-        const idTag = r.model_id ? `${modelBase}#${r.model_id}` : modelBase;
         let verb;
         switch (r.action) {
           case 'created': verb = 'Created'; break;
@@ -123,7 +144,14 @@ export default function OrgAuditLogsPage() {
           case 'restored': verb = 'Restored'; break;
           default: verb = (r.action || 'Did').replace(/\b\w/g,c=>c.toUpperCase());
         }
+        const base = modelBase;
+        if (base === 'SamplingEvent') {
+          const lakeName = extractLakeName(r);
+          const lakeLabel = lakeName ? `Lake ${truncate(lakeName)}` : (r.model_id ? `Lake #${r.model_id}` : 'Lake');
+          return `${actor} ${verb} ${lakeLabel} at ${fmt(r.event_at)}`;
+        }
         if (r.entity_name) return `${actor} ${verb} ${truncate(r.entity_name)}`;
+        const idTag = r.model_id ? `${modelBase}#${r.model_id}` : modelBase;
         return `${actor} ${verb} ${idTag}`;
       }, width: 560 },
       { id: 'target', header: 'Target', render: r => (r.model_type ? r.model_type.split('\\').pop() : 'Record'), width: 140 },
@@ -161,7 +189,7 @@ export default function OrgAuditLogsPage() {
   const entityOptions = useMemo(()=> {
     const map = new Map();
     for (const r of rows) if (r.model_type) {
-      const full = r.model_type; const base = full.split('\\').pop(); if (!map.has(full)) map.set(full, base);
+      const full = r.model_type; const base = full.split('\\').pop(); if (base === 'SampleResult') continue; if (!map.has(full)) map.set(full, base);
     }
     return Array.from(map.entries()).map(([full, base])=>({ value: full, label: base })).sort((a,b)=>a.label.localeCompare(b.label));
   }, [rows]);
