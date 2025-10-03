@@ -989,6 +989,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         <div style={{ display:'flex', gap:8, width:'100%' }}>
             <select className="pill-btn" value={selectedTest} onChange={e=>{setSelectedTest(e.target.value); setResult(null);}} style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'8px 10px', fontSize:12, height:36, lineHeight:'18px' }}>
             <option value="" disabled>Select test</option>
+            <option value="shapiro_wilk" disabled={inferredTest!=='one-sample'}>Shapiro–Wilk normality test</option>
             {/* One-sample options */}
             <option value="t_one_sample" disabled={inferredTest!=='one-sample'}>One-sample t-test</option>
             <option value="wilcoxon_signed_rank" disabled={inferredTest!=='one-sample'}>Wilcoxon signed-rank</option>
