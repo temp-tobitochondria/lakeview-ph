@@ -10,6 +10,72 @@ use Carbon\Carbon;
 class StatsController extends Controller
 {
     /**
+     * GET /api/stats/depths
+     * Returns distinct sample depths (depth_m) for a parameter (by code) optionally filtered by lake and date range.
+     * Query params:
+     *   parameter_code (required) string
+     *   lake_id (optional) int
+     *   date_from/date_to (optional) YYYY-MM-DD
+     *   organization_id (optional) int (scopes sampling events like series does)
+     * Response: { depths: number[] }
+     */
+    public function depths(Request $request)
+    {
+        $data = $request->validate([
+            'parameter_code' => 'required|string',
+            'lake_id' => 'nullable|integer',
+            'lake_ids' => 'nullable|array|min:2|max:2',
+            'lake_ids.*' => 'integer',
+            'organization_id' => 'nullable|integer',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+        ]);
+
+        $param = \DB::table('parameters')
+            ->whereRaw('LOWER(code) = ?', [strtolower($data['parameter_code'])])
+            ->first(['id']);
+        if (!$param) return response()->json(['depths' => []]);
+
+        $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
+        $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
+
+        $q = \DB::table('sample_results as sr')
+            ->join('sampling_events as se', 'sr.sampling_event_id', '=', 'se.id')
+            ->join('parameters as p', 'sr.parameter_id', '=', 'p.id')
+            ->where('p.code', '=', $data['parameter_code'])
+            ->whereNotNull('sr.depth_m')
+            ->whereNotNull('sr.value');
+
+        if (!empty($data['lake_ids']) && is_array($data['lake_ids'])) {
+            $q->whereIn('se.lake_id', $data['lake_ids']);
+        } elseif (!empty($data['lake_id'])) {
+            $q->where('se.lake_id', (int)$data['lake_id']);
+        }
+        if (!empty($data['organization_id'])) $q->where('se.organization_id', (int)$data['organization_id']);
+        if ($from) $q->where('se.sampled_at', '>=', $from->copy()->timezone('UTC'));
+        if ($to) $q->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
+
+        // Round depths to 2 decimals for grouping stability (avoid floating drift)
+        $driver = \DB::getDriverName();
+        if ($driver === 'pgsql') {
+            $q->selectRaw('ROUND(sr.depth_m::numeric, 2) as d')
+              ->groupBy('d')
+              ->orderBy('d');
+        } else {
+            $q->selectRaw('ROUND(sr.depth_m, 2) as d')
+              ->groupBy('d')
+              ->orderBy('d');
+        }
+
+        // Important: do not drop depth 0.0 (filter() without callback removes falsy values like 0)
+        $depths = $q->pluck('d')
+            ->map(fn($v)=> is_numeric($v) ? (float)$v : null)
+            ->filter(fn($v)=> $v !== null) // keep 0.0
+            ->values()
+            ->all();
+        return response()->json(['depths' => $depths]);
+    }
+    /**
      * POST /api/stats/series
      * Returns raw numeric series filtered by parameter, lake(s), and date range.
     * Body (JSON):
@@ -42,6 +108,7 @@ class StatsController extends Controller
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
             'applied_standard_id' => 'nullable|integer|exists:wq_standards,id',
+            'depth_m' => 'nullable|numeric', // optional depth filter applied equally to all selected lakes
         ]);
 
         $param = \DB::table('parameters')
@@ -58,6 +125,17 @@ class StatsController extends Controller
             ->join('parameters as p', 'sr.parameter_id', '=', 'p.id')
             ->where('p.code', '=', $data['parameter_code'])
             ->whereNotNull('sr.value');
+        $driver = \DB::getDriverName();
+        if (isset($data['depth_m']) && $data['depth_m'] !== null) {
+            $target = (float)$data['depth_m'];
+            if ($driver === 'pgsql') {
+                // Cast to numeric for ROUND in PostgreSQL
+                $query->whereRaw('ROUND(sr.depth_m::numeric, 2) = ROUND(?::numeric, 2)', [$target]);
+            } else {
+                // MySQL / MariaDB ROUND(double,2) signature exists
+                $query->whereRaw('ROUND(sr.depth_m, 2) = ROUND(?, 2)', [$target]);
+            }
+        }
 
         if ($from) $query->where('se.sampled_at', '>=', $from->copy()->timezone('UTC'));
         if ($to) $query->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
@@ -103,19 +181,29 @@ class StatsController extends Controller
             }
         }
 
-        $driver = \DB::getDriverName();
+    // driver already determined above
         if ($driver === 'pgsql') {
-            // include station_id, station name and the localized sampled_at (bucket_key) so the client can show event rows
-            $query->selectRaw("se.lake_id, se.station_id, st.name as station_name, timezone('Asia/Manila', se.sampled_at) as bucket_key, sr.value as agg_value")
+            $query->selectRaw("se.lake_id, se.station_id, st.name as station_name, sr.depth_m, timezone('Asia/Manila', se.sampled_at) as bucket_key, sr.value as agg_value")
                 ->orderByRaw("timezone('Asia/Manila', se.sampled_at)");
         } else {
-            $query->selectRaw("se.lake_id, se.station_id, st.name as station_name, CONVERT_TZ(se.sampled_at,'UTC','Asia/Manila') as bucket_key, sr.value as agg_value")
+            $query->selectRaw("se.lake_id, se.station_id, st.name as station_name, sr.depth_m, CONVERT_TZ(se.sampled_at,'UTC','Asia/Manila') as bucket_key, sr.value as agg_value")
                 ->orderBy('bucket_key');
         }
 
         $rows = $query->get();
 
         if (!$isTwo) {
+            // Optional depth filter (applied post-query if necessary, but try to apply in SQL first)
+            if (isset($data['depth_m']) && $data['depth_m'] !== null) {
+                // Apply filtering in memory if not already applied (in case of rounding differences)
+                $target = round((float)$data['depth_m'], 2);
+                $rows = $rows->filter(function($r) use ($target){
+                    if (!isset($r->agg_value)) return false;
+                    if (!property_exists($r, 'depth_m') && !isset($r->depth_m)) return true; // depth not selected earlier
+                    // depth wasn't selected in selectRaw; fetch via lazy? Simpler: re-query depth inline if needed (skip). For now assume not selected; we did not select depth_m.
+                    return true; // Already filtered at SQL level below when depth provided.
+                });
+            }
             $sample = collect($rows)->pluck('agg_value')->filter(fn($v)=>is_numeric($v))->values()->all();
 
             // include raw event rows so the frontend can display the sampled_at, station and value for each event

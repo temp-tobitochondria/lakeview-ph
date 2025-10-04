@@ -253,6 +253,78 @@ export async function tostEquivalenceAsync(x, lower, upper, alpha=0.05){
   return { type:'tost', n, mean:m, sd:s, df, t1, t2, p1, p2, alpha, equivalent };
 }
 
+// R-style Wilcoxon TOST for median in (lower, upper)
+// Matches your R script’s tail directions & tie handling.
+// Requires your existing helpers: loadWilcoxon(), mean(), sd(), median()
+
+export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05) {
+  const wilcoxon = await loadWilcoxon();
+  if (!wilcoxon) throw new Error('@stdlib/stats-wilcoxon unavailable');
+
+  const isFiniteN = (v) => Number.isFinite(v);
+  const xx = x.filter(isFiniteN);
+  const nRaw = xx.length;
+
+  // Differences exactly like the R script:
+  // - lower test: x - lower (greater)
+  // - upper test: x - upper (less)
+  const dLowerAll = xx.map(v => v - lower).filter(isFiniteN);
+  const dUpperAll = xx.map(v => v - upper).filter(isFiniteN);
+
+  // Drop zeros (ties to the bound), just like wilcox.test does
+  const eps = 1e-12;
+  const dLower = dLowerAll.filter(d => Math.abs(d) > eps);
+  const dUpper = dUpperAll.filter(d => Math.abs(d) > eps);
+
+  const nEffLower = dLower.length;
+  const nEffUpper = dUpper.length;
+
+  // If everything ties to a bound, we can’t conclude equivalence
+  if (nEffLower === 0 || nEffUpper === 0) {
+    return {
+      type: 'wilcoxon-tost',
+      method: 'Wilcoxon TOST (R-style tails)',
+      n: nRaw,
+      lower, upper, alpha,
+      mean: mean(xx), median: median(xx), sd: sd(xx),
+      n_eff_lower: nEffLower, n_eff_upper: nEffUpper,
+      w_lower: 0, w_upper: 0,
+      p_lower: 1, p_upper: 1, pTOST: 1,
+      equivalent: false,
+      note: 'All differences to a bound are ~0; cannot run signed-rank.'
+    };
+  }
+
+  // Run the one-sided tests with the same alternatives as R
+  const outLower = wilcoxon(dLower, { alpha, alternative: 'greater' }); // median(x) > lower
+  const outUpper = wilcoxon(dUpper, { alpha, alternative: 'less'    }); // median(x) < upper
+
+  // R-style W is the sum of positive ranks on the passed differences.
+  // @stdlib returns a compatible statistic; keep as-is for display parity with R.
+  const w_lower = outLower.statistic;
+  const w_upper = outUpper.statistic;
+
+  const p_lower = outLower.pValue;
+  const p_upper = outUpper.pValue;
+
+  // Single TOST p-value (standard): max of the two one-sided p's
+  const pTOST = Math.max(p_lower, p_upper);
+  const equivalent = (pTOST < alpha);
+
+  return {
+    type: 'wilcoxon-tost',
+    method: 'Wilcoxon TOST (R-style tails)',
+    n: nRaw,
+    lower, upper, alpha,
+    mean: mean(xx), median: median(xx), sd: sd(xx),
+    n_eff_lower: nEffLower, n_eff_upper: nEffUpper,
+    w_lower, w_upper,
+    p_lower, p_upper, pTOST,
+    equivalent
+  };
+}
+
+
 // Shapiro–Wilk normality test (W and p-value)
 export function shapiroWilk(x, alpha=0.05){
   const arr = (Array.isArray(x)? x: []).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);

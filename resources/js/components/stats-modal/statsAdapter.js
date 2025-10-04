@@ -13,14 +13,17 @@ export async function runOneSample({ selectedTest, values, mu0, alpha, evalType,
   }
   if (selectedTest === 'wilcoxon_signed_rank') {
     const r = await wilcoxonSignedRankAsync(values, Number(mu0), alpha, 'two-sided');
+    // derive median for downstream interpretation when mean is absent
+    let median = null; try { const sorted=[...values].filter(Number.isFinite).sort((a,b)=>a-b); const n=sorted.length; if(n) median = (n%2? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2); } catch(e) { /* ignore */ }
     return normalize({
       type: 'one-sample-nonparam', test_used: 'wilcoxon_signed_rank', sample_values: values, mu0, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null,
-      n: r.n, statistic: r.statistic, p_value: r.p_value, alpha: r.alpha ?? alpha, significant: r.p_value < (r.alpha ?? alpha)
+      n: r.n, statistic: r.statistic, p_value: r.p_value, alpha: r.alpha ?? alpha, significant: r.p_value < (r.alpha ?? alpha), median
     });
   }
   if (selectedTest === 'sign_test') {
     const r = await signTestAsync(values, Number(mu0), alpha, 'two-sided');
-    return normalize(r, { type:'one-sample-nonparam', test_used:'sign_test', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null });
+    let median = null; try { const sorted=[...values].filter(Number.isFinite).sort((a,b)=>a-b); const n=sorted.length; if(n) median = (n%2? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2); } catch(e) { /* ignore */ }
+    return normalize(r, { type:'one-sample-nonparam', test_used:'sign_test', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, median });
   }
   if (selectedTest === 'tost') {
     const r = await tostEquivalenceAsync(values, Number(thrMin), Number(thrMax), alpha);

@@ -23,7 +23,8 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     't_welch':'Welch t-test (unequal var)',
     'mann_whitney':'Mann–Whitney U',
     'mood_median_test':'Mood’s median test',
-    'shapiro_wilk':'Shapiro–Wilk normality test'
+    'shapiro_wilk':'Shapiro–Wilk normality test',
+    'tost_wilcoxon':'Equivalence TOST (Wilcoxon)'
   };
   const testLabel = labelMap[result.test_used] || labelMap[result.type] || result.test_used || result.type;
   push('Test Selected', testLabel);
@@ -78,6 +79,13 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if ('p2' in result) push('p2 (H0: mean ≥ upper)', sci(result.p2));
     if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
   }
+  if (result.test_used === 'tost_wilcoxon') {
+    if ('w_lower' in result) push('W (lower)', fmt(result.w_lower));
+    if ('p_lower' in result) push('p (lower > bound)', sci(result.p_lower));
+    if ('w_upper' in result) push('W (upper)', fmt(result.w_upper));
+    if ('p_upper' in result) push('p (upper < bound)', sci(result.p_upper));
+    if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
+  }
   if ('p_value' in result) {
     const pvNum = Number(result.p_value);
     if (Number.isFinite(pvNum) && pvNum < 0.001) {
@@ -120,6 +128,11 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
         <strong>Interpretation:</strong>
         <div style={{ marginTop:6 }}>{finalInterpretation}</div>
+        {result.test_used === 'tost_wilcoxon' && (
+          <div style={{ marginTop:6, fontSize:12, opacity:0.85 }}>
+            Normality failed → used Equivalence (Wilcoxon). {result.n < 10 ? 'Small sample; interpret with caution.' : ''}
+          </div>
+        )}
         {result.significant != null && (
           <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>
             Statistical decision: {result.significant ? 'Reject null hypothesis (difference detected).' : 'Fail to reject null hypothesis.'}

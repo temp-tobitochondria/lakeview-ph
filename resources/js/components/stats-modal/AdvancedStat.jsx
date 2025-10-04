@@ -4,7 +4,7 @@ import Popover from "../common/Popover";
 import { api, apiPublic } from "../../lib/api";
 import { fetchParameters, fetchSampleEvents, deriveOrgOptions } from "./data/fetchers";
 import { alertSuccess, alertError } from '../../utils/alerts';
-import { tOneSampleAsync, tTwoSampleWelchAsync, tTwoSampleStudentAsync, mannWhitneyAsync, signTestAsync, tostEquivalenceAsync, wilcoxonSignedRankAsync, moodMedianAsync, shapiroWilkAsync } from '../../stats/statsUtils'; // legacy direct imports (some still used for threshold suggestion)
+import { tOneSampleAsync, tTwoSampleWelchAsync, tTwoSampleStudentAsync, mannWhitneyAsync, signTestAsync, tostEquivalenceAsync, tostEquivalenceWilcoxonAsync, wilcoxonSignedRankAsync, moodMedianAsync, shapiroWilkAsync } from '../../stats/statsUtils'; // legacy direct imports (some still used for threshold suggestion)
 import { runOneSample, runTwoSample } from './statsAdapter';
 import { fmt, sci } from './formatters';
 import ResultPanel from './ResultPanel';
@@ -29,6 +29,9 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [organizationId, setOrganizationId] = useState('');
   const [secondaryOrganizationId, setSecondaryOrganizationId] = useState('');
   const [appliedStandardId, setAppliedStandardId] = useState('');
+  const [depthMode, setDepthMode] = useState('all'); // 'all' or 'single'
+  const [depthValue, setDepthValue] = useState(''); // numeric string when single
+  const [availableDepths, setAvailableDepths] = useState([]); // fetched list
   const [cl, setCl] = useState('0.95');
   const [showGearPopover, setShowGearPopover] = useState(false);
   // Parameter options: accept either explicit paramOptions prop or fallback to legacy 'params'
@@ -150,9 +153,45 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     return !!(st && st.type === 'range');
   }, [paramCode, staticThresholds]);
 
+  // Fetch depths when parameter, lake(s), date range or organization changes (one-sample or lake-vs-lake two-sample)
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      // Determine if depth context is valid: one-sample OR two-sample with lake comparison
+      const isTwoLake = inferredTest==='two-sample' && compareValue && String(compareValue).startsWith('lake:');
+      if (!paramCode || !lakeId || (inferredTest==='two-sample' && !isTwoLake)) { setAvailableDepths([]); setDepthValue(''); return; }
+      try {
+        const params = new URLSearchParams({ parameter_code: paramCode });
+        if (isTwoLake) {
+          const otherLakeId = Number(String(compareValue).split(':')[1]);
+            params.append('lake_ids[]', String(lakeId));
+            params.append('lake_ids[]', String(otherLakeId));
+        } else {
+          params.append('lake_id', String(lakeId));
+        }
+        if (yearFrom) params.append('date_from', `${yearFrom}-01-01`);
+        if (yearTo) params.append('date_to', `${yearTo}-12-31`);
+        if (organizationId) params.append('organization_id', organizationId);
+        const res = await apiPublic(`/stats/depths?${params.toString()}`);
+        if (abort) return;
+        const depths = Array.isArray(res?.depths) ? res.depths : (Array.isArray(res?.data?.depths) ? res.data.depths : []);
+        setAvailableDepths(depths);
+        // Reset depth selection if current value not in new list
+        if (depthMode === 'single' && depthValue && !depths.includes(Number(depthValue))) {
+          setDepthValue('');
+        }
+      } catch(e) {
+        if (abort) return;
+        console.debug('[AdvancedStat] depth fetch failed', e);
+        setAvailableDepths([]);
+      }
+    })();
+    return () => { abort = true; };
+  }, [paramCode, lakeId, compareValue, yearFrom, yearTo, organizationId, inferredTest, depthMode]);
+
   // Clear TOST selection if it becomes invalid (e.g., user changed to a non-range param or switched to two-sample)
   useEffect(() => {
-    if (selectedTest === 'tost' && (!paramHasRange || inferredTest !== 'one-sample')) {
+    if ((selectedTest === 'tost' || selectedTest === 'tost_wilcoxon') && (!paramHasRange || inferredTest !== 'one-sample')) {
       setSelectedTest('');
       setResult(null);
     }
@@ -168,6 +207,10 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         date_to: yearTo ? `${yearTo}-12-31` : undefined,
         applied_standard_id: appliedStandardId || undefined
       };
+      // Depth filtering: apply when single depth selected (one-sample or lake vs lake)
+      if (depthMode === 'single' && depthValue) {
+        body.depth_m = Number(depthValue);
+      }
       if (organizationId) body.organization_id = organizationId;
       if (inferredTest === 'one-sample') {
         body.lake_id = Number(lakeId);
@@ -195,8 +238,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
           setResult(null); setLoading(false); return;
         }
         if (evalType === 'range' || paramHasRange) {
-          if (!(selectedTest === 'tost' || selectedTest === 'shapiro_wilk')) {
-            alertError('Range threshold requires TOST', 'Select equivalence TOST (or Shapiro–Wilk) for range-evaluated parameter.');
+          if (!(['tost','tost_wilcoxon','shapiro_wilk'].includes(selectedTest))) {
+            alertError('Range threshold requires TOST', 'Select Equivalence TOST (t) or Equivalence TOST (Wilcoxon), or run Shapiro–Wilk separately.');
             setLoading(false); return;
           }
         }
@@ -206,16 +249,16 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         const thrMax = series?.threshold_max ?? null;
         if (evalType === 'range') {
           if (thrMin == null || thrMax == null) throw new Error('threshold_missing_range');
-          // For range-evaluated parameters we do NOT auto-run TOST.
-          // The UI should have restricted available tests to TOST and Shapiro–Wilk.
           if (selectedTest === 'tost') {
-            computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax });
+            const tr = await tostEquivalenceAsync(values, Number(thrMin), Number(thrMax), alpha);
+            computed = { ...tr, test_used: 'tost', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type: 'range' };
+          } else if (selectedTest === 'tost_wilcoxon') {
+            const wr = await tostEquivalenceWilcoxonAsync(values, Number(thrMin), Number(thrMax), alpha);
+            computed = { ...wr, test_used: 'tost_wilcoxon', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type: 'range' };
           } else if (selectedTest === 'shapiro_wilk') {
-            // Allow running normality check even when a range exists
             computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax });
           } else {
-            // Shouldn't happen because the UI disables other tests, but guard anyway
-            alertError('Range threshold requires TOST', 'Select equivalence TOST (or Shapiro–Wilk) for range-evaluated parameter.');
+            alertError('Range threshold requires an equivalence test', 'Select Equivalence TOST (t) or Equivalence TOST (Wilcoxon), or run Shapiro–Wilk separately.');
             setLoading(false); return;
           }
         } else {
@@ -343,16 +386,32 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         </select>
       </div>
       <div style={{ gridColumn: '2 / span 1', minWidth:0 }}>
-        <select className="pill-btn" value={paramCode} onChange={e=>{setParamCode(e.target.value); setResult(null);}} style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }}>
-          <option value="">Select parameter</option>
-          {paramOptions.length ? (
-            paramOptions.map(p => (
-              <option key={p.key || p.id || p.code} value={p.code}>
-                {p.label || p.name || p.code}
-              </option>
-            ))
-          ) : null}
-        </select>
+        <div style={{ display:'flex', gap:6 }}>
+          <select className="pill-btn" value={paramCode} onChange={e=>{setParamCode(e.target.value); setResult(null);}} style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }}>
+            <option value="">Select parameter</option>
+            {paramOptions.length ? (
+              paramOptions.map(p => (
+                <option key={p.key || p.id || p.code} value={p.code}>
+                  {p.label || p.name || p.code}
+                </option>
+              ))
+            ) : null}
+          </select>
+          {/* Depth selector (one-sample or lake vs lake two-sample) */}
+          <div style={{ width: paramCode && (inferredTest==='one-sample' || (inferredTest==='two-sample' && compareValue && String(compareValue).startsWith('lake:'))) ? 150 : 0, transition:'width 0.2s ease', overflow:'hidden' }}>
+            {paramCode && (inferredTest==='one-sample' || (inferredTest==='two-sample' && compareValue && String(compareValue).startsWith('lake:'))) ? (
+              <select className="pill-btn" value={depthMode === 'all' ? 'all' : (depthValue || '')} onChange={e=>{
+                const v = e.target.value;
+                if (v === 'all') { setDepthMode('all'); setDepthValue(''); }
+                else { setDepthMode('single'); setDepthValue(v); }
+                setResult(null);
+              }} style={{ width:'100%', padding:'10px 12px', height:40 }}>
+                <option value="all">All depths (mean)</option>
+                {availableDepths.map(d => (<option key={`depth-${d}`} value={d}>{d} m</option>))}
+              </select>
+            ) : null}
+          </div>
+        </div>
       </div>
       <div style={{ gridColumn: '3 / span 2', display:'flex', justifyContent:'flex-end', minWidth:0 }}>
         <div style={{ display:'flex', gap:8, width:'100%' }}>
@@ -363,7 +422,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
             <option value="t_one_sample" disabled={inferredTest!=='one-sample' || paramHasRange}>One-sample t-test</option>
             <option value="wilcoxon_signed_rank" disabled={inferredTest!=='one-sample' || paramHasRange}>Wilcoxon signed-rank</option>
             <option value="sign_test" disabled={inferredTest!=='one-sample' || paramHasRange}>Sign test</option>
-            <option value="tost" disabled={inferredTest!=='one-sample'}>Equivalence TOST</option>
+            <option value="tost" disabled={inferredTest!=='one-sample' || !paramHasRange}>Equivalence TOST (t)</option>
+            <option value="tost_wilcoxon" disabled={inferredTest!=='one-sample' || !paramHasRange}>Equivalence TOST (Wilcoxon)</option>
             {/* Two-sample options */}
             <option value="t_student" disabled={inferredTest!=='two-sample'}>Student t-test (equal var)</option>
             <option value="t_welch" disabled={inferredTest!=='two-sample'}>Welch t-test (unequal var)</option>
@@ -434,7 +494,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     {/* Note about range thresholds when present */}
     {paramHasRange && inferredTest === 'one-sample' ? (
       <div style={{ marginTop:8, fontSize:12, color:'#eee' }}>
-        <strong>Note:</strong> This parameter has an authoritative acceptable range; equivalence (TOST) is required. Other one-sample tests are disabled.
+        <strong>Note:</strong> Authoritative range: choose an equivalence test (t or Wilcoxon). Other one-sample tests are disabled.
+        {depthMode==='single' && depthValue ? <div style={{ marginTop:4 }}>Depth filter: {depthValue} m (mean not aggregated across depths).</div> : null}
       </div>
     ) : null}
 

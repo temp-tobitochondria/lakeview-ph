@@ -266,6 +266,7 @@ Route::get('/options/municipalities', [OptionsController::class, 'municipalities
 Route::get('/options/municipalities', [OptionsController::class, 'municipalities']);
 
 // Stats & Population (public)
+Route::get('/stats/depths', [StatsController::class, 'depths']);
 Route::post('/stats/series', [StatsController::class, 'series']);
 Route::get('/population/estimate', [PopulationController::class, 'estimate']);
 Route::get('/tiles/pop/{z}/{x}/{y}', [PopulationController::class, 'tile'])
