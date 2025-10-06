@@ -1,0 +1,139 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use App\Models\OrgApplication;
+use App\Models\KycProfile;
+use App\Models\User;
+use App\Models\Role;
+
+class OrgApplicationController extends Controller
+{
+    public function store(Request $request)
+    {
+        $u = $request->user();
+        $data = $request->validate([
+            'tenant_id'    => ['required','integer','exists:tenants,id'],
+            'desired_role' => ['required', Rule::in(['contributor','org_admin'])],
+        ]);
+
+        // Enforce one application per user per organization
+        $existing = OrgApplication::where('user_id', $u->id)
+            ->where('tenant_id', $data['tenant_id'])
+            ->orderByDesc('id')
+            ->first();
+        if ($existing) {
+            return response()->json([
+                'message' => 'You have already applied to this organization.',
+                'data' => $existing,
+            ], 409);
+        }
+
+        // Determine initial status based on KYC
+        $kyc = KycProfile::firstOrCreate(['user_id' => $u->id], ['status' => 'draft']);
+        $initialStatus = in_array($kyc->status, ['verified','approved'], true)
+            ? 'pending_org_review'
+            : 'pending_kyc';
+
+        // Minimal: single active submission per user+tenant (not strict yet)
+        $app = OrgApplication::create([
+            'user_id'      => $u->id,
+            'tenant_id'    => $data['tenant_id'],
+            'desired_role' => $data['desired_role'],
+            'status'       => $initialStatus,
+        ]);
+
+        $meta = [];
+        if ($initialStatus === 'pending_kyc') {
+            $meta['message'] = 'Application received and will queue until your KYC is verified.';
+        } else {
+            $meta['message'] = 'Application submitted for organization review.';
+        }
+
+        // Notify applicant
+        try {
+            $app->loadMissing('tenant:id,name');
+            \Illuminate\Support\Facades\Mail::to($u->email)->queue(new \App\Mail\OrgApplicationSubmitted($u, $app->tenant, $initialStatus));
+        } catch (\Throwable $e) { /* ignore mail failures */ }
+        return response()->json(['data' => $app, ...$meta], 201);
+    }
+
+    public function indexAdmin(Request $request)
+    {
+        // Minimal list for admins (scoping rules to be tightened later)
+        $status = $request->query('status');
+        $q = OrgApplication::query()->with(['user:id,name,email','tenant:id,name']);
+        if ($status) $q->where('status', $status);
+        $rows = $q->orderByDesc('id')->limit(100)->get();
+        return response()->json(['data' => $rows]);
+    }
+
+    public function decideAdmin($id, Request $request)
+    {
+        return response()->json(['message' => 'Decisions must be made by an organization admin.'], 403);
+    }
+
+    // Org admin (tenant-scoped via route): list applications for this tenant
+    public function indexOrg(Request $request, int $tenant)
+    {
+        $actor = $request->user();
+        if (!$actor || (!$actor->isSuperAdmin() && (!$actor->isOrgAdmin() || $actor->tenant_id !== $tenant))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $status = $request->query('status');
+        $q = OrgApplication::query()->with(['user:id,name,email'])
+            ->where('tenant_id', $tenant);
+        if ($status) $q->where('status', $status);
+        $rows = $q->orderByDesc('id')->limit(100)->get();
+        return response()->json(['data' => $rows]);
+    }
+
+    // Org admin (tenant-scoped) decide on an application
+    public function decideOrg(int $tenant, int $id, Request $request)
+    {
+        $actor = $request->user();
+        if (!$actor || (!$actor->isSuperAdmin() && (!$actor->isOrgAdmin() || $actor->tenant_id !== $tenant))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $data = $request->validate([
+            'action' => ['required', Rule::in(['approve','needs_changes','reject'])],
+            'notes'  => ['nullable','string','max:2000'],
+        ]);
+        $app = OrgApplication::where('tenant_id', $tenant)->findOrFail($id);
+        $map = [
+            'approve'       => 'approved',
+            'needs_changes' => 'needs_changes',
+            'reject'        => 'rejected',
+        ];
+        $app->status = $map[$data['action']];
+        $app->reviewer_notes = $data['notes'] ?? null;
+        $app->save();
+
+        // If approved, apply role/scope/tenant to the user idempotently
+        if ($app->status === 'approved') {
+            $user = User::find($app->user_id);
+            if ($user) {
+                $targetRoleName = $app->desired_role; // 'contributor' | 'org_admin'
+                $targetRole = Role::where('name', $targetRoleName)->first();
+                if ($targetRole) {
+                    $user->tenant_id = $app->tenant_id;
+                    $user->role_id = $targetRole->id;
+                    try { $user->save(); } catch (\Throwable $e) { /* log if needed */ }
+                }
+            }
+        }
+
+        // Notify applicant of decision
+        try {
+            $user = $app->user()->first();
+            if ($user && $user->email) {
+                \Illuminate\Support\Facades\Mail::to($user->email)->queue(new \App\Mail\OrgApplicationDecision($user, $app->status, $data['notes'] ?? null));
+            }
+        } catch (\Throwable $e) { /* ignore mail failures */ }
+
+        return response()->json(['data' => $app]);
+    }
+}

@@ -243,3 +243,9 @@ export function apiPublic(path, opts = {}) {
 
 // Tenancy integrity check (optional UI surfacing)
 export const verifyTenancy = async () => api('/tenancy/verify');
+
+// ---- KYC & Organization Applications (MVP) ----
+export const getKycStatus = async () => api('/kyc/status');
+export const listTenantsOptions = async () => api('/options/tenants'); // requires backend endpoint
+export const createOrgApplication = async ({ tenant_id, desired_role }) =>
+  api('/org-applications', { method: 'POST', body: { tenant_id, desired_role } });

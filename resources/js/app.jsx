@@ -7,11 +7,13 @@ import AboutData from  "./pages/PublicInterface/AboutData";
 import AboutPage from "./pages/PublicInterface/AboutPage";
 import MapPage from "./pages/PublicInterface/MapPage";
 import UserManual from "./pages/PublicInterface/UserManual";
+// import KycPage from "./pages/PublicInterface/KycPage"; // now embedded in MapPage
 
 // 📊 Dashboards (Role-based)
 import AdminDashboard from "./pages/AdminInterface/AdminDashboard";
 import OrgDashboard from "./pages/OrgInterface/OrgDashboard";
 import ContributorDashboard from "./pages/ContributorInterface/ContributorDashboard.jsx";
+import AdminOrgApplications from "./pages/AdminInterface/AdminOrgApplications.jsx";
 // import UserDashboard from "./pages/user/UserDashboard"; // add later if needed
 
 // 🎨 Global Styles
@@ -30,13 +32,18 @@ function App() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/manual" element={<UserManual />} />
         <Route path="/data" element={<AboutData />} />
-        <Route path="/login" element={<MapPage />} />
+    <Route path="/login" element={<MapPage />} />
         <Route path="/signin" element={<Navigate to="/login" replace />} />
         <Route path="/register" element={<MapPage />} />
+    {/* KYC stays in public interface: keep MapPage and open KYC modal from it */}
+    <Route path="/kyc" element={<MapPage />} />
 
         {/* 📊 Dashboards */}
         <Route path="/admin-dashboard/*" element={
           <RequireRole allowed={['superadmin']}><AdminDashboard /></RequireRole>
+        } />
+        <Route path="/admin-org-applications" element={
+          <RequireRole allowed={['superadmin']}><AdminOrgApplications /></RequireRole>
         } />
         <Route path="/org-dashboard/*" element={
           <RequireRole allowed={['org_admin']}><OrgDashboard /></RequireRole>

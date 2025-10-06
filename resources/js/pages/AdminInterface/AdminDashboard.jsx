@@ -27,6 +27,7 @@ import AdminSettingsPage from "./adminSettings.jsx";
 import AdminFeedback from './AdminFeedback';
 import AdminAuditLogsPage from './adminLogs';
 import AdminPopulationData from './adminPopulationData';
+import AdminOrgApplications from './AdminOrgApplications';
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
     { path: "/admin-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
     // Parameters
     { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
+    { path: "/admin-dashboard/org-applications", label: "Org Applications", icon: <FiClipboard /> },
   // Water Quality Tests
   { path: "/admin-dashboard/wq-tests", label: "WQ Tests", icon: <FiFileText /> },
       // Population Rasters
@@ -77,6 +79,11 @@ export default function AdminDashboard() {
 
         {/* Parameters */}
         <Route path="parameters" element={<AdminParameters />} />
+
+  {/* Org Applications */}
+  <Route path="org-applications" element={<AdminOrgApplications />} />
+
+  { /* KYC Profiles removed: Use Org Applications for review entry */ }
 
   {/* Water Quality Tests */}
   <Route path="wq-tests" element={<AdminWQTests />} />

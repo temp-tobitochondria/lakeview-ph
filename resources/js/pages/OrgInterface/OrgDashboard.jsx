@@ -19,6 +19,7 @@ import OrgAddWQTest from "./orgAddWQTest";
 import OrgWQTests from "./orgWQTests";
 import OrgSettingsPage from "./orgSettings.jsx";
 import OrgAuditLogsPage from "./orgLogs"; // Added: route component for audit logs
+import OrgApplications from "./OrgApplications";
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -28,6 +29,8 @@ export default function OrgDashboard() {
     { path: "/org-dashboard", label: "Overview", icon: <FiHome />, exact: true },
     // Organization Members
     { path: "/org-dashboard/members", label: "Members", icon: <FiUsers /> },
+  // Applications (review join requests)
+  { path: "/org-dashboard/applications", label: "Applications", icon: <FiClipboard /> },
     // Log Water Quality Tests
     { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Test", icon: <FiPlusCircle /> },
     // View Water Quality Tests
@@ -51,6 +54,7 @@ export default function OrgDashboard() {
         {/* Organization Audit Logs (was missing causing blank page) */}
         <Route path="org-audit" element={<OrgAuditLogsPage />} />
   <Route path="settings" element={<OrgSettingsPage />} />
+    <Route path="applications" element={<OrgApplications />} />
       </Routes>
     </DashboardLayout>
   );

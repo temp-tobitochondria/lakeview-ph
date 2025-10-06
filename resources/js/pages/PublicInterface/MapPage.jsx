@@ -31,6 +31,7 @@ import { useLakeSelection } from "./hooks/useLakeSelection";
 import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import { useHotkeys } from "./hooks/useHotkeys";
+import KycPage from "./KycPage";
 
 function MapWithContextMenu({ children }) {
   const map = useMap();
@@ -58,6 +59,7 @@ function MapPage() {
   const [measureMode, setMeasureMode] = useState("distance");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [kycOpen, setKycOpen] = useState(false);
   const [filterTrayOpen, setFilterTrayOpen] = useState(false);
 
   const navigate = useNavigate();
@@ -81,6 +83,16 @@ function MapPage() {
       navigate('.', { replace: true, state: {} });
     }
   }, [location, navigate]);
+
+  // Open KYC overlay when navigating to /kyc or when query contains ?kyc=true
+  useEffect(() => {
+    if (location.pathname === "/kyc") {
+      setKycOpen(true);
+      return;
+    }
+    const usp = new URLSearchParams(location.search || "");
+    if (usp.get("kyc") === "true") setKycOpen(true);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     const p = location.pathname;
@@ -300,6 +312,11 @@ function MapPage() {
           }
         }}
       />
+
+      {/* KYC embedded modal (stays on map page) */}
+      {kycOpen && (
+        <KycPage />
+      )}
     </div>
   );
 }

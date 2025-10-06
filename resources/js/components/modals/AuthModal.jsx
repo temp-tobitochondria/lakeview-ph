@@ -242,7 +242,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
   const me = await api("/auth/me");
   if (me) setCurrentUser(me?.data || me);
         alertSuccess("Registered & verified", "Welcome to LakeView PH!");
-        redirectByRole(me);
+        // Do not redirect after registration verify; keep user on the current page
         onClose?.();
 
         // clear registration fields

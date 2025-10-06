@@ -191,6 +191,15 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
       <ul className="sidebar-menu">
         
 
+        {isLoggedIn && (isPublic) && (
+          <li>
+            <Link className="sidebar-row" to="/kyc" onClick={!pinned ? onClose : undefined}>
+              <FiUser className="sidebar-icon" />
+              <span>Contribute / Join an Org</span>
+            </Link>
+          </li>
+        )}
+
         <li>
           <Link className="sidebar-row" to="/about" onClick={!pinned ? onClose : undefined}>
             <FiInfo className="sidebar-icon" />

@@ -9,6 +9,7 @@ use App\Models\Watershed;
 use App\Models\WaterQualityClass;
 use App\Models\Parameter;
 use App\Models\WqStandard;
+use App\Models\Tenant;
 
 class OptionsController extends Controller
 {
@@ -175,5 +176,28 @@ class OptionsController extends Controller
             ->values();
 
         return response()->json($rows);
+    }
+
+    /**
+     * GET /api/options/tenants?q=&limit=
+     * Lightweight list of active tenants for dropdowns. Returns { data: [{ id, name }, ...] }
+     */
+    public function tenants(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        $limit = (int) $request->query('limit', 1000);
+        $limit = max(1, min($limit, 5000));
+
+        $rows = Tenant::query()
+            ->select(['id', 'name'])
+            ->where('active', true)
+            ->when($q !== '', function ($qb) use ($q) {
+                $qb->where('name', 'ILIKE', "%{$q}%");
+            })
+            ->orderBy('name')
+            ->limit($limit)
+            ->get();
+
+        return response()->json(['data' => $rows]);
     }
 }

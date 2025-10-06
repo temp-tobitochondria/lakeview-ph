@@ -1,3 +1,11 @@
+/* KYC: make the native date input calendar button black (WebKit/Blink) */
+.kyc-form input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) saturate(100%);
+  opacity: 1;
+}
+/* Firefox date picker icon tweak (limited control) */
+.kyc-form input[type="date"]::-moz-focus-inner { border: 0; }
+.kyc-form input[type="date"] { color-scheme: light; }
 /* resources/css/app.css */
 
 /* Tailwind (keep exactly as you had it) */
@@ -7,6 +15,10 @@
 @source '../../storage/framework/views/*.php';
 @source '../**/*.blade.php';
 @source '../**/*.js';
+/* Include React/TypeScript sources used by the app so Tailwind can scan class names */
+@source '../**/*.jsx';
+@source '../**/*.ts';
+@source '../**/*.tsx';
 
 @theme {
   --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',

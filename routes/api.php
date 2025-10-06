@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\UserController;       // superadmin, site-wide
 use App\Http\Controllers\Api\OrgUserController;     // org_admin, tenant-scoped
 use App\Http\Controllers\Api\UserSettingsController;
+use App\Http\Controllers\Api\KycController;
+use App\Http\Controllers\Api\KycProfileController;
+use App\Http\Controllers\Api\OrgApplicationController;
 use App\Http\Controllers\FeedbackController; // user feedback
 use App\Http\Controllers\Api\Admin\FeedbackController as AdminFeedbackController; // admin feedback mgmt
 
@@ -104,6 +107,9 @@ Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(fu
     // Admin KPIs (small, fast counts used by dashboard)
     Route::get('/kpis/orgs', [\App\Http\Controllers\Api\Admin\KpiController::class, 'orgs']);
     Route::get('/kpis/users', [\App\Http\Controllers\Api\Admin\KpiController::class, 'users']);
+    // Org Applications (admin)
+    Route::get('/org-applications', [OrgApplicationController::class, 'indexAdmin']);
+    Route::post('/org-applications/{id}/decision', [OrgApplicationController::class, 'decideAdmin'])->whereNumber('id');
 
     // Audit logs (superadmin only here; org_admin has implicit scoping below if added later)
     Route::get('/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
@@ -180,6 +186,15 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
     Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'updateOrg'])->whereNumber('samplingEvent');
     Route::delete('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroyOrg'])->whereNumber('samplingEvent');
     Route::post  ('/sample-events/{samplingEvent}/toggle-publish',[AdminSamplingEventController::class, 'togglePublishOrg'])->whereNumber('samplingEvent');
+
+        // Org Applications (org_admin) - manage applications to this tenant
+        Route::get('/applications', [OrgApplicationController::class, 'indexOrg']);
+        Route::post('/applications/{id}/decision', [OrgApplicationController::class, 'decideOrg'])->whereNumber('id');
+
+        // KYC docs viewer for a specific user (used by application tables modal)
+        Route::get('/users/{user}/kyc-docs', function ($tenant, $user) {
+            return app(\App\Http\Controllers\Api\KycProfileController::class)->adminShowUser($user);
+        })->whereNumber('user');
     });
 
 /*
@@ -225,6 +240,7 @@ Route::get('/watersheds', [WatershedController::class, 'index']);
 Route::get('/options/lakes',      [OptionsController::class, 'lakes']);
 Route::get('/options/watersheds', [OptionsController::class, 'watersheds']);
 Route::get('/options/roles',      [OptionsController::class, 'roles']);
+Route::get('/options/tenants',    [OptionsController::class, 'tenants']);
 
 /*
 |--------------------------------------------------------------------------
@@ -240,6 +256,18 @@ Route::post('/public/feedback', [FeedbackController::class, 'publicStore'])->mid
 
 // Authenticated layer operations
 Route::middleware('auth:sanctum')->group(function () {
+    // KYC minimal status (placeholder)
+    Route::get('/kyc/status', [KycController::class, 'status']);
+
+    // KYC profile (user)
+    Route::get('/kyc/profile', [KycProfileController::class, 'show']);
+    Route::patch('/kyc/profile', [KycProfileController::class, 'update']);
+    Route::post('/kyc/submit', [KycProfileController::class, 'submit']);
+    Route::post('/kyc/documents', [KycProfileController::class, 'upload']);
+    Route::delete('/kyc/documents/{id}', [KycProfileController::class, 'destroyDoc'])->whereNumber('id');
+
+    // Org Applications (user submission) - only public users can submit
+    Route::post('/org-applications', [OrgApplicationController::class, 'store'])->middleware('role:public');
     // Audit logs (superadmin global, org_admin scoped)
     Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
     Route::get('/admin/audit-logs/{id}', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'show']);
@@ -279,6 +307,11 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
     Route::post('/lake-flows', [\App\Http\Controllers\LakeFlowController::class, 'store']);
     Route::put('/lake-flows/{flow}', [\App\Http\Controllers\LakeFlowController::class, 'update'])->whereNumber('flow');
     Route::delete('/lake-flows/{flow}', [\App\Http\Controllers\LakeFlowController::class, 'destroy'])->whereNumber('flow');
+    // KYC review (superadmin)
+    Route::get('/admin/kyc-profiles', [KycProfileController::class, 'adminIndex']);
+    Route::post('/admin/kyc-profiles/{id}/decision', [KycProfileController::class, 'adminDecision'])->whereNumber('id');
+    // View a user's KYC docs (for modals)
+    Route::get('/admin/kyc-profiles/user/{userId}', [KycProfileController::class, 'adminShowUser'])->whereNumber('userId');
 });
 // Public Water Quality Sampling Events (published only)
 Route::get('/public/sample-events', [AdminSamplingEventController::class, 'publicIndex'] ?? function() {

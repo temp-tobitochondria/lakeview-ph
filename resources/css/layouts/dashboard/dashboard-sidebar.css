@@ -17,6 +17,14 @@
   height: calc(100vh - 32px);
   position: relative; /* ✅ allow drawer toggle positioning */
 }
+
+/* Make the top wrapper (logo + nav) a flex column so nav can take remaining space */
+.dashboard-sidebar > div:first-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0; /* critical for nested flex scrolling */
+}
 .dashboard-sidebar:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
@@ -69,7 +77,9 @@
   padding: 0 12px;
   margin: 0;
   flex: 1 1 auto;
-  overflow-y: hidden;
+  min-height: 0; /* allow flex child to shrink for scrolling */
+  /* Allow the links area to scroll vertically when content exceeds available height */
+  overflow-y: auto;
   padding-right: 6px;
 }
 /* Dynamic scrollbar styling (dashboard sidebar + nav) */
