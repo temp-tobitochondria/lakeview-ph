@@ -21,8 +21,11 @@ function LayersTab({
   onChooseLayer,
   onResetToActive,
 }) {
+  // Use a column flex layout so the scrollable list can stretch to fill the
+  // entire lake-info panel. `minHeight: 0` on the scroller is required for
+  // overflow to work correctly inside a flex container.
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8 }}>Layers</h3>
         <button
@@ -52,7 +55,8 @@ function LayersTab({
           </p>
         </div>
       ) : (
-        <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 4 }}>
+        // Make the list area stretch and scroll to fill the parent panel
+        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, minHeight: 0 }}>
           <div style={{ display: "grid", gap: 10 }}>
             {layers.map((layer) => {
               const isSelected = String(selectedLayerId) === String(layer.id);
@@ -102,7 +106,7 @@ function LayersTab({
       )}
 
       
-    </>
+    </div>
   );
 }
 
