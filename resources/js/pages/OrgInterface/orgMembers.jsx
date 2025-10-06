@@ -1,5 +1,5 @@
 // Refactored version aligned with adminUsers.jsx UI/UX but scoped to contributors
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { FiEdit, FiTrash } from 'react-icons/fi';
@@ -41,16 +41,13 @@ export default function OrgMembers() {
   const [q, setQ] = useState('');
 
   // Advanced filters (persisted)
-  const [fName, setFName] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').name || ''; } catch { return ''; } });
-  const [fEmail, setFEmail] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').email || ''; } catch { return ''; } });
   const [fStatus, setFStatus] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').status || ''; } catch { return ''; } });
-  const [fJoinedRange, setFJoinedRange] = useState(() => { try { const s = JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); return Array.isArray(s.joined_range) ? s.joined_range : [null,null]; } catch { return [null,null]; } });
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Persist advanced filters
   useEffect(() => {
-    try { localStorage.setItem(ADV_KEY, JSON.stringify({ name: fName, email: fEmail, status: fStatus, joined_range: fJoinedRange })); } catch {}
-  }, [fName, fEmail, fStatus, fJoinedRange]);
+    try { localStorage.setItem(ADV_KEY, JSON.stringify({ status: fStatus })); } catch {}
+  }, [fStatus]);
 
   // Column visibility (only 4 columns)
   const defaultsVisible = useMemo(() => ({ name: true, email: true, status: true, joined_at: true }), []);
@@ -111,19 +108,27 @@ export default function OrgMembers() {
 
   // Open / Edit
   const openCreate = () => { setMode('create'); setEditingId(null); setInitial(emptyContributor); setOpen(true); };
-  const openEdit = async (row) => {
-    if (!tenantId) return;
+  const openEdit = useCallback(async (row) => {
+    if (!tenantId) {
+      Swal.fire('Tenant not ready', 'Please wait a moment and try again.', 'info');
+      return;
+    }
     setSaving(true);
     try {
       const res = unwrap(await api.get(`/org/${tenantId}/users/${row.id}`));
       const u = res?.data ?? res;
-      setMode('edit'); setEditingId(u.id);
-      const status = (u.active === false || u.disabled) ? 'inactive' : 'active';
+      setMode('edit');
+      setEditingId(u.id);
+      const isActive = Object.prototype.hasOwnProperty.call(u, 'is_active') ? !!u.is_active : (u.active !== false && !u.disabled);
+      const status = isActive ? 'active' : 'inactive';
       setInitial({ name: u.name || '', email: u.email || '', password: '', role: FIXED_ROLE, status });
       setOpen(true);
-    } catch (e) { Swal.fire('Failed to load contributor', e?.response?.data?.message || '', 'error'); }
-    finally { setSaving(false); }
-  };
+    } catch (e) {
+      Swal.fire('Failed to load contributor', e?.response?.data?.message || '', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [tenantId]);
   const closeModal = () => { if (saving) return; setOpen(false); setInitial(emptyContributor); setEditingId(null); setMode('create'); };
 
   // Submit
@@ -132,6 +137,9 @@ export default function OrgMembers() {
     const verb = mode === 'edit' ? 'Update' : 'Create';
     const active = payload.status !== 'inactive';
     const body = { name: payload.name, email: payload.email, role: FIXED_ROLE, role_id: CONTRIBUTOR_ROLE_ID, tenant_id: tenantId, active };
+    // Include is_active and disabled for backend compatibility
+    body.is_active = !!active;
+    body.disabled = !active;
     if (payload.password) {
       body.password = payload.password;
       if (payload.password_confirmation) body.password_confirmation = payload.password_confirmation;
@@ -151,34 +159,40 @@ export default function OrgMembers() {
   };
 
   // Delete
-  const deleteContributor = async (row) => {
-    if (!tenantId) return;
+  const deleteContributor = useCallback(async (row) => {
+    if (!tenantId) {
+      Swal.fire('Tenant not ready', 'Please wait a moment and try again.', 'info');
+      return;
+    }
     const { isConfirmed } = await Swal.fire({ title:'Delete contributor?', text:`This will permanently delete ${row.email}.`, icon:'warning', showCancelButton:true, confirmButtonText:'Delete', confirmButtonColor:'#dc2626' });
     if (!isConfirmed) return;
-    try { await api.delete(`/org/${tenantId}/users/${row.id}`); toast('Contributor deleted'); reload(); }
-    catch(e){ console.error('Delete failed', e); Swal.fire('Delete failed', e?.response?.data?.message || '', 'error'); }
-  };
+    try {
+      await api.delete(`/org/${tenantId}/users/${row.id}`);
+      toast('Contributor deleted');
+      reload();
+    } catch(e) {
+      console.error('Delete failed', e);
+      Swal.fire('Delete failed', e?.response?.data?.message || '', 'error');
+    }
+  }, [tenantId]);
 
   // Actions (same style as adminUsers)
   const actions = useMemo(() => [
     { label:'Edit', title:'Edit', type:'edit', icon:<FiEdit />, onClick:(raw)=>openEdit(raw) },
     { label:'Delete', title:'Delete', type:'delete', icon:<FiTrash />, onClick:(raw)=>deleteContributor(raw) },
-  ], []); // dependencies intentionally empty
+  ], [openEdit, deleteContributor]);
 
   // Normalized rows (for TableLayout)
   const normalized = useMemo(() => normalizeContributors(rows), [rows]);
 
   // Advanced filter definitions (adapted from adminUsers -> name/email/status/date-range)
   const advancedFields = [
-    { id: 'name', label: 'Name', type: 'text', value: fName, onChange: v => setFName(v) },
-    { id: 'email', label: 'Email', type: 'text', value: fEmail, onChange: v => setFEmail(v) },
     { id: 'status', label: 'Status', type: 'select', value: fStatus, onChange: v => setFStatus(v), options: [ { value:'', label:'All Statuses' }, { value:'active', label:'Active' }, { value:'inactive', label:'Inactive' } ] },
-    { id: 'joined-range', label: 'Joined Date Range', type: 'date-range', value: fJoinedRange, onChange: rng => setFJoinedRange(rng) },
   ];
 
-  const clearAdvanced = () => { setFName(''); setFEmail(''); setFStatus(''); setFJoinedRange([null,null]); };
+  const clearAdvanced = () => { setFStatus(''); };
 
-  const activeAdvCount = [fName?1:0, fEmail?1:0, fStatus?1:0, fJoinedRange[0]?1:0, fJoinedRange[1]?1:0].reduce((a,b)=>a+b,0);
+  const activeAdvCount = [fStatus?1:0].reduce((a,b)=>a+b,0);
 
   // Apply search & filters client-side
   const debounceRef = useRef(null);
@@ -205,7 +219,7 @@ export default function OrgMembers() {
       }));
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, fName, fEmail, fStatus, fJoinedRange, normalized]);
+  }, [q, fStatus, normalized]);
 
   // Column picker adapter (like adminUsers)
   const columnPickerAdapter = {

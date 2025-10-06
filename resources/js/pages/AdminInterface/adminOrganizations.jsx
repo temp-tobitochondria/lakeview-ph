@@ -26,12 +26,13 @@ export default function AdminOrganizationsPage() {
   const [manageOrg, setManageOrg] = useState(null);
 
   const persisted = (() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); } catch { return {}; } })();
-  // Only persist the 'type' filter for organizations.
+  // Persist 'type' and 'status' filters for organizations.
   const [fType, setFType] = useState(persisted.type || "");
-  useEffect(() => { try { localStorage.setItem(ADV_KEY, JSON.stringify({ type: fType })); } catch {} }, [fType]);
+  const [fStatus, setFStatus] = useState(persisted.status || ""); // '' | 'active' | 'inactive'
+  useEffect(() => { try { localStorage.setItem(ADV_KEY, JSON.stringify({ type: fType, status: fStatus })); } catch {} }, [fType, fStatus]);
 
-  // Default visible columns: primary contact fields. Created/Updated/Active are hidden by default.
-  const defaultVisible = useMemo(() => ({ name: true, type: true, phone: true, address: true, contact_email: true, created_at: false, updated_at: false, active: false }), []);
+  // Default visible columns: primary contact fields; show Status by default (like users)
+  const defaultVisible = useMemo(() => ({ name: true, type: true, phone: true, address: true, contact_email: true, created_at: false, updated_at: false, active: true }), []);
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
       const raw = localStorage.getItem(VIS_KEY);
@@ -50,24 +51,34 @@ export default function AdminOrganizationsPage() {
   });
   useEffect(() => { try { localStorage.setItem(VIS_KEY, JSON.stringify(visibleMap)); } catch {} }, [visibleMap]);
 
-  const normalize = (rows=[]) => rows.map(t => ({
-    id: t.id,
-    name: t.name || '',
-    type: t.type || '—',
-    phone: t.phone || '—',
-    address: t.address || '—',
-    contact_email: t.contact_email || '—',
-    created_at: t.created_at || null,
-    updated_at: t.updated_at || null,
-    active: t.active ? 'Yes' : 'No',
-    _raw: t,
-  }));
+  const normalize = (rows=[]) => rows.map(t => {
+    const hasIsActive = Object.prototype.hasOwnProperty.call(t, 'is_active');
+    const active = hasIsActive ? !!t.is_active : (typeof t.active === 'boolean' ? t.active : !t.disabled);
+    return {
+      id: t.id,
+      name: t.name || '',
+      type: t.type || '—',
+      phone: t.phone || '—',
+      address: t.address || '—',
+      contact_email: t.contact_email || '—',
+      created_at: t.created_at || null,
+      updated_at: t.updated_at || null,
+      active,
+      active_label: active ? 'Active' : 'Inactive',
+      _raw: t,
+    };
+  });
 
   const buildParams = (overrides={}) => {
     const page = overrides.page ?? meta.current_page;
     const per_page = overrides.per_page ?? meta.per_page;
     const params = { q, page, per_page, ...overrides };
     if (fType) params.type = fType;
+    if (fStatus) {
+      const flag = (fStatus === 'active');
+      params.active = flag; // compatibility
+      params.is_active = flag;
+    }
     return params;
   };
 
@@ -90,7 +101,7 @@ export default function AdminOrganizationsPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(()=>{ fetchOrgs(buildParams({ page:1 })); },400);
     return ()=>{ if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [fType]);
+  }, [fType, fStatus]);
 
   const page = meta.current_page;
   const perPage = meta.per_page;
@@ -105,7 +116,7 @@ export default function AdminOrganizationsPage() {
     if (visibleMap.contact_email) arr.push({ id:'contact_email', header:'Contact Email', accessor:'contact_email', width:220 });
     if (visibleMap.created_at) arr.push({ id:'created_at', header:'Created', accessor:'created_at', width:160, sortValue: r => r.created_at ? new Date(r.created_at) : null });
     if (visibleMap.updated_at) arr.push({ id:'updated_at', header:'Updated', accessor:'updated_at', width:160, sortValue: r => r.updated_at ? new Date(r.updated_at) : null });
-    if (visibleMap.active) arr.push({ id:'active', header:'Active', accessor:'active', width:90 });
+    if (visibleMap.active) arr.push({ id:'active', header:'Status', accessor:'active_label', width:120 });
     return arr;
   }, [visibleMap]);
 
@@ -117,9 +128,12 @@ export default function AdminOrganizationsPage() {
     { label:'Delete', title:'Delete', type:'delete', icon:<FiTrash2 />, onClick: (row) => handleDelete(row) },
   ], []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const advancedFields = [ { id:'type', label:'Type', type:'select', value:fType, onChange:v=>setFType(v), options:[{ value:'', label:'All Types' }, ...TYPE_OPTIONS.map(t=>({ value:t, label:t }))] } ];
-  const clearAdvanced = () => { setFType(''); fetchOrgs(buildParams({ page:1 })); };
-  const activeAdvCount = [fType].filter(Boolean).length;
+  const advancedFields = [
+    { id:'type', label:'Type', type:'select', value:fType, onChange:v=>setFType(v), options:[{ value:'', label:'All Types' }, ...TYPE_OPTIONS.map(t=>({ value:t, label:t }))] },
+    { id:'status', label:'Status', type:'select', value:fStatus, onChange:v=>setFStatus(v), options:[ { value:'', label:'All Statuses' }, { value:'active', label:'Active' }, { value:'inactive', label:'Inactive' } ] },
+  ];
+  const clearAdvanced = () => { setFType(''); setFStatus(''); fetchOrgs(buildParams({ page:1 })); };
+  const activeAdvCount = [fType, fStatus].filter(Boolean).length;
 
   const columnPickerAdapter = { columns: [
     { id:'name', header:'Name' },
@@ -137,7 +151,24 @@ export default function AdminOrganizationsPage() {
   const openOrgManage = (row) => { setManageOrg(row._raw || row); setOpenManage(true); };
 
   const handleFormSubmit = async (payload) => {
-    try { if (editingOrg) { await api.put(`/admin/tenants/${editingOrg.id}`, payload); Swal.fire('Organization updated','','success'); } else { await api.post('/admin/tenants', payload); Swal.fire('Organization created','','success'); } setOpenForm(false); fetchOrgs(buildParams({ page:1 })); } catch(e){ Swal.fire('Save failed', e?.response?.data?.message || '', 'error'); }
+    // Map status fields for backend compatibility
+    if (typeof payload.active === 'boolean') {
+      payload.is_active = !!payload.active;
+      payload.disabled = !payload.active;
+    }
+    try {
+      if (editingOrg) {
+        await api.put(`/admin/tenants/${editingOrg.id}`, payload);
+        Swal.fire('Organization updated','','success');
+      } else {
+        await api.post('/admin/tenants', payload);
+        Swal.fire('Organization created','','success');
+      }
+      setOpenForm(false);
+      fetchOrgs(buildParams({ page:1 }));
+    } catch(e){
+      Swal.fire('Save failed', e?.response?.data?.message || '', 'error');
+    }
   };
   const handleDelete = async (row) => {
     const org = row._raw || row;

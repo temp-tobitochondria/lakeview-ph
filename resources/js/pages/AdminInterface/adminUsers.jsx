@@ -14,18 +14,24 @@ import TableLayout from "../../layouts/TableLayout";
 const TABLE_ID = "admin-users";
 const VIS_KEY = `${TABLE_ID}::visible`;
 
-const emptyInitial = { name: "", email: "", password: "", role: "" };
+const emptyInitial = { name: "", email: "", password: "", role: "", active: true };
 
-const normalizeUsers = (rows = []) => rows.map(u => ({
+const normalizeUsers = (rows = []) => rows.map(u => {
+  const hasIsActive = Object.prototype.hasOwnProperty.call(u, 'is_active');
+  const active = hasIsActive ? !!u.is_active : (typeof u.active === 'boolean' ? u.active : !u.disabled);
+  return {
   id: u.id,
   name: u.name ?? "",
   email: u.email ?? "",
   role: u.role ?? "",
   role_label: ROLE_LABEL[u.role] || u.role || "—",
+  active,
+  active_label: active ? "Active" : "Inactive",
   created_at: u.created_at ? new Date(u.created_at).toLocaleString() : "—",
   updated_at: u.updated_at ? new Date(u.updated_at).toLocaleString() : "—",
   _raw: u,
-}));
+};
+});
 
 export default function AdminUsersPage() {
   // raw user rows from API
@@ -34,6 +40,7 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [myId, setMyId] = useState(null);
 
   // Persist advanced filter state
   const ADV_KEY = `${TABLE_ID}::filters_advanced`;
@@ -46,18 +53,21 @@ export default function AdminUsersPage() {
   const [fRole, setFRole] = useState(() => {
     try { const s = JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); return s.role || ""; } catch { return ""; }
   });
+  const [fStatus, setFStatus] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); return s.status || ""; } catch { return ""; }
+  });
   const [fCreatedRange, setFCreatedRange] = useState([null, null]);
   const [fUpdatedRange, setFUpdatedRange] = useState([null, null]);
 
   // Persist only the role filter for users
   useEffect(() => {
-    try { localStorage.setItem(ADV_KEY, JSON.stringify({ role: fRole || "" })); } catch {}
-  }, [fRole]);
+    try { localStorage.setItem(ADV_KEY, JSON.stringify({ role: fRole || "", status: fStatus || "" })); } catch {}
+  }, [fRole, fStatus]);
 
   // Column visibility persistence (like watercat)
   // Default visible columns: show name, email, role. Created/Updated are hidden by default
   // and can be toggled via the column picker.
-  const defaultsVisible = useMemo(() => ({ name: true, email: true, role: true, created_at: false, updated_at: false }), []);
+  const defaultsVisible = useMemo(() => ({ name: true, email: true, role: true, active: true, created_at: false, updated_at: false }), []);
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
       const raw = localStorage.getItem(VIS_KEY);
@@ -78,6 +88,7 @@ export default function AdminUsersPage() {
     { id: 'name', header: 'Name', accessor: 'name' },
     { id: 'email', header: 'Email', accessor: 'email', width: 240 },
     { id: 'role', header: 'Role', accessor: 'role_label', width: 140 },
+    { id: 'active', header: 'Status', accessor: 'active_label', width: 120 },
     { id: 'created_at', header: 'Created', accessor: 'created_at', width: 160, className: 'col-sm-hide' },
     { id: 'updated_at', header: 'Updated', accessor: 'updated_at', width: 160, className: 'col-sm-hide' },
   ], []);
@@ -101,6 +112,12 @@ export default function AdminUsersPage() {
   const buildParams = (overrides = {}) => {
     const params = { q, page, per_page: perPage, ...overrides };
     if (fRole) params.role = fRole;
+    if (fStatus) {
+      const flag = (fStatus === 'active');
+      // Send both for compatibility
+      params.active = flag;
+      params.is_active = flag;
+    }
     return params;
   };
 
@@ -108,8 +125,9 @@ export default function AdminUsersPage() {
     setLoading(true);
     try {
       const res = unwrap(await api.get("/admin/users", { params }));
-      const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      setRows(items);
+  const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const filtered = myId ? items.filter(u => u.id !== myId) : items;
+  setRows(filtered);
       const m = res?.meta ?? {};
       setMeta({
         current_page: m.current_page ?? params.page ?? 1,
@@ -125,7 +143,17 @@ export default function AdminUsersPage() {
     }
   };
 
-  useEffect(() => { fetchUsers(buildParams()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    // Resolve current user, then fetch users
+    (async () => {
+      try {
+        const me = unwrap(await api.get('/auth/me'));
+        setMyId(me?.id);
+      } catch { /* ignore */ }
+      fetchUsers(buildParams());
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const goPage = (p) => fetchUsers(buildParams({ page: p }));
 
@@ -137,10 +165,12 @@ export default function AdminUsersPage() {
     try {
       setSaving(true);
       const res = unwrap(await api.get(`/admin/users/${row.id}`));
-      const user = res?.data ?? res;
+  const user = res?.data ?? res;
       let role = user?.role || user?.global_role || "";
+  const active = Object.prototype.hasOwnProperty.call(user, 'is_active') ? !!user.is_active : (typeof user.active === 'boolean' ? user.active : !user.disabled);
+      const tenantId = user?.tenant_id || user?.tenant?.id || (Array.isArray(user?.tenants) ? user.tenants[0]?.id : undefined) || "";
       setMode("edit"); setEditingId(user.id);
-      setInitial({ name: user.name || "", email: user.email || "", password: "", role });
+      setInitial({ name: user.name || "", email: user.email || "", password: "", role, active, tenant_id: tenantId });
       setOpen(true);
     } catch (e) {
       console.error("Failed to load user", e);
@@ -152,6 +182,15 @@ export default function AdminUsersPage() {
 
   const submitForm = async (payload) => {
     if (payload.global_role) { payload.role = payload.global_role; delete payload.global_role; }
+    // Normalize active -> disabled if backend expects disabled
+    if (typeof payload.active === 'boolean' && payload.disabled === undefined) {
+      // keep payload.active for APIs that support it; backend can accept either
+      payload.disabled = !payload.active;
+    }
+    // Also send is_active for backends expecting this field
+    if (typeof payload.active === 'boolean' && payload.is_active === undefined) {
+      payload.is_active = !!payload.active;
+    }
     const verb = mode === "edit" ? "Update" : "Create";
     const { isConfirmed } = await Swal.fire({ title: `${verb} user?`, text: mode === "edit" ? `Apply changes to ${payload.email}?` : `Create new user ${payload.email}?`, icon: "question", showCancelButton: true, confirmButtonText: verb, confirmButtonColor: "#2563eb" });
     if (!isConfirmed) return;
@@ -182,7 +221,7 @@ export default function AdminUsersPage() {
   const actions = useMemo(() => [
     { label: 'Edit', title: 'Edit', type: 'edit', icon: <FiEdit2 />, onClick: (raw) => openEdit(raw) },
     { label: 'Delete', title: 'Delete', type: 'delete', icon: <FiTrash2 />, onClick: (raw) => deleteUser(raw) },
-  ], []); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [openEdit, deleteUser]);
 
   // Normalized & paged manually (server pagination) -> we let TableLayout paginate client-side too, but we show server pages separately.
   const normalized = useMemo(() => normalizeUsers(rows), [rows]);
@@ -196,11 +235,23 @@ export default function AdminUsersPage() {
       value: fRole,
       onChange: (v) => setFRole(v),
       options: [{ value: '', label: 'All Roles' }, ...Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))]
-    }
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      type: 'select',
+      value: fStatus,
+      onChange: (v) => setFStatus(v),
+      options: [
+        { value: '', label: 'All Statuses' },
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Inactive' },
+      ]
+    },
   ];
 
-  const clearAdvanced = () => { setFRole(""); fetchUsers(buildParams({ page: 1 })); };
-  const activeAdvCount = [fRole].filter(Boolean).length;
+  const clearAdvanced = () => { setFRole(""); setFStatus(""); fetchUsers(buildParams({ page: 1 })); };
+  const activeAdvCount = [fRole, fStatus].filter(Boolean).length;
 
   // ColumnPicker adapter for TableToolbar (independent from TableLayout internal picker) - we keep existing TableToolbar pattern.
   const columnPickerAdapter = {
@@ -215,7 +266,7 @@ export default function AdminUsersPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { fetchUsers(buildParams({ page: 1 })); }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [fRole]);
+  }, [fRole, fStatus]);
 
   return (
     <div className="container" style={{ padding: 16 }}>

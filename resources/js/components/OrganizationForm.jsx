@@ -22,10 +22,15 @@ export default function OrganizationForm({ initialData = {}, onSubmit, open, onC
   const isEdit = !!initialData?.id;
 
   useEffect(() => {
+    const derivedActive = (initialData && Object.prototype.hasOwnProperty.call(initialData, 'is_active'))
+      ? !!initialData.is_active
+      : (typeof initialData?.active === 'boolean'
+        ? initialData.active
+        : (typeof initialData?.disabled === 'boolean' ? !initialData.disabled : true));
     setForm({
       ...empty,
       ...initialData,
-      active: initialData?.active ?? true,
+      active: derivedActive,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData?.id]);
@@ -93,13 +98,16 @@ export default function OrganizationForm({ initialData = {}, onSubmit, open, onC
             placeholder="" />
         </label>
 
-        <label className="lv-field" style={{ gridColumn: '1/3' }}>
-          <input type="checkbox" checked={!!form.active} onChange={handleChange("active")} style={{ display: 'none' }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className={`pill-btn ${form.active ? 'primary' : 'ghost'}`} onClick={() => setForm(s => ({ ...s, active: !s.active }))} aria-pressed={!!form.active}>
-              {form.active ? 'Active' : 'Inactive'}
-            </button>
-          </div>
+        <label className="lv-field" style={{ gridColumn: '1/2' }}>
+          <span>Status *</span>
+          <select
+            value={form.active ? 'active' : 'inactive'}
+            onChange={(e) => setForm(s => ({ ...s, active: e.target.value === 'active' }))}
+            required
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
         </label>
 
         <div style={{ gridColumn: '1/3', display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
