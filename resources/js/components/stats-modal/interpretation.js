@@ -317,14 +317,7 @@ export function buildInterpretation({
         default: return 'Compliance status unknown.';
       }
     })();
-
-    const directionPhrase = (() => {
-      if (!thr) return null;
-      if (harmfulDeviation(comp.status)) return 'Potential degradation indicated.';
-      if (beneficialDeviation(comp.status)) return 'Potential improvement indicated.';
-      if (comp.status === 'within_range' || comp.status === 'compliant') return 'No evidence of harmful exceedance.';
-      return null;
-    })();
+    const directionPhrase = null;
 
     // Statistical decision relative to H0 (difference from threshold)
     const diffClause = reject === true
@@ -352,7 +345,6 @@ export function buildInterpretation({
       intro,
       sigPart,
       complianceLine,
-      directionLine,
       borderlineNote,
       smallSampleCaveat()
     ]);
@@ -417,10 +409,15 @@ export function buildInterpretation({
         }
       }
       const diff = Math.abs(leadVal - otherVal);
-      const rel = leadVal === otherVal ? 'the same as' : (leadVal > otherVal ? 'higher than' : 'lower than');
+      const rel = leadVal === otherVal ? 'the same as' : (leadVal < otherVal ? 'lower than' : 'higher than');
       const qualifier = useMedian ? 'typical level' : 'average level';
-      const diffPhrase = leadVal === otherVal ? '' : ` ${safeFmt(diff)} ${rel === 'higher than' ? 'higher' : 'lower'}`;
-      return `For ${paramLabel}, ${leadName}’s ${qualifier} is${leadVal === otherVal ? ' the same as' : ''} ${otherName}’s${leadVal === otherVal ? '' : ` (${safeFmt(diff)} ${rel.replace(' than','')} )`}.`;
+      // Sentence pattern examples:
+      // For BOD, Lake A’s average level (2.5) is lower than Lake B’s (6.46) by 3.96.
+      // For BOD, Lake A’s average level (5.1) is the same as Lake B’s (5.1).
+      if (leadVal === otherVal) {
+        return `For ${paramLabel}, ${leadName}’s ${qualifier} (${safeFmt(leadVal)}) is the same as ${otherName}’s (${safeFmt(otherVal)}).`;
+      }
+      return `For ${paramLabel}, ${leadName}’s ${qualifier} (${safeFmt(leadVal)}) is ${rel} ${otherName}’s (${safeFmt(otherVal)}) by ${safeFmt(diff)}.`;
     })();
 
     const testLabelTwoSample = /t_student/.test(testKey) ? 'Student t-test'
@@ -439,24 +436,35 @@ export function buildInterpretation({
 
     const qualitySentence = (() => {
       if (c1 == null || c2 == null) return null;
-      if (higherIsWorse === true) {
-        if (c1 === c2) return null;
-        const betterLake = (c1 < c2) ? lake1Name : lake2Name;
-        return `Because lower ${paramLabel} indicates better quality, ${betterLake} is better in this comparison.`;
-      }
-      if (higherIsWorse === false) {
-        if (c1 === c2) return null;
-        const betterLake = (c1 > c2) ? lake1Name : lake2Name;
-        return `Because higher ${paramLabel} indicates better quality, ${betterLake} is better in this comparison.`;
-      }
-      return null;
-    })();
+      if (c1 === c2) return null;
+      const metricLabelText = useMedian ? 'typical level' : 'average level';
+      // helper to select lake with lower/higher central value
+      const lakeWithLower = (c1 < c2) ? lake1Name : lake2Name;
+      const lakeWithHigher = (c1 > c2) ? lake1Name : lake2Name;
 
-    const statCore = (() => {
-      if ('t' in result) return `t=${safeFmt(result.t)}`;
-      if ('U' in result) return `U=${safeFmt(result.U)}`;
-      if ('z' in result) return `z=${safeFmt(result.z)}`;
-      if ('statistic' in result) return `stat=${safeFmt(result.statistic)}`;
+      if (higherIsWorse === true) {
+        // lower is better
+        if (reject === true) {
+          return `Because lower ${paramLabel} indicates better quality, the observed lower ${metricLabelText} in ${lakeWithLower} — together with the statistically significant result — is consistent with better water quality in ${lakeWithLower}.`;
+        }
+        if (reject === false) {
+          return `Because lower ${paramLabel} indicates better quality, the observed lower ${metricLabelText} in ${lakeWithLower} is suggestive but not statistically significant; additional data would be needed to conclude better water quality.`;
+        }
+        return `Because lower ${paramLabel} indicates better quality, the observed lower ${metricLabelText} in ${lakeWithLower} is noted; statistical evidence is inconclusive.`;
+      }
+
+      if (higherIsWorse === false) {
+        // higher is better
+        if (reject === true) {
+          return `Because higher ${paramLabel} indicates better quality, the observed higher ${metricLabelText} in ${lakeWithHigher} — together with the statistically significant result — is consistent with better water quality in ${lakeWithHigher}.`;
+        }
+        if (reject === false) {
+          return `Because higher ${paramLabel} indicates better quality, the observed higher ${metricLabelText} in ${lakeWithHigher} is suggestive but not statistically significant; additional data would be needed to conclude better water quality.`;
+        }
+        return `Because higher ${paramLabel} indicates better quality, the observed higher ${metricLabelText} in ${lakeWithHigher} is noted; statistical evidence is inconclusive.`;
+      }
+
+      // Unknown direction: be neutral
       return null;
     })();
 
@@ -464,8 +472,6 @@ export function buildInterpretation({
       narrative,
       significanceSentence,
       qualitySentence,
-      statCore,
-      directionDiffRaw!=null?`Raw difference (lake1 - lake2) = ${safeFmt(directionDiffRaw)}`:null,
       borderlineNote,
       smallSampleCaveat()
     ]);

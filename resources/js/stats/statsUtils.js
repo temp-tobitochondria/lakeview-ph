@@ -115,11 +115,20 @@ function normalQuantile(p, mu=0, sigma=1){
 
 function tPValueApprox(t, df, alt='two-sided'){
   // Approximate t by normal for p-value; acceptable for moderate/large df.
-  const z = Math.abs(t); const pTwo = 2*normalUpperTail(z);
-  if (alt==='two-sided') return Math.max(0, Math.min(1, pTwo));
-  // For one-sided, direction matters; we assume H1: mean > mu0 when t>0
-  const pOne = normalUpperTail(t);
-  return Math.max(0, Math.min(1, pOne));
+  const z = Math.abs(t);
+  const pTwo = 2*normalUpperTail(z);
+  if (alt === 'two-sided') return Math.max(0, Math.min(1, pTwo));
+  if (alt === 'greater') {
+    // Right-tail: P(T > t)
+    return Math.max(0, Math.min(1, normalUpperTail(t)));
+  }
+  if (alt === 'less') {
+    // Left-tail: P(T < t) = 1 - P(T > t)
+    const pRight = normalUpperTail(t);
+    return Math.max(0, Math.min(1, 1 - pRight));
+  }
+  // Fallback to two-sided if alt unrecognized
+  return Math.max(0, Math.min(1, pTwo));
 }
 
 async function tPValueStdlib(t, df, alt='two-sided'){
@@ -130,11 +139,22 @@ async function tPValueStdlib(t, df, alt='two-sided'){
     throw new Error(msg);
   }
   const cdf = (x)=> F(x, df);
-  const Ft = cdf(t);
+  const Ft = cdf(t);          // P(T <= t)
   const Fa = cdf(Math.abs(t));
-  if (alt==='two-sided') return Math.min(1, 2*(1 - Fa));
-  // greater (right-tail)
-  return Math.max(0, 1 - Ft);
+  if (alt === 'two-sided') {
+    // Two-sided: 2 * upper tail of |t|
+    return Math.min(1, 2 * (1 - Fa));
+  }
+  if (alt === 'greater') {
+    // Right tail
+    return Math.max(0, Math.min(1, 1 - Ft));
+  }
+  if (alt === 'less') {
+    // Left tail
+    return Math.max(0, Math.min(1, Ft));
+  }
+  // Fallback
+  return Math.min(1, 2 * (1 - Fa));
 }
 
 export async function tOneSampleAsync(x, mu0, alpha=0.05, alt='two-sided'){

@@ -33,6 +33,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [availableDepths, setAvailableDepths] = useState([]); // fetched list
   const [cl, setCl] = useState('0.95');
   const [showGearPopover, setShowGearPopover] = useState(false);
+  // transient test-reset notification removed per UX decision
+  const [yearError, setYearError] = useState('');
+  const [debouncedYearFrom, setDebouncedYearFrom] = useState('');
+  const [debouncedYearTo, setDebouncedYearTo] = useState('');
+  const [advisories, setAdvisories] = useState([]);
+  const [flagProblems, setFlagProblems] = useState(false); // framing toggle: compliance vs exceedance focus
   // Parameter options: accept either explicit paramOptions prop or fallback to legacy 'params'
   const paramOptions = (parentParamOptions && parentParamOptions.length ? parentParamOptions : (params || []));
   const [standards, setStandards] = useState([]); // placeholder until wired to backend
@@ -89,15 +95,58 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     return 'one-sample';
   }, [compareValue]);
 
-  // Populate organization options for primary lake when lake or date range changes
+  const paramHasRange = React.useMemo(() => {
+    if (!paramCode) return false;
+    const st = staticThresholds?.[paramCode];
+    return !!(st && st.type === 'range');
+  }, [paramCode, staticThresholds]);
+
+  const allowedTests = React.useMemo(() => {
+    if (inferredTest === 'one-sample') {
+      return paramHasRange ? ['shapiro_wilk','tost','tost_wilcoxon'] : ['shapiro_wilk','t_one_sample','wilcoxon_signed_rank','sign_test'];
+    }
+    return ['t_student','t_welch','levene','mann_whitney','mood_median_test'];
+  }, [inferredTest, paramHasRange]);
+
+  useEffect(() => {
+    if (selectedTest && !allowedTests.includes(selectedTest)) {
+      // silently clear invalid selection
+      setSelectedTest('');
+      setResult(null);
+    }
+  }, [allowedTests, selectedTest]);
+
+  // Debounce year changes
+  useEffect(() => {
+    const h = setTimeout(() => {
+      setDebouncedYearFrom(yearFrom || '');
+      setDebouncedYearTo(yearTo || '');
+    }, 400);
+    return () => clearTimeout(h);
+  }, [yearFrom, yearTo]);
+
+  // Validate years
+  useEffect(() => {
+    const curYr = new Date().getFullYear();
+    const yf = yearFrom ? Number(yearFrom) : null;
+    const yt = yearTo ? Number(yearTo) : null;
+    const isValid = (y) => y && /^\d{4}$/.test(String(y)) && y >= 1970 && y <= curYr + 1;
+    let err = '';
+    if (yearFrom && !isValid(yf)) err = 'Invalid from year';
+    else if (yearTo && !isValid(yt)) err = 'Invalid to year';
+    else if (isValid(yf) && isValid(yt) && yf > yt) err = 'Year from must not exceed year to';
+    setYearError(err);
+  }, [yearFrom, yearTo]);
+
+  // Populate organization options for primary lake when lake or (debounced) date range changes
   useEffect(() => {
     let mounted = true;
     (async () => {
       if (!lakeId) { if (mounted) setOrgOptions([]); return; }
       try {
         const lim = 500;
-        const fromEff = yearFrom ? `${yearFrom}-01-01` : undefined;
-        const toEff = yearTo ? `${yearTo}-12-31` : undefined;
+        const fromEff = debouncedYearFrom ? `${debouncedYearFrom}-01-01` : undefined;
+        const toEff = debouncedYearTo ? `${debouncedYearTo}-12-31` : undefined;
         const recs = await fetchSampleEvents({ lakeId: Number(lakeId), from: fromEff, to: toEff, limit: lim });
         if (!mounted) return;
         const derived = deriveOrgOptions(recs || []);
@@ -109,9 +158,9 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       }
     })();
     return () => { mounted = false; };
-  }, [lakeId, yearFrom, yearTo]);
+  }, [lakeId, debouncedYearFrom, debouncedYearTo]);
 
-  // Populate secondary organization options when comparing to another lake
+  // Populate secondary organization options when comparing to another lake (debounced years)
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -120,8 +169,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       if (!otherLakeId) { if (mounted) setSecondaryOrgOptions([]); return; }
       try {
         const lim = 500;
-        const fromEff = yearFrom ? `${yearFrom}-01-01` : undefined;
-        const toEff = yearTo ? `${yearTo}-12-31` : undefined;
+        const fromEff = debouncedYearFrom ? `${debouncedYearFrom}-01-01` : undefined;
+        const toEff = debouncedYearTo ? `${debouncedYearTo}-12-31` : undefined;
         const recs = await fetchSampleEvents({ lakeId: otherLakeId, from: fromEff, to: toEff, limit: lim });
         if (!mounted) return;
         const derived = deriveOrgOptions(recs || []);
@@ -133,26 +182,22 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       }
     })();
     return () => { mounted = false; };
-  }, [compareValue, yearFrom, yearTo]);
+  }, [compareValue, debouncedYearFrom, debouncedYearTo]);
 
   // Disable run based on required selections
   const runDisabled = React.useMemo(() => {
     if (loading) return true;
     if (!paramCode || !lakeId || !selectedTest) return true;
+    if (!allowedTests.includes(selectedTest)) return true;
     if (inferredTest === 'two-sample') {
       if (!compareValue || !String(compareValue).startsWith('lake:')) return true; // require a second lake for two-sample
     }
+    if (yearError) return true;
     return false;
-  }, [loading, paramCode, lakeId, selectedTest, inferredTest, compareValue]);
+  }, [loading, paramCode, lakeId, selectedTest, inferredTest, compareValue, allowedTests, yearError]);
   
 
-  const paramHasRange = React.useMemo(() => {
-    if (!paramCode) return false;
-    const st = staticThresholds?.[paramCode];
-    return !!(st && st.type === 'range');
-  }, [paramCode, staticThresholds]);
-
-  // Fetch depths when parameter, lake(s), date range or organization changes (one-sample or lake-vs-lake two-sample)
+  // Fetch depths when parameter, lake(s), debounced date range or organization changes (one-sample or lake-vs-lake two-sample)
   useEffect(() => {
     let abort = false;
     (async () => {
@@ -168,8 +213,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         } else {
           params.append('lake_id', String(lakeId));
         }
-        if (yearFrom) params.append('date_from', `${yearFrom}-01-01`);
-        if (yearTo) params.append('date_to', `${yearTo}-12-31`);
+        if (debouncedYearFrom) params.append('date_from', `${debouncedYearFrom}-01-01`);
+        if (debouncedYearTo) params.append('date_to', `${debouncedYearTo}-12-31`);
         if (organizationId) params.append('organization_id', organizationId);
         const res = await apiPublic(`/stats/depths?${params.toString()}`);
         if (abort) return;
@@ -186,7 +231,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       }
     })();
     return () => { abort = true; };
-  }, [paramCode, lakeId, compareValue, yearFrom, yearTo, organizationId, inferredTest, depthMode]);
+  }, [paramCode, lakeId, compareValue, debouncedYearFrom, debouncedYearTo, organizationId, secondaryOrganizationId, inferredTest, depthMode]);
 
   // Clear TOST selection if it becomes invalid (e.g., user changed to a non-range param or switched to two-sample)
   useEffect(() => {
@@ -196,8 +241,22 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     }
   }, [selectedTest, paramHasRange, inferredTest]);
 
+  useEffect(() => {
+    if (!compareValue || !String(compareValue).startsWith('lake:')) {
+      if (secondaryOrganizationId) setSecondaryOrganizationId('');
+    }
+  }, [compareValue, secondaryOrganizationId]);
+
+  useEffect(() => { if (result) setResult(null); }, [debouncedYearFrom, debouncedYearTo]);
+
+  // Clear advisories whenever primary UI selections or framing change
+  useEffect(() => {
+    // Any UI toggle that meaningfully changes the context should clear previously computed advisories
+    setAdvisories([]);
+  }, [inferredTest, compareValue, selectedTest, lakeId, classCode, organizationId, secondaryOrganizationId, depthMode, depthValue, flagProblems, debouncedYearFrom, debouncedYearTo, paramCode, appliedStandardId]);
+
   const run = async () => {
-    setLoading(true); setError(null); setResult(null); setShowExactP(false);
+    setLoading(true); setError(null); setResult(null); setShowExactP(false); setAdvisories([]);
     try {
       // 1. Build request body for series endpoint
       const body = {
@@ -246,6 +305,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         let mu0 = null;
         const thrMin = series?.threshold_min ?? null;
         const thrMax = series?.threshold_max ?? null;
+        let alt = 'two-sided';
         if (evalType === 'range') {
           if (thrMin == null || thrMax == null) throw new Error('threshold_missing_range');
           // Delegated to adapter (supports tost & tost_wilcoxon & shapiro)
@@ -255,11 +315,48 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
             if (evalType === 'min') mu0 = thrMin != null ? thrMin : thrMax;
             else if (evalType === 'max') mu0 = thrMax != null ? thrMax : thrMin;
             else mu0 = thrMax != null ? thrMax : thrMin;
+            // One-sided alternative for single-bound thresholds
+            if (selectedTest === 't_one_sample' || selectedTest === 'wilcoxon_signed_rank' || selectedTest === 'sign_test') {
+              if (evalType === 'min') alt = 'greater';
+              else if (evalType === 'max') alt = 'less';
+            }
           } else {
             mu0 = suggestThreshold(paramCode, classCode, staticThresholds);
           }
-          computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax });
+          if (flagProblems && (alt === 'greater' || alt === 'less')) {
+            // invert direction for problem framing
+            alt = alt === 'greater' ? 'less' : 'greater';
+          }
+          computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax, alt });
         }
+        // One-sample advisories
+        const adv = [];
+        const n = (values || []).length;
+        if (n < 5) adv.push('Fewer than 5 samples; low statistical power.');
+        else if (n < 10) adv.push('Moderate sample size (<10); interpret with caution.');
+        const mean = computed.mean != null ? computed.mean : (values.reduce((a,b)=>a+b,0)/values.length);
+        const thrMinEff = series?.threshold_min ?? null;
+        const thrMaxEff = series?.threshold_max ?? null;
+        if (evalType === 'min' && thrMinEff != null) {
+          const dist = mean - thrMinEff; // positive = above minimum
+          computed.range_distance = dist;
+          if (dist >= 0) adv.push(`Mean is above minimum by ${fmt(dist)}`);
+          else adv.push(`Mean is below minimum by ${fmt(Math.abs(dist))}`);
+        } else if (evalType === 'max' && thrMaxEff != null) {
+          const dist = thrMaxEff - mean; // positive = below maximum
+          computed.range_distance = dist;
+          if (dist >= 0) adv.push(`Mean is below maximum by ${fmt(dist)}`);
+          else adv.push(`Mean exceeds maximum by ${fmt(Math.abs(dist))}`);
+        } else if (evalType === 'range' && thrMinEff != null && thrMaxEff != null) {
+          let dist = 0;
+          if (mean < thrMinEff) dist = thrMinEff - mean;
+          else if (mean > thrMaxEff) dist = mean - thrMaxEff;
+          computed.range_distance = dist; // 0 inside
+          if (dist === 0) adv.push('Mean lies within acceptable range.');
+          else if (mean < thrMinEff) adv.push(`Mean is below range by ${fmt(dist)}`);
+          else adv.push(`Mean is above range by ${fmt(dist)}`);
+        }
+        if (adv.length) setAdvisories(adv);
       } else {
         const x = (series?.sample1_values || []).map(Number).filter(Number.isFinite);
         const y = (series?.sample2_values || []).map(Number).filter(Number.isFinite);
@@ -268,6 +365,43 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
           setResult(null); setLoading(false); return;
         }
         computed = await runTwoSample({ selectedTest, sample1: x, sample2: y, alpha, evalType });
+        // Advisory & threshold distance logic
+        const adv = [];
+        const n1 = x.length, n2 = y.length;
+        const small = Math.min(n1, n2), large = Math.max(n1, n2);
+        if (small < 5) adv.push('One group has fewer than 5 samples; statistical power is limited.');
+        if (large > 0 && small / large < 0.5) adv.push('Sample size imbalance (smaller group < 50% of larger); consider cautious interpretation.');
+        const thrMin = series?.threshold_min ?? null;
+        const thrMax = series?.threshold_max ?? null;
+        if (thrMin != null || thrMax != null) {
+          const mean1 = computed.mean1 != null ? computed.mean1 : (x.reduce((a,b)=>a+b,0)/x.length);
+          const mean2 = computed.mean2 != null ? computed.mean2 : (y.reduce((a,b)=>a+b,0)/y.length);
+          const distCalc = (m) => {
+            if (evalType === 'min' && thrMin != null) return m - thrMin; // positive = above minimum
+            if (evalType === 'max' && thrMax != null) return thrMax - m; // positive = below maximum
+            if (evalType === 'range' && thrMin != null && thrMax != null) {
+              if (m < thrMin) return thrMin - m; // distance below
+              if (m > thrMax) return m - thrMax; // distance above
+              return 0; // inside
+            }
+            return null;
+          };
+          const d1 = distCalc(mean1);
+          const d2 = distCalc(mean2);
+          if (d1 != null) computed.range_distance1 = d1;
+          if (d2 != null) computed.range_distance2 = d2;
+          if (evalType === 'range') {
+            if (d1 === 0 && d2 === 0) adv.push('Both group means lie within the acceptable range.');
+            else if ((d1 === 0 && d2 !== 0) || (d2 === 0 && d1 !== 0)) adv.push('Only one group mean lies within the acceptable range.');
+          }
+        }
+        if (adv.length) setAdvisories(adv);
+        // Debug logging to help diagnose missing advisories in UI
+        console.debug('[AdvancedStat] advisories debug', {
+          paramCode, evalType, n1, n2, small, large, thrMin, thrMax,
+          mean1: computed.mean1, mean2: computed.mean2, range_distance1: computed.range_distance1, range_distance2: computed.range_distance2,
+          advisories: adv
+        });
       }
 
       if (series?.events) {
@@ -310,6 +444,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setError(null);
     setShowAllValues(false);
   setShowExactP(false);
+    setAdvisories([]);
     // no user-facing alert for clear (kept silent)
   };
 
@@ -322,23 +457,85 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       }
       const title = `Advanced statistics - ${paramCode || ''}`;
       const style = `body { font-family: Arial, Helvetica, sans-serif; color: #111; padding: 18px; } h1 { font-size: 18px; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #ddd; padding: 6px; }`;
-      const summaryRows = [];
-      if (result) {
-        summaryRows.push(`<tr><th>Test</th><td>${result.test_used || result.type || ''}</td></tr>`);
-        if (result.p_value != null) summaryRows.push(`<tr><th>p-value</th><td>${sci(result.p_value)}</td></tr>`);
-        if (result.mean != null) summaryRows.push(`<tr><th>Mean</th><td>${fmt(result.mean)}</td></tr>`);
-        if (result.n != null) summaryRows.push(`<tr><th>N</th><td>${fmt(result.n)}</td></tr>`);
-        if (result.median != null) summaryRows.push(`<tr><th>Median</th><td>${fmt(result.median)}</td></tr>`);
-        if (result.sd != null) summaryRows.push(`<tr><th>SD</th><td>${fmt(result.sd)}</td></tr>`);
-        if (result.W != null) summaryRows.push(`<tr><th>W</th><td>${fmt(result.W)}</td></tr>`);
-        if (result.var1 != null) summaryRows.push(`<tr><th>Variance (Group 1)</th><td>${fmt(result.var1)}</td></tr>`);
-        if (result.var2 != null) summaryRows.push(`<tr><th>Variance (Group 2)</th><td>${fmt(result.var2)}</td></tr>`);
-        if (!result.var1 && Array.isArray(result.group_variances)) summaryRows.push(`<tr><th>Group variances</th><td>${result.group_variances.map(v=>fmt(v)).join(', ')}</td></tr>`);
-      }
+        // Helper: nice test names
+        const testNames = {
+          shapiro_wilk: 'Shapiro–Wilk normality test',
+          t_one_sample: 'One-sample t-test',
+          wilcoxon_signed_rank: 'Wilcoxon signed-rank test',
+          sign_test: 'Sign test',
+          tost: 'Equivalence TOST (t)',
+          tost_wilcoxon: 'Equivalence TOST (Wilcoxon)',
+          t_student: 'Student t-test (equal var)',
+          t_welch: 'Welch t-test (unequal var)',
+          levene: 'Levene variance test',
+          mann_whitney: 'Mann–Whitney U',
+          mood_median_test: "Mood's median test"
+        };
+
+        const findTestLabel = (r) => {
+          const code = (r.test_used || r.type || selectedTest || '').toString();
+          return testNames[code] || code.replace(/_/g, ' ');
+        };
+
+        const fmtP = (p) => {
+          if (p == null || Number.isNaN(Number(p))) return '';
+          const n = Number(p);
+          if (isFinite(n) && n > 0 && n < 0.001) return '&lt;0.001';
+          return sci(n);
+        };
+
+        const findParamName = (code) => {
+          if (!code) return '';
+          const e = (paramOptions || []).find(x => x.code === code || x.key === code || String(x.id) === String(code));
+          return e ? (e.label || e.name || e.code) : code;
+        };
+
+        const findLakeName = (id) => {
+          if (!id) return '';
+          const e = (lakes || []).find(x => String(x.id) === String(id));
+          return e ? (e.name || `Lake ${e.id}`) : String(id);
+        };
+
+        const summaryRows = [];
+        if (result) {
+          summaryRows.push(`<tr><th>Test</th><td>${findTestLabel(result)}</td></tr>`);
+          summaryRows.push(`<tr><th>Framing</th><td>${flagProblems ? 'Problem (exceedance)' : 'Compliance (meeting standard)'}</td></tr>`);
+          if (result.alternative) summaryRows.push(`<tr><th>Alternative</th><td>${result.alternative}</td></tr>`);
+          if (result.p_value != null) summaryRows.push(`<tr><th>p-value</th><td>${fmtP(result.p_value)}</td></tr>`);
+          if (result.p_lower != null && result.p_upper != null) summaryRows.push(`<tr><th>TOST p (lower/upper)</th><td>${fmtP(result.p_lower)} / ${fmtP(result.p_upper)}</td></tr>`);
+          if (result.pTOST != null) summaryRows.push(`<tr><th>TOST max p</th><td>${fmtP(result.pTOST)}</td></tr>`);
+          if (result.mean != null) summaryRows.push(`<tr><th>Mean</th><td>${fmt(result.mean)}</td></tr>`);
+          if (result.median != null) summaryRows.push(`<tr><th>Median</th><td>${fmt(result.median)}</td></tr>`);
+          if (result.sd != null) summaryRows.push(`<tr><th>SD</th><td>${fmt(result.sd)}</td></tr>`);
+          if (result.n != null) summaryRows.push(`<tr><th>N</th><td>${fmt(result.n)}</td></tr>`);
+          if (paramCode) summaryRows.push(`<tr><th>Parameter</th><td>${findParamName(paramCode)}</td></tr>`);
+          if (lakeId) summaryRows.push(`<tr><th>Lake</th><td>${findLakeName(lakeId)}</td></tr>`);
+          if (compareValue && String(compareValue).startsWith('lake:')) {
+            const otherId = String(compareValue).split(':')[1];
+            summaryRows.push(`<tr><th>Compare (lake)</th><td>${findLakeName(otherId)}</td></tr>`);
+          } else if (compareValue && String(compareValue).startsWith('class:')) {
+            summaryRows.push(`<tr><th>Compare (class)</th><td>${String(compareValue).split(':')[1] || ''}</td></tr>`);
+          }
+          if (result.mean1 != null) summaryRows.push(`<tr><th>Group 1 mean</th><td>${fmt(result.mean1)}</td></tr>`);
+          if (result.mean2 != null) summaryRows.push(`<tr><th>Group 2 mean</th><td>${fmt(result.mean2)}</td></tr>`);
+          if (result.sd1 != null) summaryRows.push(`<tr><th>Group 1 SD</th><td>${fmt(result.sd1)}</td></tr>`);
+          if (result.sd2 != null) summaryRows.push(`<tr><th>Group 2 SD</th><td>${fmt(result.sd2)}</td></tr>`);
+          if (result.n1 != null) summaryRows.push(`<tr><th>Group 1 N</th><td>${fmt(result.n1)}</td></tr>`);
+          if (result.n2 != null) summaryRows.push(`<tr><th>Group 2 N</th><td>${fmt(result.n2)}</td></tr>`);
+          if (result.var1 != null) summaryRows.push(`<tr><th>Variance (Group 1)</th><td>${fmt(result.var1)}</td></tr>`);
+          if (result.var2 != null) summaryRows.push(`<tr><th>Variance (Group 2)</th><td>${fmt(result.var2)}</td></tr>`);
+          if (!result.var1 && Array.isArray(result.group_variances)) summaryRows.push(`<tr><th>Group variances</th><td>${result.group_variances.map(v=>fmt(v)).join(', ')}</td></tr>`);
+          if (result.threshold_min != null || result.threshold_max != null) summaryRows.push(`<tr><th>Threshold(s)</th><td>${result.threshold_min ?? ''}${(result.threshold_min!=null && result.threshold_max!=null)?' - ':''}${result.threshold_max ?? ''}</td></tr>`);
+          if (result.range_distance != null) summaryRows.push(`<tr><th>Distance to bound/range</th><td>${fmt(result.range_distance)}</td></tr>`);
+          if (result.range_distance1 != null || result.range_distance2 != null) summaryRows.push(`<tr><th>Range distance (group 1 / 2)</th><td>${result.range_distance1 != null ? fmt(result.range_distance1) : ''} / ${result.range_distance2 != null ? fmt(result.range_distance2) : ''}</td></tr>`);
+          if (result.mu0 != null) summaryRows.push(`<tr><th>Reference (mu0)</th><td>${fmt(result.mu0)}</td></tr>`);
+          if (advisories.length) summaryRows.push(`<tr><th>Advisories</th><td>${advisories.map(a=>a.replace(/</g,'&lt;')).join('<br/>')}</td></tr>`);
+        }
 
       let valuesSection = '';
       if (Array.isArray(result?.events) && result.events.length) {
-        const rowsHtml = result.events.slice(0, 1000).map(ev => `<tr><td>${ev.sampled_at || ''}</td><td>${ev.lake_id || ''}</td><td>${ev.station_id ?? ''}</td><td>${ev.value ?? ''}</td></tr>`).join('');
+        const findStationName = (ev) => ev.station_name || ev.station_label || ev.station_id || '';
+        const rowsHtml = result.events.slice(0, 1000).map(ev => `<tr><td>${ev.sampled_at || ''}</td><td>${findLakeName(ev.lake_id) || ''}</td><td>${findStationName(ev) || ''}</td><td>${ev.value ?? ''}</td></tr>`).join('');
         valuesSection = `<h3>Events (first ${Math.min(result.events.length, 1000)})</h3><table><thead><tr><th>Sampled at</th><th>Lake</th><th>Station</th><th>Value</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
       } else if (Array.isArray(result?.sample_values) && result.sample_values.length) {
         valuesSection = `<h3>Values</h3><div>${(result.sample_values || []).slice(0,1000).join(', ')}</div>`;
@@ -477,6 +674,9 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         <div style={{ fontSize:12, opacity:0.8 }}>Lake-to-lake comparisons aggregate station measurements per lake (mean).</div>
       </div>
       <div style={{ display:'flex', gap:8 }}>
+        <button className={flagProblems ? 'pill-btn danger' : 'pill-btn'} onClick={() => setFlagProblems(f => !f)} style={{ padding:'6px 10px', fontSize:12 }} title={flagProblems ? 'Problem framing active: alternatives target exceedances' : 'Compliance framing: alternatives target meeting standards'}>
+          {flagProblems ? 'Flag Problems' : 'Compliance'}
+        </button>
         <button ref={gearBtnRef} aria-label="Advanced options" title="Advanced options" className="pill-btn" onClick={() => setShowGearPopover(s => !s)} style={{ padding:'6px 10px', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
           <FiSettings size={16} />
         </button>
@@ -508,18 +708,29 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
           <option value="0.95">95% CL</option>
           <option value="0.99">99% CL</option>
         </select>
+        {yearError ? <div style={{ gridColumn:'1 / span 2', fontSize:11, color:'#ffb3b3' }}>{yearError}</div> : null}
       </div>
     </Popover>
 
     {/* Notices/errors */}
     <div style={{ marginTop:8 }}>
-      {error && <div style={{ color:'#ff8080', fontSize:12 }}>{error}</div>}
+  {error && <div style={{ color:'#ff8080', fontSize:12 }}>{error}</div>}
+  {!error && yearError && <div style={{ color:'#ffb3b3', fontSize:12 }}>{yearError}</div>}
+  {/* transient previous-test-cleared message removed */}
       {error && (error.includes('threshold_missing') || error.includes('threshold')) && (
         <div style={{ fontSize:11, marginTop:6, color:'#ffd9d9' }}>
           Server debug: <pre style={{ whiteSpace:'pre-wrap', fontSize:11 }}>{JSON.stringify((error && (typeof error === 'string') ? null : null) || '' )}</pre>
         </div>
       )}
       {/* Manual threshold flow removed in backend; no prompt needed here */}
+      {advisories.length ? (
+        <div style={{ marginTop:6, fontSize:12, color:'#f0f0f0' }}>
+          <strong>Advisories:</strong>
+          <ul style={{ margin:'4px 0 0 16px', padding:0 }}>
+            {advisories.map((a,i)=>(<li key={`adv-${i}`}>{a}</li>))}
+          </ul>
+        </div>
+      ) : null}
     </div>
 
     {/* Result */}

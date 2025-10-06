@@ -6,36 +6,37 @@ function normalize(base, extra={}) {
   return { ...base, ...extra };
 }
 
-export async function runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax }) {
+export async function runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax, alt }) {
+  const alternative = alt || 'two-sided';
   if (selectedTest === 'shapiro_wilk') {
     const r = await shapiroWilkAsync(values, alpha);
     return normalize(r, { type:'one-sample-normality', test_used:'shapiro_wilk', sample_values: values, evaluation_type: evalType || null });
   }
   if (selectedTest === 'wilcoxon_signed_rank') {
-    const r = await wilcoxonSignedRankAsync(values, Number(mu0), alpha, 'two-sided');
+    const r = await wilcoxonSignedRankAsync(values, Number(mu0), alpha, alternative);
     // derive median for downstream interpretation when mean is absent
     let median = null; try { const sorted=[...values].filter(Number.isFinite).sort((a,b)=>a-b); const n=sorted.length; if(n) median = (n%2? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2); } catch(e) { /* ignore */ }
     return normalize({
       type: 'one-sample-nonparam', test_used: 'wilcoxon_signed_rank', sample_values: values, mu0, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null,
-      n: r.n, statistic: r.statistic, p_value: r.p_value, alpha: r.alpha ?? alpha, significant: r.p_value < (r.alpha ?? alpha), median
+      n: r.n, statistic: r.statistic, p_value: r.p_value, alpha: r.alpha ?? alpha, significant: r.p_value < (r.alpha ?? alpha), median, alternative: r.alt || alternative
     });
   }
   if (selectedTest === 'sign_test') {
-    const r = await signTestAsync(values, Number(mu0), alpha, 'two-sided');
+    const r = await signTestAsync(values, Number(mu0), alpha, alternative);
     let median = null; try { const sorted=[...values].filter(Number.isFinite).sort((a,b)=>a-b); const n=sorted.length; if(n) median = (n%2? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2); } catch(e) { /* ignore */ }
-    return normalize(r, { type:'one-sample-nonparam', test_used:'sign_test', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, median });
+    return normalize(r, { type:'one-sample-nonparam', test_used:'sign_test', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, median, alternative: r.alternative || alternative });
   }
   if (selectedTest === 'tost') {
     const r = await tostEquivalenceAsync(values, Number(thrMin), Number(thrMax), alpha);
-    return normalize(r, { test_used:'tost', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent });
+    return normalize(r, { test_used:'tost', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent, alternative:'equivalence' });
   }
   if (selectedTest === 'tost_wilcoxon') {
     const r = await tostEquivalenceWilcoxonAsync(values, Number(thrMin), Number(thrMax), alpha);
-    return normalize(r, { test_used:'tost_wilcoxon', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent });
+    return normalize(r, { test_used:'tost_wilcoxon', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent, alternative:'equivalence' });
   }
   // default one-sample t-test
-  const r = await tOneSampleAsync(values, Number(mu0), alpha, 'two-sided');
-  return normalize(r, { type:'one-sample', test_used:'t_one_sample', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null });
+  const r = await tOneSampleAsync(values, Number(mu0), alpha, alternative);
+  return normalize(r, { type:'one-sample', test_used:'t_one_sample', mu0, sample_values: values, evaluation_type: evalType || null, threshold_min: thrMin ?? null, threshold_max: thrMax ?? null, alternative: r.alternative || alternative });
 }
 
 export async function runTwoSample({ selectedTest, sample1, sample2, alpha, evalType }) {
