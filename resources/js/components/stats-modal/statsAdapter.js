@@ -1,5 +1,5 @@
 // Adapter to map a selected test key to statsUtils functions and return normalized results
-import { tOneSampleAsync, tTwoSampleWelchAsync, tTwoSampleStudentAsync, mannWhitneyAsync, signTestAsync, tostEquivalenceAsync, wilcoxonSignedRankAsync, moodMedianAsync, shapiroWilkAsync, leveneTwoSampleAsync } from '../../stats/statsUtils';
+import { tOneSampleAsync, tTwoSampleWelchAsync, tTwoSampleStudentAsync, mannWhitneyAsync, signTestAsync, tostEquivalenceAsync, tostEquivalenceWilcoxonAsync, wilcoxonSignedRankAsync, moodMedianAsync, shapiroWilkAsync, leveneTwoSampleAsync } from '../../stats/statsUtils';
 
 // Normalize a result object to ensure consistent keys for UI consumption
 function normalize(base, extra={}) {
@@ -28,6 +28,10 @@ export async function runOneSample({ selectedTest, values, mu0, alpha, evalType,
   if (selectedTest === 'tost') {
     const r = await tostEquivalenceAsync(values, Number(thrMin), Number(thrMax), alpha);
     return normalize(r, { test_used:'tost', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent });
+  }
+  if (selectedTest === 'tost_wilcoxon') {
+    const r = await tostEquivalenceWilcoxonAsync(values, Number(thrMin), Number(thrMax), alpha);
+    return normalize(r, { test_used:'tost_wilcoxon', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type:'range', significant: !!r.equivalent });
   }
   // default one-sample t-test
   const r = await tOneSampleAsync(values, Number(mu0), alpha, 'two-sided');

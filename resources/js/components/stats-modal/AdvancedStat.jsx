@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useImperativeHandle } from "react";
 import { FiSettings, FiX } from 'react-icons/fi';
 import Popover from "../common/Popover";
-import { api, apiPublic } from "../../lib/api";
-import { fetchParameters, fetchSampleEvents, deriveOrgOptions } from "./data/fetchers";
+import { apiPublic } from "../../lib/api";
+import { fetchSampleEvents, deriveOrgOptions } from "./data/fetchers"; // removed unused fetchParameters
 import { alertSuccess, alertError } from '../../utils/alerts';
-import { tOneSampleAsync, tTwoSampleWelchAsync, tTwoSampleStudentAsync, mannWhitneyAsync, signTestAsync, tostEquivalenceAsync, tostEquivalenceWilcoxonAsync, wilcoxonSignedRankAsync, moodMedianAsync, shapiroWilkAsync } from '../../stats/statsUtils'; // legacy direct imports (some still used for threshold suggestion)
-import { runOneSample, runTwoSample } from './statsAdapter';
+import { runOneSample, runTwoSample } from './statsAdapter'; // consolidated test execution
 import { fmt, sci } from './formatters';
 import ResultPanel from './ResultPanel';
 
@@ -249,18 +248,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         const thrMax = series?.threshold_max ?? null;
         if (evalType === 'range') {
           if (thrMin == null || thrMax == null) throw new Error('threshold_missing_range');
-          if (selectedTest === 'tost') {
-            const tr = await tostEquivalenceAsync(values, Number(thrMin), Number(thrMax), alpha);
-            computed = { ...tr, test_used: 'tost', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type: 'range' };
-          } else if (selectedTest === 'tost_wilcoxon') {
-            const wr = await tostEquivalenceWilcoxonAsync(values, Number(thrMin), Number(thrMax), alpha);
-            computed = { ...wr, test_used: 'tost_wilcoxon', sample_values: values, threshold_min: thrMin, threshold_max: thrMax, evaluation_type: 'range' };
-          } else if (selectedTest === 'shapiro_wilk') {
-            computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax });
-          } else {
-            alertError('Range threshold requires an equivalence test', 'Select Equivalence TOST (t) or Equivalence TOST (Wilcoxon), or run Shapiro–Wilk separately.');
-            setLoading(false); return;
-          }
+          // Delegated to adapter (supports tost & tost_wilcoxon & shapiro)
+          computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax });
         } else {
           if (thrMin != null || thrMax != null) {
             if (evalType === 'min') mu0 = thrMin != null ? thrMin : thrMax;
