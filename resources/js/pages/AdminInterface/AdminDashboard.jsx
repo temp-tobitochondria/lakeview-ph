@@ -12,6 +12,7 @@ import {
   FiFileText,    // WQ Tests
   FiActivity,    // Audit Logs
   FiSettings,    // System Settings
+  FiDatabase,    // Population Rasters
 } from "react-icons/fi";
 
 import DashboardLayout from "../../layouts/DashboardLayout";
@@ -25,6 +26,7 @@ import AdminWQTests from "./adminWQTests";
 import AdminSettingsPage from "./adminSettings.jsx";
 import AdminFeedback from './AdminFeedback';
 import AdminAuditLogsPage from './adminLogs';
+import AdminPopulationData from './adminPopulationData';
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -44,12 +46,15 @@ export default function AdminDashboard() {
     { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
   // Water Quality Tests
   { path: "/admin-dashboard/wq-tests", label: "WQ Tests", icon: <FiFileText /> },
+      // Population Rasters
+  { path: "/admin-dashboard/population-data", label: "Population Data", icon: <FiDatabase /> },
     // System Feedback
     { path: "/admin-dashboard/feedback", label: "System Feedback", icon: <FiClipboard /> },
     // Audit Logs
     { path: "/admin-dashboard/audit", label: "Audit Logs", icon: <FiActivity /> },
     // System Settings
     { path: "/admin-dashboard/settings", label: "System Settings", icon: <FiSettings /> },
+
   ];
 
   return (
@@ -84,6 +89,8 @@ export default function AdminDashboard() {
 
   {/* System Settings */}
   <Route path="settings" element={<AdminSettingsPage />} />
+  {/* Population Rasters */}
+  <Route path="population-data" element={<AdminPopulationData />} />
       </Routes>
     </DashboardLayout>
   );

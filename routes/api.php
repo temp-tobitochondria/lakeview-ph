@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Admin\StationController as AdminStationController;
 use App\Http\Controllers\Api\Admin\SamplingEventController as AdminSamplingEventController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\PopulationController;
+use App\Http\Controllers\Api\Admin\PopulationRasterController;
 Route::prefix('auth')->group(function () {
     // Registration OTP
     Route::post('/register/request-otp', [EmailOtpController::class, 'registerRequestOtp'])->middleware('throttle:6,1');
@@ -106,6 +107,13 @@ Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(fu
     // Audit logs (superadmin only here; org_admin has implicit scoping below if added later)
     Route::get('/audit-logs', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'index']);
     Route::get('/audit-logs/{id}', [\App\Http\Controllers\Api\Admin\AuditLogController::class, 'show'])->whereNumber('id');
+
+    // Population Rasters (upload + list)
+    Route::get('/population-rasters', [PopulationRasterController::class, 'index']);
+    Route::post('/population-rasters', [PopulationRasterController::class, 'store']);
+    Route::post('/population-rasters/{id}/process', [PopulationRasterController::class, 'process'])->whereNumber('id');
+    Route::post('/population-rasters/{id}/make-default', [PopulationRasterController::class, 'makeDefault'])->whereNumber('id');
+    Route::delete('/population-rasters/{id}', [PopulationRasterController::class, 'destroy'])->whereNumber('id');
 });
 
 // Allow org_admin to read user details via admin path too (tenant-scoped by controller)

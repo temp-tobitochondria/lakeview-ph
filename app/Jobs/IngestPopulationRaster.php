@@ -1,0 +1,238 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Models\PopulationRaster;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
+use Symfony\Component\Process\Process;
+
+class IngestPopulationRaster implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public $timeout = 1800;
+    public $tries = 1;
+
+    public function __construct(public int $rasterId, public bool $makeDefault = false) {}
+
+    public function handle(): void
+    {
+    /** @var PopulationRaster|null $r */
+        $r = PopulationRaster::find($this->rasterId);
+        if (!$r) {
+            Log::warning('IngestPopulationRaster: raster not found', ['id' => $this->rasterId]);
+            return;
+        }
+        if (!in_array($r->status, ['uploaded','error'], true)) {
+            Log::info('IngestPopulationRaster: skipping due to status', ['id' => $r->id, 'status' => $r->status]);
+            return;
+        }
+        $r->status = 'ingesting';
+        $r->ingestion_step = 'starting';
+        $r->ingestion_started_at = now();
+        $r->error_message = null;
+        $r->save();
+
+        $disk = $r->disk ?: 'local';
+        if (!Storage::disk($disk)->exists($r->path)) {
+            $r->status = 'error';
+            $r->error_message = 'File missing at ingestion time';
+            $r->ingestion_finished_at = now();
+            $r->save();
+            return;
+        }
+
+        try {
+            $r->ingestion_step = 'hashing';
+            $r->save();
+            $r->file_size_bytes = Storage::disk($disk)->size($r->path);
+            $r->file_sha256 = hash('sha256', Storage::disk($disk)->get($r->path));
+            $r->save();
+
+            $r->ingestion_step = 'preparing_table';
+            $r->save();
+            $year = (int)$r->year;
+            $tableName = 'pop_counts_' . $year . '_' . $r->id;
+
+            $r->ingestion_step = 'importing';
+            $r->save();
+            $allowShell = env('POP_IMPORT_ENABLE_SHELL', true);
+            $r2p = env('POP_RASTER2PGSQL_PATH', 'raster2pgsql');
+            $psql = env('POP_PSQL_PATH', 'psql');
+            $connection = config('database.connections.' . config('database.default'));
+            $database = $connection['database'] ?? null;
+            $username = $connection['username'] ?? null;
+            $password = $connection['password'] ?? null;
+            $host = $connection['host'] ?? null;
+            $port = $connection['port'] ?? null;
+
+            $fallbackReason = null;
+            if ($allowShell && $database && $username) {
+                $localPath = Storage::disk($disk)->path($r->path);
+                $importFiles = [$localPath];
+                if (strtolower(pathinfo($localPath, PATHINFO_EXTENSION)) === 'zip') {
+                    $r->ingestion_step = 'unzipping'; $r->save();
+                    $zip = new \ZipArchive();
+                    if ($zip->open($localPath) === true) {
+                        $extractDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'pop_ingest_' . $r->id . '_' . uniqid();
+                        mkdir($extractDir, 0775, true);
+                        $zip->extractTo($extractDir);
+                        $zip->close();
+                        $tifs = [];
+                        $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($extractDir));
+                        foreach ($rii as $file) {
+                            if ($file->isDir()) continue;
+                            $ext = strtolower(pathinfo($file->getFilename(), PATHINFO_EXTENSION));
+                            if (in_array($ext, ['tif','tiff'])) $tifs[] = $file->getPathname();
+                        }
+                        if (!empty($tifs)) {
+                            $importFiles = $tifs;
+                        } else {
+                            $fallbackReason = 'zip_no_tifs_found';
+                        }
+                    }
+                }
+                $envVars = [ 'PGPASSWORD' => $password ];
+                $tmpSql = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'pop_ingest_' . $r->id . '_' . uniqid() . '.sql';
+                $r2pPath = $r2p;
+                $psqlPath = $psql;
+                if (env('POP_RASTER2PGSQL_PATH')) $r2pPath = env('POP_RASTER2PGSQL_PATH');
+                if (env('POP_PSQL_PATH')) $psqlPath = env('POP_PSQL_PATH');
+
+                if ($fallbackReason) {
+                    Log::warning('IngestPopulationRaster: falling back due to reason before import', [
+                        'id' => $r->id,
+                        'reason' => $fallbackReason,
+                        'path' => $localPath,
+                    ]);
+                    $r->error_message = 'fallback_before_import: ' . $fallbackReason;
+                    $r->save();
+                }
+
+                if (!$fallbackReason) {
+                    $cmdR2p = array_merge([
+                        $r2pPath, '-I', '-C', '-M', '-t', '256x256', '-s', (string)((int)($r->srid ?: 4326))
+                    ], $importFiles, ['public.' . $tableName]);
+                    Log::info('IngestPopulationRaster: running raster2pgsql', [
+                        'id' => $r->id,
+                        'files' => $importFiles,
+                        'cmd' => $cmdR2p,
+                    ]);
+                    $processR2p = new Process($cmdR2p, null, null, null, 1800);
+                    $processR2p->run();
+                    if (!$processR2p->isSuccessful()) {
+                        $err = $processR2p->getErrorOutput() ?: $processR2p->getOutput();
+                        throw new \RuntimeException('raster2pgsql failed: ' . $err);
+                    }
+                    $r2pOutput = $processR2p->getOutput();
+                    file_put_contents($tmpSql, $r2pOutput);
+                    $lines = substr_count($r2pOutput, "\n");
+                    $hasInsert = str_contains($r2pOutput, 'INSERT INTO');
+                    $hasCopy = str_contains($r2pOutput, 'COPY ');
+                    Log::info('IngestPopulationRaster: raster2pgsql output stats', [
+                        'id' => $r->id,
+                        'lines' => $lines,
+                        'has_insert' => $hasInsert,
+                        'has_copy' => $hasCopy,
+                    ]);
+                    if ($lines < 10 || (!$hasInsert && !$hasCopy)) {
+                        Log::warning('IngestPopulationRaster: raster2pgsql output suspicious (few lines, no INSERT/COPY)', [
+                            'id' => $r->id,
+                            'first_500' => substr($r2pOutput, 0, 500),
+                        ]);
+                    }
+
+                    $cmdPsql = [$psqlPath, '-h', $host, '-p', (string)$port, '-U', $username, '-d', $database, '-f', $tmpSql];
+                    Log::info('IngestPopulationRaster: running psql import', [
+                        'id' => $r->id,
+                        'cmd' => $cmdPsql,
+                        'tmp_sql_bytes' => filesize($tmpSql) ?: null,
+                    ]);
+                    $processPsql = new Process($cmdPsql, null, $envVars, null, 1800);
+                    $processPsql->run();
+                    if (!$processPsql->isSuccessful()) {
+                        $err = $processPsql->getErrorOutput() ?: $processPsql->getOutput();
+                        @unlink($tmpSql);
+                        throw new \RuntimeException('psql import failed: ' . $err);
+                    }
+                    @unlink($tmpSql);
+                    try {
+                        $count = DB::selectOne("SELECT COUNT(*) AS c FROM \"$tableName\"")->c ?? 0;
+                        $cols = DB::select("SELECT column_name FROM information_schema.columns WHERE table_name = ?", [$tableName]);
+                        $colNames = array_map(fn($o) => $o->column_name, $cols);
+                        $isStub = in_array('id', $colNames, true) && !in_array('rid', $colNames, true);
+                        Log::info('IngestPopulationRaster: post-import table inspection', [
+                            'id' => $r->id,
+                            'row_count' => $count,
+                            'columns' => $colNames,
+                            'is_stub_like' => $isStub,
+                        ]);
+                        if ($count == 0) {
+                            Log::error('IngestPopulationRaster: imported table has 0 rows (failing)', ['id' => $r->id, 'table' => $tableName]);
+                            throw new \RuntimeException('Empty import: raster2pgsql created table "'.$tableName.'" with zero rows');
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('IngestPopulationRaster: count check failed', ['id' => $r->id, 'error' => $e->getMessage()]);
+                    }
+                }
+                if ($fallbackReason) {
+                    DB::statement("CREATE TABLE IF NOT EXISTS \"$tableName\" (id serial primary key, rast raster)");
+                }
+            } else {
+                DB::statement("CREATE TABLE IF NOT EXISTS \"$tableName\" (id serial primary key, rast raster)");
+                $r->error_message = 'fallback_shell_disabled';
+                $r->save();
+            }
+
+            $r->ingestion_step = 'registering';
+            $r->save();
+            DB::transaction(function () use ($tableName, $year, $r) {
+                $cat = DB::selectOne("SELECT id FROM pop_dataset_catalog WHERE table_name = ?", [$tableName]);
+                $datasetId = $cat?->id;
+                if (!$datasetId) {
+                    DB::insert("INSERT INTO pop_dataset_catalog (year, table_name, is_enabled, is_default, created_at, updated_at) VALUES (?,?,?,?, now(), now())", [
+                        $year, $tableName, true, false
+                    ]);
+                    $datasetId = DB::getPdo()->lastInsertId();
+                }
+                $default = DB::selectOne("SELECT id FROM pop_dataset_catalog WHERE year = ? AND is_default = TRUE", [$year]);
+                if (!$default) {
+                    DB::statement('SELECT pop_enable_dataset(?, TRUE)', [$datasetId]);
+                } elseif ($this->makeDefault) {
+                    DB::statement('SELECT pop_enable_dataset(?, TRUE)', [$datasetId]);
+                } else {
+                    DB::statement('SELECT pop_enable_dataset(?, FALSE)', [$datasetId]);
+                }
+                $r->dataset_id = $datasetId;
+            });
+
+            try {
+                $meta = DB::selectOne("SELECT (ST_MetaData(rast)).scalex AS sx, (ST_MetaData(rast)).scaley AS sy FROM \"$tableName\" WHERE rast IS NOT NULL LIMIT 1");
+                if ($meta) {
+                    $r->pixel_size_x = $meta->sx ?? null;
+                    $r->pixel_size_y = $meta->sy ?? null;
+                }
+            } catch (Throwable $e) { /* ignore */ }
+
+            $r->status = 'ready';
+            $r->ingestion_step = 'done';
+            $r->ingestion_finished_at = now();
+            $r->save();
+        } catch (Throwable $e) {
+            Log::error('IngestPopulationRaster failed', ['id' => $r->id, 'error' => $e->getMessage()]);
+            $r->status = 'error';
+            $r->error_message = $e->getMessage();
+            $r->ingestion_step = 'error';
+            $r->ingestion_finished_at = now();
+            $r->save();
+        }
+    }
+}
