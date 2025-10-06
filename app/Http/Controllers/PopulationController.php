@@ -4,10 +4,31 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class PopulationController extends Controller
 {
+    /** Resolve dataset (id + table_name) for a year using catalog (prefers default) */
+    private function resolveDataset(int $year): ?array
+    {
+        try {
+            $row = DB::selectOne('SELECT id, table_name FROM pop_dataset_catalog WHERE year = ? AND is_enabled = TRUE ORDER BY is_default DESC, id DESC LIMIT 1', [$year]);
+            if ($row && $row->table_name) {
+                return ['id' => (int)$row->id, 'table' => $row->table_name];
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+    private function resolveDatasetTable(int $year): ?string { return $this->resolveDataset($year)['table'] ?? null; }
+
+    /** Safely quote a possibly unqualified table name */
+    private function qname(string $table): string
+    {
+        if (str_contains($table, '.')) return $table; // assume already schema-qualified
+        return '"' . str_replace('"', '""', $table) . '"';
+    }
+
     /**
      * GET /api/population/estimate
      * Query params: lake_id (int, required), radius_km (float, default 2.0), year (int, default 2025), layer_id (int|null)
@@ -27,30 +48,112 @@ class PopulationController extends Controller
         $year     = isset($validated['year']) ? (int) $validated['year'] : 2025;
         $layerId  = $validated['layer_id'] ?? null;
 
+        // Legacy function removed: compute directly from catalog table via summary stats
         try {
-            $sql = 'SELECT public.pop_estimate_counts_by_year_cached(?, ?, ?, ?) AS pop';
-            $bindings = [$lakeId, $radiusKm, $year, $layerId];
-            $row = DB::selectOne($sql, $bindings);
-            $pop = $row?->pop;
+            $ds = $this->resolveDataset($year);
+            if (!$ds) {
+                return response()->json([
+                    'lake_id' => $lakeId,
+                    'year' => $year,
+                    'radius_km' => $radiusKm,
+                    'layer_id' => $layerId,
+                    'estimate' => null,
+                    'status' => 'no_dataset'
+                ], 404);
+            }
+            $datasetId = $ds['id'];
+            $table = $ds['table'];
+            $ringRow = null;
+            try { $ringRow = DB::selectOne('SELECT public.fn_lake_ring_resolved(?, ?, ?) AS g', [$lakeId, $radiusKm, $layerId]); } catch (\Throwable $ringE) {}
+            if (!$ringRow || !$ringRow->g) {
+                return response()->json([
+                    'lake_id' => $lakeId,
+                    'year' => $year,
+                    'radius_km' => $radiusKm,
+                    'layer_id' => $layerId,
+                    'estimate' => null,
+                    'status' => 'no_ring'
+                ], 422);
+            }
 
-            // Round to nearest integer for UI display
-            $estimate = is_null($pop) ? null : (int) round((float) $pop);
+            $method = 'raster_counts:ds=' . $datasetId . '|layer=' . ($layerId !== null ? $layerId : 'active');
+            // Attempt cache lookup
+            $cache = null;
+            try {
+                $cache = DB::selectOne('SELECT estimate, computed_at FROM pop_estimate_cache WHERE lake_id=? AND year=? AND radius_km=? AND method=? LIMIT 1', [
+                    $lakeId, $year, $radiusKm, $method
+                ]);
+            } catch (\Throwable $ce) {}
+
+            if ($cache && isset($cache->estimate)) {
+                return response()->json([
+                    'lake_id'   => $lakeId,
+                    'year'      => $year,
+                    'radius_km' => $radiusKm,
+                    'layer_id'  => $layerId ? (int)$layerId : null,
+                    'estimate'  => (int) round((float)$cache->estimate),
+                    'source'    => 'worldpop',
+                    'product'   => 'counts_1km',
+                    'method'    => $method,
+                    'cached'    => true,
+                    'status'    => 'ok',
+                ]);
+            }
+
+            $qname = $this->qname($table);
+            $manual = DB::selectOne(
+                "WITH ring AS (SELECT ?::geometry AS g), tiles AS (
+                    SELECT ST_Clip(rast, (SELECT g FROM ring)) rast
+                    FROM $qname r
+                    WHERE ST_Intersects(r.rast, (SELECT g FROM ring))
+                ), stats AS (
+                    SELECT ST_SummaryStatsAgg(rast,1,true) s FROM tiles
+                ) SELECT COALESCE(SUM((s).sum),0) AS pop FROM stats",
+                [$ringRow->g]
+            );
+            $pop = (int) round((float) ($manual?->pop ?? 0));
+
+            // Upsert into cache
+            try {
+                DB::statement(
+                    'INSERT INTO pop_estimate_cache (lake_id, year, radius_km, estimate, method) VALUES (?,?,?,?,?)
+                     ON CONFLICT (lake_id, year, radius_km, method) DO UPDATE SET estimate = EXCLUDED.estimate, computed_at = now()',
+                    [$lakeId, $year, $radiusKm, $pop, $method]
+                );
+            } catch (\Throwable $ie) {
+                Log::notice('Estimate cache upsert failed', [ 'err' => $ie->getMessage(), 'lake_id' => $lakeId, 'year' => $year ]);
+            }
 
             return response()->json([
                 'lake_id'   => $lakeId,
                 'year'      => $year,
                 'radius_km' => $radiusKm,
-                'layer_id'  => $layerId ? (int) $layerId : null,
-                'estimate'  => $estimate,
+                'layer_id'  => $layerId ? (int)$layerId : null,
+                'estimate'  => $pop,
                 'source'    => 'worldpop',
                 'product'   => 'counts_1km',
-                'method'    => $layerId ? 'raster_counts:year:layer' : 'raster_counts:year:active',
+                'method'    => $method,
+                'cached'    => false,
+                'status'    => 'ok',
             ]);
         } catch (\Throwable $e) {
+            Log::warning('Population estimate failed (catalog+cache)', [
+                'lake_id' => $lakeId,
+                'radius_km' => $radiusKm,
+                'year' => $year,
+                'layer_id' => $layerId,
+                'error' => $e->getMessage(),
+            ]);
             return response()->json([
-                'error' => 'Failed to compute estimate',
-                'message' => $e->getMessage(),
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+                'lake_id' => $lakeId,
+                'radius_km' => $radiusKm,
+                'year' => $year,
+                'layer_id' => $layerId,
+                'estimate' => null,
+                'status' => 'error',
+                'error' => 'estimate_failed',
+                'message' => 'Population estimate could not be computed.'
+            ], 500);
         }
     }
 
@@ -101,6 +204,16 @@ class PopulationController extends Controller
                 'Cache-Control' => 'public, max-age=3600',
             ]);
         } catch (\Throwable $e) {
+            Log::warning('Population tile failed', [
+                'lake_id' => $lakeId,
+                'radius_km' => $radiusKm,
+                'year' => $year,
+                'layer_id' => $layerId,
+                'z' => $z,
+                'x' => $x,
+                'y' => $y,
+                'error' => $e->getMessage(),
+            ]);
             return response('Tile error', Response::HTTP_INTERNAL_SERVER_ERROR, [
                 'Content-Type' => 'text/plain',
             ]);
@@ -132,10 +245,11 @@ class PopulationController extends Controller
         $bbox     = $validated['bbox'] ?? null;
 
         try {
-            // Resolve table for year
-            $tbl = DB::selectOne('SELECT public.pop_table_for_year(?) AS t', [$year]);
-            $t = $tbl?->t;
-            if (!$t) return response()->json(['points' => []]);
+            $t = $this->resolveDatasetTable($year);
+            if (!$t) return response()->json(['points' => [], 'warning' => 'no_dataset']);
+            $ringRow = null;
+            try { $ringRow = DB::selectOne('SELECT public.fn_lake_ring_resolved(?, ?, ?) AS g', [$lakeId, $radiusKm, $layerId]); } catch (\Throwable $ringE) {}
+            if (!$ringRow || !$ringRow->g) return response()->json(['points' => [], 'warning' => 'no_ring']);
 
             // Parse bbox if present
             $bboxGeomSQL = null;
@@ -150,13 +264,10 @@ class PopulationController extends Controller
             }
 
             // Compose SQL dynamic with fully-qualified table name if needed
-            $qname = $t;
-            if (!str_contains($t, '.')) {
-                $qname = '"' . str_replace('"', '""', $t) . '"';
-            }
+            $qname = $this->qname($t);
 
             $sql = "WITH ring AS (
-                SELECT public.fn_lake_ring_resolved(?, ?, ?) AS g
+                SELECT ?::geometry AS g
             ), env AS (
                 SELECT " . ($bboxGeomSQL ?: 'NULL::geometry') . " AS g
             ), tiles AS (
@@ -177,12 +288,36 @@ class PopulationController extends Controller
               LIMIT ?
             )
             SELECT ST_Y(g) AS lat, ST_X(g) AS lon, pop FROM sampled";
-
-            $rows = DB::select($sql, array_merge([$lakeId, $radiusKm, $layerId], $bindings, [$maxPts]));
+            $rows = DB::select($sql, array_merge([$ringRow->g], $bindings, [$maxPts]));
             $points = array_map(fn($r) => [ (float)$r->lat, (float)$r->lon, (float)$r->pop ], $rows);
             return response()->json(['points' => $points]);
         } catch (\Throwable $e) {
-            return response()->json(['points' => [], 'error' => $e->getMessage()], 500);
+            Log::warning('Population points failed', [
+                'lake_id' => $lakeId,
+                'radius_km' => $radiusKm,
+                'year' => $year,
+                'layer_id' => $layerId,
+                'bbox' => $bbox,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['points' => [], 'error' => 'points_failed', 'message' => 'Population points query failed.'], 500);
+        }
+    }
+
+    /**
+     * GET /api/population/dataset-years
+     * Returns list of years that have an enabled default population dataset.
+     * Response: { years: [2025, 2020, ...] }
+     */
+    public function datasetYears()
+    {
+        try {
+            $rows = DB::select('SELECT DISTINCT year FROM pop_dataset_catalog WHERE is_enabled = TRUE AND is_default = TRUE ORDER BY year DESC');
+            $years = array_map(fn($r) => (int)$r->year, $rows);
+            return response()->json(['years' => $years]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to list population dataset years', ['error' => $e->getMessage()]);
+            return response()->json(['years' => []], 500);
         }
     }
 }

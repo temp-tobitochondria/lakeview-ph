@@ -293,3 +293,4 @@ Route::get('/population/estimate', [PopulationController::class, 'estimate']);
 Route::get('/tiles/pop/{z}/{x}/{y}', [PopulationController::class, 'tile'])
     ->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+']);
 Route::get('/population/points', [PopulationController::class, 'points']);
+Route::get('/population/dataset-years', [PopulationController::class, 'datasetYears']);

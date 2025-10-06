@@ -8,10 +8,15 @@ import LoadingSpinner from "../LoadingSpinner";
  * - onToggleHeatmap?: (enabled:boolean, km:number) => void
  */
 function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
+  // Start at 0 so nothing is fetched until user explicitly sets a distance
   const [distance, setDistance] = useState(0);
   const [estimatedPop, setEstimatedPop] = useState(0);
-  const [year, setYear] = useState(2025);
+  const [year, setYear] = useState(null);
+  const [availableYears, setAvailableYears] = useState([]);
+  const [yearsLoading, setYearsLoading] = useState(false);
+  const [yearsError, setYearsError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [estimateError, setEstimateError] = useState(null);
   const didInitRef = useRef(false);
   const [heatOn, setHeatOn] = useState(false);
   const estimateAbortRef = useRef(null);
@@ -44,6 +49,13 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
     let cancel = false;
     const run = async () => {
       if (!lake?.id) return;
+      // Skip estimate when distance is 0 (no ring selected yet)
+      if (distance <= 0 || !year) {
+        setEstimatedPop(0);
+        setEstimateError(null);
+        setLoading(false);
+        return;
+      }
       try {
         // cancel any in-flight estimate request immediately
         if (estimateAbortRef.current) {
@@ -59,10 +71,21 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
         };
         if (currentLayerId) params.layer_id = currentLayerId;
         const { data } = await axios.get('/api/population/estimate', { params, signal: controller.signal });
-        if (!cancel) setEstimatedPop(Number(data?.estimate || 0));
+        if (!cancel) {
+          if (data?.status === 'error') {
+            setEstimateError(data?.message || 'Estimate failed');
+            setEstimatedPop(0);
+          } else {
+            setEstimatedPop(Number(data?.estimate || 0));
+            setEstimateError(null);
+          }
+        }
       } catch (e) {
         const isCanceled = e?.name === 'CanceledError' || e?.name === 'AbortError' || e?.code === 'ERR_CANCELED';
-        if (!cancel && !isCanceled) setEstimatedPop(0);
+        if (!cancel && !isCanceled) {
+          setEstimatedPop(0);
+          setEstimateError('Failed to compute estimate');
+        }
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -71,20 +94,55 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
     return () => { cancel = true; };
   }, [distance, year, currentLayerId, lake?.id]);
 
+  // Fetch available dataset years once (or when lake changes, though global so only once needed)
+  useEffect(() => {
+    let active = true;
+    const fetchYears = async () => {
+      setYearsLoading(true);
+      setYearsError(null);
+      try {
+        const { data } = await axios.get('/api/population/dataset-years');
+        if (!active) return;
+        const yrs = Array.isArray(data?.years) ? data.years : [];
+        setAvailableYears(yrs);
+        // If current year not in list, default to first (latest) or null
+        if (yrs.length > 0) {
+          setYear(prev => (prev && yrs.includes(prev) ? prev : yrs[0]));
+        } else {
+          setYear(null);
+        }
+      } catch (e) {
+        if (!active) return;
+        setAvailableYears([]);
+        setYear(null);
+        setYearsError('Failed to load years');
+      } finally {
+        if (active) setYearsLoading(false);
+      }
+    };
+    fetchYears();
+    return () => { active = false; };
+  }, []);
+
   // When sliders/selects (or lake) change, update the heatmap if it's currently ON
   useEffect(() => {
     if (!heatOn) return;
     if (!didInitRef.current) { didInitRef.current = true; return; }
-    // Trigger map to cancel any in-flight heat request and start a fresh one with new params
+    // If distance is 0, ensure any existing heatmap is turned off and wait for user input
+    if (distance <= 0 || !year) {
+      onToggleHeatmap?.(false);
+      return;
+    }
     onToggleHeatmap?.(true, { km: distance, year, layerId: currentLayerId, loading: true });
-    // We intentionally do not include onToggleHeatmap to avoid re-creating effect on parent renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heatOn, distance, year, currentLayerId, lake?.id]);
 
   const handleToggleHeat = () => {
     if (!heatOn) {
       setHeatOn(true);
-      onToggleHeatmap?.(true, { km: distance, year, layerId: currentLayerId, loading: true });
+      if (distance > 0 && year) {
+        onToggleHeatmap?.(true, { km: distance, year, layerId: currentLayerId, loading: true });
+      }
     } else {
       setHeatOn(false);
       onToggleHeatmap?.(false);
@@ -109,7 +167,7 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
       style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <label htmlFor="distanceRange" style={{ color: '#fff', fontSize: 13 }}>Distance from shoreline</label>
+  <label htmlFor="distanceRange" style={{ color: '#fff', fontSize: 13 }}>Distance from shoreline (buffer)</label>
         <div style={{ color: '#fff', fontSize: 13 }}>{distance} km</div>
       </div>
       <input
@@ -126,9 +184,21 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
 
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       <label htmlFor="yearSelect" style={{ color: '#fff' }}>Dataset Year</label>
-      <select id="yearSelect" value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))} style={{ padding: '6px 8px', background: '#fff', color: '#111', borderRadius: 6 }}>
-        <option value={2025}>2025</option>
-        <option value={2020}>2020</option>
+      <select
+        id="yearSelect"
+        value={year || ''}
+        disabled={yearsLoading || availableYears.length === 0}
+        onChange={(e) => {
+          const val = e.target.value;
+          setYear(val ? parseInt(val, 10) : null);
+        }}
+        style={{ padding: '6px 8px', background: '#fff', color: '#111', borderRadius: 6 }}
+      >
+        {yearsLoading && <option value="">Loading...</option>}
+        {!yearsLoading && availableYears.length === 0 && <option value="">No datasets</option>}
+        {!yearsLoading && availableYears.map(y => (
+          <option key={y} value={y}>{y}{availableYears[0] === y ? ' (latest)' : ''}</option>
+        ))}
       </select>
     </div>
 
@@ -139,11 +209,18 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
           <div style={{ margin: '2px 0 8px 0' }}>
             <LoadingSpinner label="Estimating population…" color="#fff" />
           </div>
+        ) : estimateError ? (
+          <p style={{ margin: 0, color: '#fca5a5' }}>{estimateError}</p>
         ) : (
           <p style={{ margin: 0, color: '#fff' }}>
             ~ <strong>{estimatedPop.toLocaleString()}</strong> people within {distance} km of the shoreline
           </p>
         )}
+      </div>
+      <div style={{ fontSize: 11, color: '#bbb', marginTop: 4, lineHeight: 1.4 }}>
+        {distance <= 0 ? 'Set the buffer > 0 km to enable heatmap & estimation.'
+          : !year ? 'Select a dataset year to enable estimation.'
+          : 'Toggle the heatmap to visualize relative population density (higher intensity = more people). Adjust the buffer and year to refine.'}
       </div>
       <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
         <button
@@ -162,7 +239,7 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
           }}
           aria-pressed={heatOn}
         >
-          {heatOn ? 'Hide Heatmap' : 'Show Heatmap'}
+          {heatOn ? 'Hide Heatmap' : (distance <= 0 ? 'Enable (set km first)' : (!year ? 'Enable (select year)' : 'Show Heatmap'))}
         </button>
       </div>
     </div>

@@ -3,6 +3,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../../lib/api';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { FiDatabase, FiUploadCloud, FiPlayCircle, FiStar, FiTrash2 } from 'react-icons/fi';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 
 // Superadmin page: manage uploaded population raster source files (GeoTIFF / ZIP). 
 // Ingestion into PostGIS + registration with population functions is out-of-scope here.
@@ -65,11 +67,22 @@ export default function AdminPopulationData() {
       const resp = await api.upload('/admin/population-rasters', form);
       const created = resp?.data || null;
       setRows(r => [created, ...r].filter(Boolean));
-      setNotice('Upload complete. File stored and awaiting ingestion.');
+      // show a success toast
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: 'Upload complete',
+        text: 'File stored and awaiting ingestion.',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+      });
       fileRef.current.value = '';
       setNotes('');
     } catch (e) {
       const msg = e?.response?.data?.message || 'Upload failed';
+      Swal.fire({ icon: 'error', title: 'Upload failed', text: msg });
       setError(msg);
     } finally {
       setUploading(false);
@@ -104,8 +117,11 @@ export default function AdminPopulationData() {
   await api.post(`/admin/population-rasters/${id}/process${makeDefault ? '?make_default=1' : ''}`);
       // optimistic state change
       setRows(rs => rs.map(r => r.id === id ? { ...r, status: 'ingesting' } : r));
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Queued for ingestion', showConfirmButton: false, timer: 2200 });
     } catch (e) {
-      setError(e?.response?.data?.message || 'Failed to queue ingestion');
+      const msg = e?.response?.data?.message || 'Failed to queue ingestion';
+      Swal.fire({ icon: 'error', title: 'Failed to queue ingestion', text: msg });
+      setError(msg);
     } finally {
       setActingIds(a => { const c = { ...a }; delete c[id]; return c; });
     }
@@ -116,22 +132,37 @@ export default function AdminPopulationData() {
     try {
   await api.post(`/admin/population-rasters/${id}/make-default`);
       // Force a refresh to pick up catalog changes (and possibly ready status)
-      load(true);
+      await load(true);
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Set as default', showConfirmButton: false, timer: 2000 });
     } catch (e) {
-      setError(e?.response?.data?.message || 'Failed to make default');
+      const msg = e?.response?.data?.message || 'Failed to make default';
+      Swal.fire({ icon: 'error', title: 'Failed to make default', text: msg });
+      setError(msg);
     } finally {
       setActingIds(a => { const c = { ...a }; delete c[id]; return c; });
     }
   };
 
   const deleteRaster = async (id) => {
-    if (!window.confirm('Delete this raster and (if registered) its dataset? This cannot be undone.')) return;
+    const result = await Swal.fire({
+      title: 'Delete raster?',
+      text: 'Delete this raster and (if registered) its dataset? This cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
     setActingIds(a => ({ ...a, [id]: 'deleting' }));
     try {
   await api.delete(`/admin/population-rasters/${id}`);
       setRows(rs => rs.filter(r => r.id !== id));
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Deleted', showConfirmButton: false, timer: 1800 });
     } catch (e) {
-      setError(e?.response?.data?.message || 'Failed to delete raster');
+      const msg = e?.response?.data?.message || 'Failed to delete raster';
+      Swal.fire({ icon: 'error', title: 'Delete failed', text: msg });
+      setError(msg);
     } finally {
       setActingIds(a => { const c = { ...a }; delete c[id]; return c; });
     }

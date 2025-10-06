@@ -136,7 +136,8 @@ class PopulationRasterController extends Controller
             DB::statement('SELECT pop_enable_dataset(?, TRUE)', [$r->dataset_id]);
             // Cache invalidation: remove any cached estimates for the same year
             try {
-                DB::statement("DELETE FROM pop_estimate_cache WHERE method LIKE 'raster_counts:year%' AND method LIKE ?", ['%:' . $r->year . '%']);
+                // Invalidate all cached estimates for the year (simpler + covers new method format)
+                DB::statement('DELETE FROM pop_estimate_cache WHERE year = ?', [$r->year]);
             } catch (\Throwable $e) { /* ignore if cache table absent */ }
             return response()->json(['ok' => true]);
         } catch (\Throwable $e) {

@@ -88,6 +88,7 @@ function MapPage() {
   const [heatLoading, setHeatLoading] = useState(false);
   const [heatProgress, setHeatProgress] = useState(null); // null=indeterminate, 0..1 determinate
   const [heatEnabled, setHeatEnabled] = useState(false);
+  const [heatError, setHeatError] = useState(null);
   const heatParamsRef = useRef(null); // { year, km, layerId }
   const heatDebounceRef = useRef(null);
   const heatAbortRef = useRef(null);
@@ -398,6 +399,18 @@ function MapPage() {
       return;
     }
     if (!selectedLake?.id) return;
+    // Guard: if requested km is 0 or falsy, treat as disabled (no fetch)
+    if (!opts || Number(opts.km) <= 0) {
+      try {
+        if (popHeatLayerRef.current) {
+          map.removeLayer(popHeatLayerRef.current);
+          popHeatLayerRef.current = null;
+        }
+      } catch {}
+      setHeatEnabled(false);
+      setHeatLoading(false);
+      return;
+    }
     setHeatEnabled(true);
     heatParamsRef.current = {
       year: Number(opts?.year || 2025),
@@ -445,6 +458,7 @@ function MapPage() {
         } else {
           popHeatLayerRef.current.__setData?.(pts);
         }
+        setHeatError(null);
       } catch (e) {
         const status = e?.status ?? e?.response?.status;
         if (e?.name === 'CanceledError' || e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') {
@@ -463,13 +477,16 @@ function MapPage() {
             } else {
               popHeatLayerRef.current.__setData?.(pts);
             }
+            setHeatError(null);
           } catch (err2) {
             if (!(err2?.name === 'CanceledError' || err2?.name === 'AbortError' || err2?.code === 'ERR_CANCELED')) {
               console.warn('[Heatmap] failed after 429/backoff', err2);
+              setHeatError('Retry after rate limit failed.');
             }
           }
         } else {
           console.warn('[Heatmap] failed to fetch points', e);
+          setHeatError('Failed to load population points');
         }
       } finally {
         heatInFlightRef.current = false;
@@ -860,6 +877,28 @@ function MapPage() {
             )}
           </div>
           <style>{`@keyframes lvHeatInd {0%{left:-40%}100%{left:100%}}`}</style>
+        </div>
+      )}
+      {heatError && !heatLoading && (
+        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1200, background: 'rgba(127,29,29,0.8)', color: '#fff', padding: '8px 10px', borderRadius: 6, fontSize: 12, maxWidth: 220 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Heatmap Error</div>
+          <div style={{ lineHeight: 1.3 }}>{heatError}</div>
+          <button onClick={() => { setHeatError(null); }} style={{ marginTop: 6, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>Dismiss</button>
+        </div>
+      )}
+      {heatEnabled && !heatLoading && (
+        <div style={{ position: 'absolute', bottom: 90, left: 12, zIndex: 900, background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '10px 12px', borderRadius: 8, fontSize: 11, maxWidth: 220 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Population Density</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ flex: 1, height: 10, background: 'linear-gradient(90deg, rgba(0,0,255,0), #2563eb, #10b981, #fbbf24, #ef4444)', borderRadius: 4 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ opacity: 0.8 }}>low</span>
+              <span style={{ opacity: 0.8 }}>high</span>
+            </div>
+          </div>
+          <div style={{ marginTop: 6, lineHeight: 1.3, opacity: 0.85 }}>
+            Relative intensity scaled to local distribution (95th percentile cap & sqrt compression).
+          </div>
         </div>
       )}
       {/* Back to Dashboard */}
