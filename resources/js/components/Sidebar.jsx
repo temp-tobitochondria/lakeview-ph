@@ -333,9 +333,9 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
           >
             <li>
               <a
-                href="/data"
-                className={`sidebar-row ${isActive('/data') ? 'active' : ''}`}
-                onClick={handleNav('/data', { keepOpen: true })}
+                href="#overview"
+                className="sidebar-row"
+                onClick={(e) => { e.preventDefault(); try { window.dispatchEvent(new Event('lv-open-about-data')); } catch {} }}
               >
                 <span>Overview</span>
               </a>
@@ -370,12 +370,32 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
 
         {isLoggedIn ? (
           <>
-            {/* (Optional) Keep a compact user row near Sign out */}
+            {/* Profile row acts as "Back to your interface" for privileged roles */}
             <li aria-label="Logged-in user" title={me?.name || ""}>
-              <div className="sidebar-row" style={{ cursor: "default" }}>
+              <button
+                type="button"
+                className="sidebar-row"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const role = me?.role;
+                  // Support both 'superadmin' and potential 'admin' value
+                  if (role === 'superadmin' || role === 'admin') {
+                    navigate('/admin-dashboard');
+                  } else if (role === 'org_admin') {
+                    navigate('/org-dashboard');
+                  } else if (role === 'contributor') {
+                    navigate('/contrib-dashboard');
+                  } else {
+                    // Non-privileged users stay on map
+                    return;
+                  }
+                  if (!pinned) onClose?.();
+                }}
+                title="Back to your dashboard"
+              >
                 <FiUser className="sidebar-icon" />
                 <span>{me?.name}</span>
-              </div>
+              </button>
             </li>
 
             <li>

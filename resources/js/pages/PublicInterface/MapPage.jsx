@@ -33,6 +33,7 @@ import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import { useHotkeys } from "./hooks/useHotkeys";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
+import AboutData from "./AboutData";
 
 function MapWithContextMenu({ children }) {
   const map = useMap();
@@ -62,6 +63,7 @@ function MapPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false); // data privacy modal
+  const [aboutDataOpen, setAboutDataOpenModal] = useState(false); // about data modal
   const [kycOpen, setKycOpen] = useState(false);
   const [filterTrayOpen, setFilterTrayOpen] = useState(false);
   const [aboutDataMenuOpen, setAboutDataMenuOpen] = useState(false);
@@ -88,6 +90,13 @@ function MapPage() {
     return () => window.removeEventListener('lv-open-privacy', onOpen);
   }, []);
 
+  // Global trigger to open About Data modal
+  useEffect(() => {
+    const onOpen = () => setAboutDataOpenModal(true);
+    window.addEventListener('lv-open-about-data', onOpen);
+    return () => window.removeEventListener('lv-open-about-data', onOpen);
+  }, []);
+
   // Support navigation with state { openSettings: true }
   useEffect(() => {
     if (location.pathname === '/' && location.state?.openSettings) {
@@ -103,6 +112,7 @@ function MapPage() {
     if (p === '/login') { setAuthMode('login'); openAuth('login'); }
     if (p === '/register') { setAuthMode('register'); openAuth('register'); }
     if (p === '/data/privacy') { setPrivacyOpen(true); }
+    if (p === '/data') { setAboutDataOpenModal(true); }
   }, [location.pathname, openAuth, setAuthMode]);
   
   // Keep sidebar open when navigating to /data routes (so submenu doesn't appear collapsed after auto-close)
@@ -338,6 +348,17 @@ function MapPage() {
           setPrivacyOpen(false);
           if (location.pathname === "/data/privacy") {
             // Return to map after closing modal that was opened via route
+            navigate("/", { replace: true });
+          }
+        }}
+      />
+
+      {/* About Data Modal */}
+      <AboutData
+        open={aboutDataOpen}
+        onClose={() => {
+          setAboutDataOpenModal(false);
+          if (location.pathname === "/data") {
             navigate("/", { replace: true });
           }
         }}
