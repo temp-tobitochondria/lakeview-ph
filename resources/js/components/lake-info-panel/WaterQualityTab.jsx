@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { apiPublic, buildQuery } from "../../lib/api";
 import { alertError } from "../../utils/alerts";
 import { fetchStationsForLake } from "../stats-modal/data/fetchers";
@@ -31,6 +31,8 @@ function WaterQualityTab({ lake }) {
   const [station, setStation] = useState(""); // station name; empty = All
   const [tests, setTests] = useState([]); // last 10 published tests for lake (optionally filtered by org)
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const initialLoadedRef = useRef(false);
   const [bucket, setBucket] = useState("month"); // 'year' | 'quarter' | 'month'
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -81,6 +83,10 @@ function WaterQualityTab({ lake }) {
       setTests([]);
     } finally {
       setLoading(false);
+      if (!initialLoadedRef.current) {
+        initialLoadedRef.current = true;
+        setInitialLoading(false);
+      }
     }
   };
 
@@ -127,7 +133,14 @@ function WaterQualityTab({ lake }) {
     setTests([]);
     setOrgs([]);
     setStations([]);
-    if (lakeId) fetchTests("");
+    // prepare initial-loading for this lake
+    initialLoadedRef.current = false;
+    if (!lakeId) {
+      setInitialLoading(false);
+      return;
+    }
+    setInitialLoading(true);
+    fetchTests("");
   }, [lakeId]);
   // Refetch when org or time range changes
   useEffect(() => { if (lakeId != null) fetchTests(orgId); }, [orgId, dateFrom, dateTo, timeRange]);
@@ -164,7 +177,6 @@ function WaterQualityTab({ lake }) {
   // If there are no named stations, clear any selected station so filtering doesn't apply.
   useEffect(() => { if (!hasNamedStations) setStation(""); }, [hasNamedStations]);
 
-  const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "–");
   // Resolve station name for an event (consistent with fetchers)
   const eventStationName = (ev) => ev?.station?.name || ev?.station_name || ((ev?.latitude != null && ev?.longitude != null) ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}` : null);
   const visibleTests = useMemo(() => {
@@ -479,6 +491,14 @@ function WaterQualityTab({ lake }) {
     };
     return { data, options };
   };
+
+  if (initialLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <LoadingSpinner label={"Loading water quality…"} color="#fff" />
+      </div>
+    );
+  }
 
   return (
     <>

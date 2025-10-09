@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { FiEye, FiMapPin } from 'react-icons/fi';
 import { apiPublic, buildQuery } from '../../lib/api';
 import { alertError } from '../../utils/alerts';
@@ -9,6 +9,8 @@ export default function TestsTab({ lake, onJumpToStation }) {
   const lakeId = lake?.id ?? null;
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const initialLoadedRef = useRef(false);
   const [orgs, setOrgs] = useState([]);
   const [orgId, setOrgId] = useState("");
   const [stations, setStations] = useState([]);
@@ -30,11 +32,14 @@ export default function TestsTab({ lake, onJumpToStation }) {
   // If there are no named stations, clear any selected station so filtering doesn't apply.
   useEffect(() => { if (!hasNamedStations) setStationId(""); }, [hasNamedStations]);
 
-  // Fetch tests and dispatch markers. Depend on filter state so markers/tests update when filters change.
+  // Fetch tests and dispatch markers when filters change.
   useEffect(() => {
-    if (!lakeId) { setTests([]); setOrgs([]); setStations([]); setYears([]); return; }
+    if (!lakeId) { setTests([]); setOrgs([]); setStations([]); setYears([]); setInitialLoading(false); return; }
     let mounted = true;
     (async () => {
+      // mark first-load
+      initialLoadedRef.current = false;
+      setInitialLoading(true);
       setLoading(true);
       try {
         const qs = buildQuery({ lake_id: lakeId, limit: 500 });
@@ -107,7 +112,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
         console.error('[TestsTab] failed to load', e);
         await alertError('Failed', e?.message || 'Could not load tests');
         if (mounted) setTests([]);
-      } finally { if (mounted) setLoading(false); }
+      } finally { if (mounted) { setLoading(false); if (!initialLoadedRef.current) { initialLoadedRef.current = true; setInitialLoading(false); } } }
     })();
     return () => { mounted = false; };
   }, [lakeId, orgId, stationId, yearFrom, yearTo]);
@@ -161,6 +166,14 @@ export default function TestsTab({ lake, onJumpToStation }) {
     setViewRecord(t || null);
     setViewOpen(true);
   };
+
+  if (initialLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <LoadingSpinner label={"Loading tests…"} color="#fff" />
+      </div>
+    );
+  }
 
   return (
     <div>

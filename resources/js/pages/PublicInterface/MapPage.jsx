@@ -139,12 +139,15 @@ function MapPage() {
 
   // Flows state
   const [showFlows, setShowFlows] = useState(false);
-  const [flows, setFlows] = useState([]);
+  // null = loading, [] = loaded but empty, array = loaded
+  const [flows, setFlows] = useState(null);
   // fetch flows whenever selected lake changes (so Overview can list even if markers hidden)
   useEffect(()=>{
     let abort = false;
     const load = async () => {
       if (!selectedLakeId) { setFlows([]); return; }
+      // indicate loading
+      setFlows(null);
       try {
         const res = await fetch(`/api/public/lake-flows?lake_id=${selectedLakeId}`);
         if (!res.ok) return; const js = await res.json();

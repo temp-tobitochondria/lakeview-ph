@@ -20,6 +20,8 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
   const [yearsLoading, setYearsLoading] = useState(false);
   const [yearsError, setYearsError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const initialLoadedRef = useRef(false);
   const [estimateError, setEstimateError] = useState(null);
   const didInitRef = useRef(false);
   const [heatOn, setHeatOn] = useState(false);
@@ -126,6 +128,10 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
         setYearsError('Failed to load years');
       } finally {
         if (active) setYearsLoading(false);
+        if (!initialLoadedRef.current) {
+          initialLoadedRef.current = true;
+          setInitialLoading(false);
+        }
       }
     };
     fetchYears();
@@ -156,6 +162,14 @@ function HeatmapTab({ lake, onToggleHeatmap, currentLayerId = null }) {
       onToggleHeatmap?.(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <LoadingSpinner label={"Loading population datasets…"} color="#fff" />
+      </div>
+    );
+  }
 
   return (
   <div style={{ display: 'grid', gap: 8 }}>

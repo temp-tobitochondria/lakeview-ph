@@ -15,7 +15,8 @@ class LakeController extends Controller
     {
         $rows = Lake::select(
             'id','watershed_id','name','alt_name','region','province','municipality',
-            'surface_area_km2','elevation_m','mean_depth_m','class_code','created_at','updated_at'
+            'surface_area_km2','elevation_m','mean_depth_m','class_code','created_at','updated_at',
+            'flows_status'
         )->with(['watershed:id,name','waterQualityClass:code,name'])->orderBy('name')->get();
 
         return $rows->map(function($lake){
@@ -82,6 +83,7 @@ class LakeController extends Controller
             'class_code' => ['nullable','string','max:10', Rule::exists('water_quality_classes','code')],
             'lat' => ['nullable','numeric','between:-90,90'],
             'lon' => ['nullable','numeric','between:-180,180'],
+            'flows_status' => ['nullable', Rule::in(['unknown','none','present'])],
         ]);
 
         // Normalize multi-location fields
@@ -120,6 +122,7 @@ class LakeController extends Controller
             'class_code' => ['nullable','string','max:10', Rule::exists('water_quality_classes','code')],
             'lat' => ['nullable','numeric','between:-90,90'],
             'lon' => ['nullable','numeric','between:-180,180'],
+            'flows_status' => ['nullable', Rule::in(['unknown','none','present'])],
         ]);
         foreach (['region','province','municipality'] as $field) {
             if (array_key_exists($field, $data)) {
