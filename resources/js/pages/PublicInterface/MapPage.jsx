@@ -121,7 +121,8 @@ function MapPage() {
     selectedLake, selectedLakeId, watershedToggleOn,
     lakeOverlayFeature, watershedOverlayFeature, lakeLayers, lakeActiveLayerId,
     baseMatchesSelectedLake, baseKeyBump,
-    selectLakeFeature, applyOverlayByLayerId, handlePanelToggleWatershed, resetToActive
+    selectLakeFeature, applyOverlayByLayerId, handlePanelToggleWatershed, resetToActive,
+    canToggleNominatim, nominatimEnabled, setNominatimEnabled, nominatimLoading,
   } = useLakeSelection({ publicFC, mapRef, setPanelOpen: setLakePanelOpen });
 
   useHotkeys({ toggleLakePanel: () => setLakePanelOpen(v => !v), closeLakePanel: () => setLakePanelOpen(false) });
@@ -213,12 +214,15 @@ function MapPage() {
           />
         )}
 
-        {/* Lake overlay (blue) */}
+        {/* Lake overlay (blue by default; violet when from Nominatim) */}
         {lakeOverlayFeature && (
           <GeoJSON
             key={`lake-overlay-${lakeOverlayFeature?.properties?.layer_id || 'x'}-${JSON.stringify(lakeOverlayFeature?.geometry ?? {}).length}`}
             data={lakeOverlayFeature}
-            style={{ color: '#3388ff', weight: 2.5, fillOpacity: 0.20 }}
+            style={() => {
+              const isNominatim = (lakeOverlayFeature?.properties?.layer_id === 'nominatim' || lakeOverlayFeature?.properties?.source === 'nominatim');
+              return { color: isNominatim ? '#7c3aed' : '#3388ff', weight: 2.5, fillOpacity: 0.20 };
+            }}
             onEachFeature={(feat, layer) => {
               const nm = feat?.properties?.name || 'Layer';
               layer.bindTooltip(nm, { sticky: true });
@@ -297,6 +301,10 @@ function MapPage() {
         showWatershed={watershedToggleOn}
         canToggleWatershed={Boolean(selectedLake?.watershed_id || selectedLake?.watershedId)}
         onToggleWatershed={handlePanelToggleWatershed}
+          canToggleNominatim={canToggleNominatim}
+          nominatimEnabled={nominatimEnabled}
+          nominatimLoading={nominatimLoading}
+          onToggleNominatim={setNominatimEnabled}
           authUser={authUser}
   onToggleFlows={(checked)=>setShowFlows(checked)}
   showFlows={showFlows}

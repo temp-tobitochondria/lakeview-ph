@@ -159,10 +159,10 @@ function OverviewTab({
         <div><strong>Region:</strong></div>
         <div title={regionDisplay || ''}>{regionDisplay || '–'}</div>
 
-        <div><strong>Province:</strong></div>
+  <div><strong>Province:</strong></div>
         <div title={provinceDisplay || ''}>{provinceDisplay || '–'}</div>
 
-        <div><strong>Municipality/City:</strong></div>
+  <div><strong>Municipality/City:</strong></div>
         <div title={municipalityDisplay || ''}>{municipalityDisplay || '–'}</div>
 
         <div><strong>Surface Area:</strong></div>
