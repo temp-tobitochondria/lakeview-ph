@@ -11,7 +11,7 @@ import AppMap from "../../components/AppMap";
 import MapControls from "../../components/MapControls";
 import SearchBar from "../../components/SearchBar";
 import LayerControl from "../../components/LayerControl";
-import ScreenshotButton from "../../components/ScreenshotButton";
+import ScreenshotButton from "../../components/Screenshotbutton";
 import CoordinatesScale from "../../components/CoordinatesScale"
 import Sidebar from "../../components/Sidebar";
 import KycPage from "./KycPage";
@@ -278,7 +278,7 @@ function MapPage() {
       </AppMap>
 
       {/* Lake Info Panel */}
-      <LakeInfoPanel
+        <LakeInfoPanel
         isOpen={lakePanelOpen}
         onClose={() => setLakePanelOpen(false)}
         lake={selectedLake}
@@ -292,7 +292,7 @@ function MapPage() {
           await applyOverlayByLayerId(layer.id, { fit: true });
         }}
         showWatershed={watershedToggleOn}
-        canToggleWatershed={Boolean(selectedLake?.watershed_id || selectedLake?.watershedId || true)}
+        canToggleWatershed={Boolean(selectedLake?.watershed_id || selectedLake?.watershedId)}
         onToggleWatershed={handlePanelToggleWatershed}
           authUser={authUser}
   onToggleFlows={(checked)=>setShowFlows(checked)}

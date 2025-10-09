@@ -101,7 +101,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
           })
           .filter(Boolean);
         try {
-          console.debug('[TestsTab] dispatching lv-wq-markers', markers);
           window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } }));
         } catch {}
       } catch (e) {
@@ -128,68 +127,19 @@ export default function TestsTab({ lake, onJumpToStation }) {
             })
             .filter(Boolean);
           try {
-            console.debug('[TestsTab] dispatching lv-wq-markers (org filter)', markers);
             window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } }));
           } catch {}
           return;
         }
 
-        // Otherwise, fetch then dispatch
-        if (!lakeId) return;
-        const qs = buildQuery({ lake_id: lakeId, limit: 50 });
-        const res = await apiPublic(`/public/sample-events${qs}`);
-        const rows = Array.isArray(res?.data) ? res.data : [];
-        const markers = rows
-          .map((r) => {
-            const lat = r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null) ?? r.station?.latitude ?? r.station?.lat;
-            const lon = r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null) ?? r.station?.longitude ?? r.station?.lon;
-            if (lat == null || lon == null) return null;
-            return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
-          })
-          .filter(Boolean);
-        try { window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } })); } catch {}
+        // Otherwise, no-op (the main fetch will dispatch markers when ready)
       } catch (err) {
         console.warn('[TestsTab] failed to respond to marker request', err);
       }
     };
     window.addEventListener('lv-request-wq-markers', onRequest);
     return () => window.removeEventListener('lv-request-wq-markers', onRequest);
-  }, [lakeId, tests]);
-
-    useEffect(() => {
-      if (!lakeId) { setTests([]); setOrgs([]); return; }
-      let mounted = true;
-      (async () => {
-        setLoading(true);
-        try {
-          const qs = buildQuery({ lake_id: lakeId, organization_id: orgId || undefined, limit: 50 });
-          const res = await apiPublic(`/public/sample-events${qs}`);
-          if (!mounted) return;
-          const rows = Array.isArray(res?.data) ? res.data : [];
-          setTests(rows);
-
-          // Derive org list
-          const uniq = new Map();
-          rows.forEach((r) => {
-            const oid = r.organization_id ?? r.organization?.id;
-            const name = r.organization_name ?? r.organization?.name;
-            if (oid && name && !uniq.has(String(oid))) uniq.set(String(oid), { id: oid, name });
-          });
-          setOrgs(Array.from(uniq.values()));
-
-          // Dispatch markers for MapPage so tests render on the map while this tab is active
-          const markers = rows
-            .filter((r) => r && r.latitude != null && r.longitude != null)
-            .map((r) => ({ lat: Number(r.latitude), lon: Number(r.longitude), label: (r.station?.name || null) }));
-          try { window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } })); } catch {}
-        } catch (e) {
-          console.error('[TestsTab] failed to load', e);
-          await alertError('Failed', e?.message || 'Could not load tests');
-          if (mounted) setTests([]);
-        } finally { if (mounted) setLoading(false); }
-      })();
-      return () => { mounted = false; };
-    }, [lakeId, orgId]);
+  }, [tests]);
   const extractCoords = (t) => {
     const lat = t.latitude ?? t.lat ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[1] : null) : null) ?? t.station?.latitude ?? t.station?.lat;
     const lon = t.longitude ?? t.lon ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[0] : null) : null) ?? t.station?.longitude ?? t.station?.lon;
