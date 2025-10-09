@@ -15,7 +15,7 @@ import {
 } from "react-icons/fi";
 import { FiChevronDown } from "react-icons/fi";
 import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { api, clearToken, getToken } from "../lib/api";
 import { getCurrentUser, setCurrentUser, ensureUser, isStale } from "../lib/authState";
 import "leaflet/dist/leaflet.css";
@@ -73,12 +73,17 @@ function MiniMapWrapper() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedback, onOpenKyc }) {
+function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedback, onOpenKyc, onAboutDataToggle }) {
   const [me, setMe] = useState(() => getCurrentUser()); // start with cached user if available
   const navigate = useNavigate();
   const location = useLocation();
   const [aboutDataOpen, setAboutDataOpen] = useState(() => {
-    // auto-open submenu when on /data routes
+    // Restore persisted preference if available; fallback to route-based default
+    try {
+      const persisted = sessionStorage.getItem('lv-about-data-open');
+      if (persisted === 'true') return true;
+      if (persisted === 'false') return false;
+    } catch {}
     return /^\/data(\/.*)?$/.test(location.pathname || "");
   });
 
@@ -88,6 +93,11 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
       setAboutDataOpen(true);
     }
   }, [location.pathname]);
+
+  // Persist submenu open state
+  useEffect(() => {
+    try { sessionStorage.setItem('lv-about-data-open', aboutDataOpen ? 'true' : 'false'); } catch {}
+  }, [aboutDataOpen]);
 
   // Fetch and cache user (avoids duplicate network calls across components)
   const fetchAndCache = async () => {
@@ -162,6 +172,17 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
     }
   };
 
+  // Centralized navigation handler to preserve SPA behavior while using <a>
+  const handleNav = (path, { keepOpen = false } = {}) => (e) => {
+    e.preventDefault();
+    // Avoid redundant navigation
+    if (location.pathname !== path) {
+      navigate(path);
+    }
+    if (!keepOpen && !pinned) onClose?.();
+  };
+  const isActive = (path) => location.pathname === path;
+
   return (
     <div className={`sidebar ${isOpen ? "open" : ""} ${pinned ? "pinned" : ""}`}>
       {/* Header */}
@@ -205,35 +226,36 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
 
         {isLoggedIn && (isPublic) && (
           <li>
-            {onOpenKyc ? (
-              <a
-                href="#join"
-                className="sidebar-row"
-                onClick={(e) => { e.preventDefault(); onOpenKyc(); if (!pinned) onClose?.(); }}
-              >
-                <FiUser className="sidebar-icon" />
-                <span>Contribute / Join an Org</span>
-              </a>
-            ) : (
-              <Link className="sidebar-row" to="/kyc" onClick={!pinned ? onClose : undefined}>
-                <FiUser className="sidebar-icon" />
-                <span>Contribute / Join an Org</span>
-              </Link>
-            )}
+            <a
+              href="/kyc"
+              className={`sidebar-row ${isActive('/kyc') ? 'active' : ''}`}
+              onClick={onOpenKyc ? (e) => { e.preventDefault(); onOpenKyc(); if (!pinned) onClose?.(); } : handleNav('/kyc')}
+            >
+              <FiUser className="sidebar-icon" />
+              <span>Contribute / Join an Org</span>
+            </a>
           </li>
         )}
 
         <li>
-          <Link className="sidebar-row" to="/about" onClick={!pinned ? onClose : undefined}>
+          <a
+            href="/about"
+            className={`sidebar-row ${isActive('/about') ? 'active' : ''}`}
+            onClick={handleNav('/about')}
+          >
             <FiInfo className="sidebar-icon" />
             <span>About LakeView PH</span>
-          </Link>
+          </a>
         </li>
         <li>
-          <Link className="sidebar-row" to="/manual" onClick={!pinned ? onClose : undefined}>
+          <a
+            href="/manual"
+            className={`sidebar-row ${isActive('/manual') ? 'active' : ''}`}
+            onClick={handleNav('/manual')}
+          >
             <FiBookOpen className="sidebar-icon" />
             <span>How to use LakeView?</span>
-          </Link>
+          </a>
         </li>
         <li>
           <a
@@ -259,15 +281,42 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
         </li>
   {/* About the Data (dropdown) */}
   <li className="has-submenu">
-          <button
-            type="button"
-            className={`sidebar-row dropdown ${aboutDataOpen ? 'open' : ''}`}
+          <a
+            href="#about-data"
+            className={`sidebar-row ${aboutDataOpen ? 'open' : ''}`}
+            role="button"
             onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onClick={(e) => {
-              // Toggle only; do not navigate or close sidebar
               e.preventDefault();
               e.stopPropagation();
-              setAboutDataOpen(v => !v);
+              setAboutDataOpen(v => {
+                const nv = !v;
+                try { onAboutDataToggle && onAboutDataToggle(nv); } catch {}
+                return nv;
+              });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setAboutDataOpen(v => {
+                  const nv = !v;
+                  try { onAboutDataToggle && onAboutDataToggle(nv); } catch {}
+                  return nv;
+                });
+              }
+              if (e.key === 'ArrowDown' && !aboutDataOpen) {
+                setAboutDataOpen(true);
+                // focus first submenu item after opening
+                setTimeout(() => {
+                  try {
+                    const first = document.querySelector('#about-data-submenu .sidebar-row');
+                    first && first.focus && first.focus();
+                  } catch {}
+                }, 10);
+              }
+              if (e.key === 'ArrowUp' && aboutDataOpen) {
+                setAboutDataOpen(false);
+              }
             }}
             aria-expanded={aboutDataOpen ? "true" : "false"}
             aria-controls="about-data-submenu"
@@ -276,21 +325,20 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
             <FiDatabase className="sidebar-icon" />
             <span style={{ flex: 1 }}>About the Data</span>
             <FiChevronDown className={`chev ${aboutDataOpen ? 'open' : ''}`} />
-          </button>
+          </a>
           <ul
             id="about-data-submenu"
             className={`sidebar-submenu ${aboutDataOpen ? 'open' : ''}`}
             style={{ listStyle: 'none', paddingLeft: 0, marginTop: 6, marginBottom: 0 }}
           >
             <li>
-              <Link
-                className={`sidebar-row ${location.pathname === '/data' ? 'active' : ''}`}
-                to="/data"
-                // Keep sidebar open for About the Data submenu
-                onClick={undefined}
+              <a
+                href="/data"
+                className={`sidebar-row ${isActive('/data') ? 'active' : ''}`}
+                onClick={handleNav('/data', { keepOpen: true })}
               >
                 <span>Overview</span>
-              </Link>
+              </a>
             </li>
             <li>
               <a
@@ -372,10 +420,14 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
                 <span>Log in</span>
               </button>
             ) : (
-              <Link className="sidebar-row" to="/login" onClick={!pinned ? onClose : undefined}>
+              <a
+                href="/login"
+                className={`sidebar-row ${isActive('/login') ? 'active' : ''}`}
+                onClick={handleNav('/login')}
+              >
                 <FiLogIn className="sidebar-icon" />
                 <span>Log in</span>
-              </Link>
+              </a>
             )}
           </li>
         )}

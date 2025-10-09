@@ -37,6 +37,7 @@ import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 function MapWithContextMenu({ children }) {
   const map = useMap();
   return children(map);
+}
 // ...existing code...
 
 // Bridge component to ensure we capture the Leaflet map instance reliably
@@ -63,6 +64,9 @@ function MapPage() {
   const [privacyOpen, setPrivacyOpen] = useState(false); // data privacy modal
   const [kycOpen, setKycOpen] = useState(false);
   const [filterTrayOpen, setFilterTrayOpen] = useState(false);
+  const [aboutDataMenuOpen, setAboutDataMenuOpen] = useState(false);
+  const aboutDataMenuOpenRef = React.useRef(false);
+  useEffect(() => { aboutDataMenuOpenRef.current = aboutDataMenuOpen; }, [aboutDataMenuOpen]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -75,30 +79,37 @@ function MapPage() {
     const onOpen = () => setSettingsOpen(true);
     window.addEventListener('lv-open-settings', onOpen);
     return () => window.removeEventListener('lv-open-settings', onOpen);
-    // Global trigger to open Data Privacy modal
-    useEffect(() => {
-      const onOpen = () => setPrivacyOpen(true);
-      window.addEventListener('lv-open-privacy', onOpen);
-      return () => window.removeEventListener('lv-open-privacy', onOpen);
-    }, []);
+  }, []);
 
-    // Support navigation with state { openSettings: true }
-    useEffect(() => {
-      if (location.pathname === '/' && location.state?.openSettings) {
-        setSettingsOpen(true);
-        // clear state so back button doesn't reopen repeatedly
-        navigate('.', { replace: true, state: {} });
-      }
-    }, [location, navigate]);
+  // Global trigger to open Data Privacy modal
+  useEffect(() => {
+    const onOpen = () => setPrivacyOpen(true);
+    window.addEventListener('lv-open-privacy', onOpen);
+    return () => window.removeEventListener('lv-open-privacy', onOpen);
+  }, []);
 
-    // KYC overlay routing removed
+  // Support navigation with state { openSettings: true }
+  useEffect(() => {
+    if (location.pathname === '/' && location.state?.openSettings) {
+      setSettingsOpen(true);
+      // clear state so back button doesn't reopen repeatedly
+      navigate('.', { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
-    useEffect(() => {
-      const p = location.pathname;
-      if (p === '/login') { setAuthMode('login'); openAuth('login'); }
-      if (p === '/register') { setAuthMode('register'); openAuth('register'); }
-      if (p === '/data/privacy') { setPrivacyOpen(true); }
-    }, [location.pathname, openAuth, setAuthMode]);
+  // Route-based auth/privacy handling
+  useEffect(() => {
+    const p = location.pathname;
+    if (p === '/login') { setAuthMode('login'); openAuth('login'); }
+    if (p === '/register') { setAuthMode('register'); openAuth('register'); }
+    if (p === '/data/privacy') { setPrivacyOpen(true); }
+  }, [location.pathname, openAuth, setAuthMode]);
+  
+  // Keep sidebar open when navigating to /data routes (so submenu doesn't appear collapsed after auto-close)
+  useEffect(() => {
+    if (/^\/data(\/.*)?$/.test(location.pathname || '')) {
+      setSidebarOpen(true);
+    }
   }, [location.pathname]);
 // Data Privacy Disclaimer integration resolved
 
@@ -151,6 +162,25 @@ function MapPage() {
     }
     if (!showFlows) setShowFlows(true);
   };
+
+  // Dedicated effect for map interaction close logic to avoid stale closures & duplicates
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handlerClick = () => {
+      if (sidebarPinned) return;
+      if (aboutDataMenuOpenRef.current) return; // keep open when submenu open
+      if (/^\/data(\/.*)?$/.test(location.pathname || '')) return; // keep for data routes
+      setSidebarOpen(false);
+    };
+    const handlerDrag = handlerClick;
+    map.on('click', handlerClick);
+    map.on('dragstart', handlerDrag);
+    return () => {
+      map.off('click', handlerClick);
+      map.off('dragstart', handlerDrag);
+    };
+  }, [sidebarPinned, location.pathname]);
 
   return (
     <div className={themeClass} style={{ height: "100vh", width: "100vw", margin: 0, padding: 0, position: 'relative' }}>
@@ -226,21 +256,18 @@ function MapPage() {
           onOpenAuth={(m) => { openAuth(m || 'login'); }}
           onOpenKyc={() => setKycOpen(true)}
           onOpenFeedback={() => { setFeedbackOpen(true); if (!sidebarPinned) setSidebarOpen(false); }}
+          onAboutDataToggle={(open) => setAboutDataMenuOpen(open)}
         />
 
         {/* Context Menu */}
         <MapWithContextMenu>
-          {(map) => {
-            map.on("click", () => { if (!sidebarPinned) setSidebarOpen(false); });
-            map.on("dragstart", () => { if (!sidebarPinned) setSidebarOpen(false); });
-            return (
-              <ContextMenu
-                map={map}
-                onMeasureDistance={() => { setMeasureMode("distance"); setMeasureActive(true); }}
-                onMeasureArea={() => { setMeasureMode("area"); setMeasureActive(true); }}
-              />
-            );
-          }}
+          {(map) => (
+            <ContextMenu
+              map={map}
+              onMeasureDistance={() => { setMeasureMode("distance"); setMeasureActive(true); }}
+              onMeasureArea={() => { setMeasureMode("area"); setMeasureActive(true); }}
+            />
+          )}
         </MapWithContextMenu>
 
         {/* Measure Tool */}
@@ -336,5 +363,12 @@ function MapPage() {
     </div>
   );
 }
+
+// Attach / reattach map interaction handlers outside of JSX to avoid stale closures / duplicates
+// Placed after component so we can reuse internal hooks if reorganized; could also be inside component above return.
+// NOTE: We rely on aboutDataMenuOpenRef for real-time state.
+MapPage.prototype = {}; // no-op to keep file patch context
+
+// Move effect inside component (must patch above before export) - adjusting by inserting below definition would not work; instead we embed effect earlier.
 
 export default MapPage;

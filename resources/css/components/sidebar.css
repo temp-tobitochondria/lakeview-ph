@@ -138,15 +138,16 @@
 .sidebar-row .chev.open { transform: rotate(180deg); }
 
 /* Ensure dropdown container stacks header + submenu */
-.sidebar-menu li.has-submenu { display: block; padding: 8px 8px; }
-.sidebar-menu li.has-submenu > .sidebar-row.dropdown {
-  padding: 12px 10px;
-  border-radius: 10px;
-  background: #f8fafc; /* subtle background */
+/* Submenu parent should visually match standard tabs */
+.sidebar-menu li.has-submenu { display: block; padding: 12px 16px; }
+/* After simplifying markup we no longer rely on the .dropdown modifier; ensure no leftover background */
+.sidebar-menu li.has-submenu > .sidebar-row {
+  background: transparent;
+  border: none; /* borders handled by li like other items */
+  padding: 0; /* keep inner button flush so li padding defines click area */
 }
-.sidebar-menu li.has-submenu > .sidebar-row.dropdown.open {
-  background: #eef7f6; /* highlight when open */
-}
+/* Optional: if you later want a distinct open state, add it here. Left blank for exact match. */
+/* .sidebar-menu li.has-submenu > .sidebar-row.open { } */
 
 /* Submenu slide-down animation */
 .sidebar-submenu {

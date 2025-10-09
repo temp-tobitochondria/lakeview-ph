@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
 import TableToolbar from '../../components/table/TableToolbar';
 import TableLayout from '../../layouts/TableLayout';
-import { FiFileText } from 'react-icons/fi';
+import { FiFileText, FiClipboard } from 'react-icons/fi';
 import KycDocsModal from '../../components/KycDocsModal';
 
 const STATUS_OPTIONS = [
@@ -18,7 +18,8 @@ const STATUS_OPTIONS = [
 import Modal from '../../components/Modal';
 
 export default function AdminOrgApplications() {
-  const [rows, setRows] = useState([]);
+  // Raw applications fetched from API
+  const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [status, setStatus] = useState('');
@@ -42,41 +43,82 @@ export default function AdminOrgApplications() {
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await api.get('/admin/org-applications', { params: status ? { status } : undefined });
-      setRows(res?.data || []);
+      // Always fetch all applications; status filtering will be applied per-user after grouping.
+      const res = await api.get('/admin/org-applications');
+      setApps(res?.data || []);
     } catch (e) {
       try { const j = JSON.parse(e?.message||''); setError(j?.message || 'Failed to load.'); } catch { setError('Failed to load.'); }
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => { load(); }, []); // Fetch once; status is applied locally
 
   // Admins are read-only on applications; decisions are delegated to org administrators.
 
+  // Group applications per user (one table row per user)
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const app of apps) {
+      const uid = app.user?.id;
+      if (!uid) continue;
+      if (!map.has(uid)) {
+        map.set(uid, { user: app.user, apps: [] });
+      }
+      map.get(uid).apps.push(app);
+    }
+    // For each user, pick the "primary" (most recent by created_at) application to surface tenant / role / status.
+    const rows = [];
+    for (const { user, apps: list } of map.values()) {
+      const sorted = [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      const primary = sorted[0];
+      // Derive a status summary: if multiple distinct statuses, show primary plus count.
+      const uniqueStatuses = Array.from(new Set(list.map(a => a.status).filter(Boolean)));
+      let statusLabel = primary?.status || '';
+      if (uniqueStatuses.length > 1) {
+        statusLabel = `${primary?.status} (+${uniqueStatuses.length - 1})`;
+      }
+      rows.push({
+        id: `user-${user.id}`,
+        user,
+        primary_app: primary,
+        apps: list,
+        status_summary: statusLabel,
+      });
+    }
+    return rows;
+  }, [apps]);
+
+  // Apply status filter (if any user has at least one app with that status, keep the user)
+  const statusFiltered = useMemo(() => {
+    if (!status) return grouped;
+    return grouped.filter(gr => gr.apps.some(a => a.status === status));
+  }, [grouped, status]);
+
+  // Apply search across user and all their applications' salient fields
   const filtered = useMemo(() => {
     const q = (query || '').trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(r => {
+    if (!q) return statusFiltered;
+    return statusFiltered.filter(gr => {
       const parts = [
-        String(r.id || ''),
-        r.user?.name || '',
-        r.user?.email || '',
-        r.tenant?.name || '',
-        r.desired_role || '',
-        r.status || '',
+        gr.user?.name || '',
+        gr.user?.email || '',
+        ...gr.apps.map(a => a.tenant?.name || ''),
+        ...gr.apps.map(a => a.desired_role || ''),
+        ...gr.apps.map(a => a.status || ''),
       ].join('\n').toLowerCase();
       return parts.includes(q);
     });
-  }, [rows, query]);
+  }, [statusFiltered, query]);
 
   function exportCsv() {
     const cols = COLUMNS.filter(c => visibleMap[c.id] !== false && c.id !== 'actions');
     const header = cols.map(c => '"' + (c.header || c.id).replaceAll('"', '""') + '"').join(',');
-    const body = filtered.map(r => cols.map(c => {
-      const v = c.id === 'user' ? (r.user?.name ?? '')
-        : c.id === 'tenant' ? (r.tenant?.name ?? '')
-        : c.id === 'desired_role' ? (r.desired_role ?? '')
-        : c.id === 'status' ? (r.status ?? '')
+    const body = filtered.map(gr => cols.map(c => {
+      const primary = gr.primary_app;
+      const v = c.id === 'user' ? (gr.user?.name ?? '')
+        : c.id === 'tenant' ? (primary?.tenant?.name ?? '')
+        : c.id === 'desired_role' ? (primary?.desired_role ?? '')
+        : c.id === 'status' ? (gr.status_summary ?? '')
         : '';
       const s = String(v ?? '');
       return '"' + s.replaceAll('"', '""') + '"';
@@ -86,7 +128,7 @@ export default function AdminOrgApplications() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'admin-org-applications.csv';
+    a.download = 'admin-org-applications-per-user.csv';
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -96,13 +138,13 @@ export default function AdminOrgApplications() {
   const [userApps, setUserApps] = useState({ open: false, user: null, apps: [], loading: false, error: '' });
 
   const baseColumns = useMemo(() => ([
-    { id: 'user', header: 'User', render: (raw) => (
+    { id: 'user', header: 'User', render: (row) => (
       <div>
         <button
           className="pill-btn ghost sm"
           title="View all applications by this user"
           onClick={async () => {
-            const user = raw.user;
+            const user = row.user;
             setUserApps({ open: true, user, apps: [], loading: true, error: '' });
             try {
               const res = await api.get(`/admin/users/${user.id}/org-applications`);
@@ -115,19 +157,21 @@ export default function AdminOrgApplications() {
           }}
           style={{ padding: '2px 8px' }}
         >
-          {raw.user?.name}
+          {row.user?.name}
         </button>
-        <div className="muted" style={{ fontSize: 12 }}>{raw.user?.email}</div>
+        <div className="muted" style={{ fontSize: 12 }}>{row.user?.email}</div>
       </div>
     ), width: 220 },
-    { id: 'documents', header: 'Documents', render: (raw) => (
-      <button className="pill-btn ghost sm" onClick={() => setDocUserId(raw.user?.id)} title="View KYC documents">
+    { id: 'documents', header: 'Documents', render: (row) => (
+      <button className="pill-btn ghost sm" onClick={() => setDocUserId(row.user?.id)} title="View KYC documents">
         <FiFileText /> View
       </button>
     ), width: 120 },
-    { id: 'tenant', header: 'Organization', accessor: 'tenant_name', width: 200 },
-    { id: 'desired_role', header: 'Desired Role', accessor: 'desired_role', width: 160 },
-    { id: 'status', header: 'Status', render: (raw) => {
+    { id: 'tenant', header: 'Latest Organization', accessor: 'tenant_name', width: 200 },
+    { id: 'desired_role', header: 'Latest Desired Role', accessor: 'desired_role', width: 170 },
+    { id: 'status', header: 'Latest Status', render: (row) => {
+      const primary = row.primary_app;
+      const baseStatus = primary?.status;
       const color = {
         pending_kyc: '#f59e0b',
         pending_org_review: '#3b82f6',
@@ -135,9 +179,9 @@ export default function AdminOrgApplications() {
         needs_changes: '#eab308',
         rejected: '#ef4444',
         accepted_another_org: '#64748b',
-      }[raw.status] || '#64748b';
-      return <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{raw.status}</span>;
-    }, width: 160 },
+      }[baseStatus] || '#64748b';
+      return <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{row.status_summary}</span>;
+    }, width: 170 },
   ]), []);
 
   const visibleColumns = useMemo(
@@ -147,9 +191,9 @@ export default function AdminOrgApplications() {
 
   const normalized = useMemo(() => (filtered || []).map(r => ({
     id: r.id,
-    tenant_name: r.tenant?.name ?? '',
-    desired_role: r.desired_role ?? '',
-    status: r.status ?? '',
+    tenant_name: r.primary_app?.tenant?.name ?? '',
+    desired_role: r.primary_app?.desired_role ?? '',
+    status: r.primary_app?.status ?? '',
     _raw: r,
   })), [filtered]);
 
@@ -157,14 +201,21 @@ export default function AdminOrgApplications() {
 
   return (
     <div className="content-page">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Org Applications</h1>
-        <div className="muted" style={{ marginLeft: 16, fontSize: 13 }}>
-          Admins can view only; decisions are made by the organization’s admin.
+      <div className="dashboard-card" style={{ marginBottom: 16 }}>
+        <div className="dashboard-card-header">
+          <div className="dashboard-card-title">
+            <FiClipboard />
+            <span>Organization Applications</span>
+          </div>
+          <div className="org-actions-right" style={{ fontSize: 12, color: '#64748b' }}>
+            Admin read-only
+          </div>
         </div>
-      </div>
-      <div className="muted" style={{ margin: '6px 0 10px 0', fontSize: 13 }}>
-        Tip: Click a user’s name to see all of their applications.
+        <p style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>
+          Browse and review all user submissions for joining organizations. Decisions are handled by each organization’s administrators.
+          <br />
+          <span style={{ fontStyle: 'italic' }}>Tip: Click a user’s name to view all of their applications.</span>
+        </p>
       </div>
 
       <TableToolbar
@@ -201,6 +252,9 @@ export default function AdminOrgApplications() {
             )}
             {!userApps.loading && !userApps.error && (
               <div style={{ display: 'grid', gap: 10 }}>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {userApps.apps.length} application{userApps.apps.length !== 1 ? 's' : ''}
+                </div>
                 {userApps.apps.length === 0 && (
                   <div className="muted">No applications.</div>
                 )}
