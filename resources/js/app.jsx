@@ -1,9 +1,9 @@
-import React from "react";
+import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 // 🌍 Public Pages
-import AboutData from  "./pages/PublicInterface/AboutData";
+// AboutData is displayed as a modal from MapPage
 import AboutPage from "./pages/PublicInterface/AboutPage";
 import MapPage from "./pages/PublicInterface/MapPage";
 import KycPage from "./pages/PublicInterface/KycPage";
@@ -34,7 +34,7 @@ function App() {
         <Route path="/" element={<MapPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/manual" element={<UserManual />} />
-    <Route path="/data" element={<AboutData />} />
+  {/** /data now opens modal via MapPage; no standalone route */}
     {/* Visiting /data/privacy keeps user on MapPage; modal opens from MapPage by path */}
     <Route path="/data/privacy" element={<MapPage />} />
     <Route path="/login" element={<MapPage />} />
@@ -62,8 +62,14 @@ function App() {
 }
 
 // ✅ Mount App to the root div
-ReactDOM.createRoot(document.getElementById("root")).render(
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
   <React.StrictMode>
-    <App />
+    <Suspense fallback={<div style={{display:'grid',placeItems:'center',height:'100vh',color:'#e5e7eb',background:'#0b1220'}}>Loading…</div>}>
+      <App />
+    </Suspense>
   </React.StrictMode>
 );
+
+// Signal to Blade boot screen that the app is ready to display
+try { window.dispatchEvent(new Event('lv-app-mounted')); } catch {}

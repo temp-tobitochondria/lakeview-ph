@@ -207,9 +207,6 @@ export default function AdminOrgApplications() {
             <FiClipboard />
             <span>Organization Applications</span>
           </div>
-          <div className="org-actions-right" style={{ fontSize: 12, color: '#64748b' }}>
-            Admin read-only
-          </div>
         </div>
         <p style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>
           Browse and review all user submissions for joining organizations. Decisions are handled by each organization’s administrators.

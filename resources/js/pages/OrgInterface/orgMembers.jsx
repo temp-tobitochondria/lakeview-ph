@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
-import { FiEdit, FiTrash } from 'react-icons/fi';
+import { FiEdit, FiTrash, FiUsers } from 'react-icons/fi';
 import api from "../../lib/api";
 import Modal from "../../components/Modal";
 import TableToolbar from "../../components/table/TableToolbar";
@@ -231,7 +231,10 @@ export default function OrgMembers() {
   return (
     <div className="container" style={{ padding: 16 }}>
       <div className="flex-row" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <h2 style={{ margin:0 }}>Organization · Contributors</h2>
+        <div className="dashboard-card-title">
+                    <FiUsers />
+                    <span>Organizations • Members</span>
+        </div>
         <button className="pill-btn" onClick={openCreate}>+ New Contributor</button>
       </div>
 
