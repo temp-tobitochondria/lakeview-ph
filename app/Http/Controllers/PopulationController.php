@@ -199,6 +199,24 @@ class PopulationController extends Controller
                 ]);
             }
 
+            // Some pgsql drivers return bytea as a PHP stream resource; stream it out if so.
+            if (\is_resource($tile)) {
+                return response()->stream(function () use ($tile) {
+                    // Stream the binary tile in chunks
+                    while (!feof($tile)) {
+                        echo fread($tile, 8192);
+                    }
+                    if (is_resource($tile)) {
+                        fclose($tile);
+                    }
+                }, Response::HTTP_OK, [
+                    'Content-Type' => 'application/vnd.mapbox-vector-tile',
+                    'Content-Encoding' => 'identity',
+                    'Cache-Control' => 'public, max-age=3600',
+                ]);
+            }
+
+            // Otherwise assume it's a string (binary-safe) and return directly.
             return response($tile, Response::HTTP_OK, [
                 'Content-Type' => 'application/vnd.mapbox-vector-tile',
                 'Content-Encoding' => 'identity',

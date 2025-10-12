@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { createHeatLayer, fetchPopPointsProgressive } from '../../../map/leafletHeat';
+import { createPopTileLayer } from '../../../map/popTiles';
 
 export function usePopulationHeatmap({ mapRef, selectedLake }) {
   const [enabled, setEnabled] = useState(false);
@@ -8,21 +9,54 @@ export function usePopulationHeatmap({ mapRef, selectedLake }) {
   const [resolution, setResolution] = useState(null); // 'preview' | 'final'
   const paramsRef = useRef(null);
   const heatLayerRef = useRef(null);
+  const tileLayerRef = useRef(null);
   const debounceRef = useRef(null);
   const abortRef = useRef(null);
   const inFlightRef = useRef(false);
   const estimateInFlightRef = useRef(false);
   const pendingFetchRef = useRef(null);
+  // Feature flag: prefer vector tiles for population heat
+  const USE_TILES = true;
+  const tileParamsKeyRef = useRef(null);
 
   const clearLayer = () => {
     const map = mapRef?.current;
     if (map && heatLayerRef.current) { try { map.removeLayer(heatLayerRef.current); } catch {} }
+    if (map && tileLayerRef.current) { try { map.removeLayer(tileLayerRef.current); } catch {} }
     heatLayerRef.current = null;
+    tileLayerRef.current = null;
   };
+
+  const runTiles = useCallback(() => {
+    const map = mapRef?.current;
+    if (!map || !paramsRef.current || !selectedLake?.id) return;
+    const key = `${selectedLake.id}|${paramsRef.current.year}|${paramsRef.current.km}|${paramsRef.current.layerId ?? ''}`;
+    if (tileLayerRef.current && tileParamsKeyRef.current === key) {
+      // Same params: let tiles handle viewport changes automatically
+      return;
+    }
+    // Params changed: rebuild layer
+    if (tileLayerRef.current) { try { map.removeLayer(tileLayerRef.current); } catch {} }
+    const layer = createPopTileLayer({
+      lakeId: selectedLake.id,
+      year: paramsRef.current.year,
+      radiusKm: paramsRef.current.km,
+      layerId: paramsRef.current.layerId,
+    }, { refMax: 500 });
+    tileLayerRef.current = layer;
+    tileParamsKeyRef.current = key;
+    try {
+      layer.on('loading', () => setLoading(true));
+      layer.on('load', () => setLoading(false));
+    } catch {}
+    layer.addTo(map);
+    setResolution('final'); setError(null);
+  }, [mapRef, selectedLake]);
 
   const runFetch = useCallback(() => {
     const map = mapRef?.current;
     if (!map || !paramsRef.current || !selectedLake?.id) return;
+    if (USE_TILES) { setLoading(true); setResolution(null); setError(null); runTiles(); return; }
     if (inFlightRef.current && abortRef.current) { try { abortRef.current.abort(); } catch {} }
     if (estimateInFlightRef.current) { pendingFetchRef.current = runFetch; setLoading(true); setResolution(null); return; }
     const controller = new AbortController();
@@ -99,7 +133,7 @@ export function usePopulationHeatmap({ mapRef, selectedLake }) {
     if (!map || !enabled) return;
     const schedule = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => { runFetch(); }, 200);
+      debounceRef.current = setTimeout(() => { runFetch(); }, USE_TILES ? 400 : 200);
     };
     map.on('moveend', schedule); map.on('zoomend', schedule);
     return () => { try { map.off('moveend', schedule); map.off('zoomend', schedule); } catch {}; if (debounceRef.current) clearTimeout(debounceRef.current); };
