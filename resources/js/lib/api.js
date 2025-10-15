@@ -120,7 +120,9 @@ async function request(method, url, { params, body, headers, raw, auth } = {}) {
   try {
     res = await fetch(finalUrl, init);
   } catch (networkError) {
-    const err = new Error(JSON.stringify({ message: "Network error" }));
+    // Tag aborts distinctly so callers can keep UI open
+    const isAbort = (networkError && (networkError.name === 'AbortError' || networkError.code === 20));
+    const err = new Error(JSON.stringify({ message: isAbort ? 'Aborted' : 'Network error' }));
     err.cause = networkError;
     throw err;
   }

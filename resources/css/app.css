@@ -29,6 +29,7 @@
 /* Base */
 @import './base/globals.css';
 @import './base/themes.css';
+@import './util/scrollbars.css';
 
 /* Layouts */
 @import './layouts/auth.css';
@@ -54,6 +55,7 @@
 @import "./components/modal.css";
 @import "./components/privacy.css";
 @import "./components/feedback.css";
+@import "./components/sweetalert.css";
 
 
 /* Pages */

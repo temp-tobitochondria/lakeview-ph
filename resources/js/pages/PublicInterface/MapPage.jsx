@@ -20,6 +20,7 @@ import MeasureTool from "../../components/MeasureTool";
 import LakeInfoPanel from "../../components/LakeInfoPanel";
 import AuthModal from "../../components/modals/AuthModal";
 import FilterTray from "../../components/FilterTray";
+import SearchResultsPopover from "../../components/SearchResultsPopover";
 import PublicSettingsModal from "../../components/settings/PublicSettingsModal";
 import FeedbackModal from "../../components/feedback/FeedbackModal";
 import HeatmapLoadingIndicator from "../../components/HeatmapLoadingIndicator";
@@ -34,6 +35,7 @@ import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import { useHotkeys } from "./hooks/useHotkeys";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 import AboutData from "./AboutData";
+import api from "../../lib/api";
 
 function MapWithContextMenu({ children }) {
   const map = useMap();
@@ -69,6 +71,104 @@ function MapPage() {
   const [aboutDataMenuOpen, setAboutDataMenuOpen] = useState(false);
   const aboutDataMenuOpenRef = React.useRef(false);
   useEffect(() => { aboutDataMenuOpenRef.current = aboutDataMenuOpen; }, [aboutDataMenuOpen]);
+
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState('suggest'); // 'suggest' | 'results'
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
+  const [lastQuery, setLastQuery] = useState("");
+
+  const handleSearch = async (query) => {
+    setSearchOpen(true);
+    setSearchMode('results');
+    setSearchLoading(true);
+    setSearchError(null);
+    // Clear old results if query changed
+    const q = (query || "").trim();
+    if (q !== lastQuery) {
+      setSearchResults([]);
+      setLastQuery(q);
+    }
+    try {
+      const res = await api.post('/search', { query });
+      const rows = (res && (res.data || res.rows || res.results)) || [];
+      setSearchResults(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setSearchError(e?.message || 'Search failed');
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const flyToCoordinates = (gj) => {
+    if (!gj || !mapRef.current) return;
+    try {
+      const feat = typeof gj === 'string' ? JSON.parse(gj) : gj;
+      // Support Point centering; for polygons, fit bounds via leaflet
+      if (feat && feat.type === 'Point' && Array.isArray(feat.coordinates)) {
+        const [lon, lat] = feat.coordinates;
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          mapRef.current.flyTo([lat, lon], 12, { duration: 1, easeLinearity: 0.75 });
+        }
+      } else if (feat && (feat.type === 'Polygon' || feat.type === 'MultiPolygon' || feat.type === 'LineString' || feat.type === 'MultiLineString')) {
+        try {
+          const g = { type: 'Feature', properties: {}, geometry: feat };
+          const gjL = L.geoJSON(g);
+          const b = gjL.getBounds();
+          if (b?.isValid?.()) {
+            mapRef.current.flyToBounds(b, { padding: [24,24], maxZoom: 13, duration: 0.8, easeLinearity: 0.25 });
+          }
+        } catch {}
+      }
+    } catch {}
+  };
+
+  const handleSelectResult = async (item) => {
+    if (!item) return;
+    // Prefer backend-provided coordinates; fall back to generic geom
+    if (item.coordinates_geojson) {
+      flyToCoordinates(item.coordinates_geojson);
+    } else if (item.geom) {
+      flyToCoordinates(item.geom);
+    } else if (item.attributes && (item.attributes.coordinates_geojson || item.attributes.geom)) {
+      flyToCoordinates(item.attributes.coordinates_geojson || item.attributes.geom);
+    }
+    // Attempt to select lake on map by id or name
+    try {
+      const entity = (item.table || item.entity || '').toString();
+      const id = item.id || item.lake_id || item.body_id || null;
+      const nm = (item.name || (item.attributes && (item.attributes.name || item.attributes.lake_name)) || '').trim();
+      if (entity === 'lakes' && publicFC && publicFC.features && publicFC.features.length) {
+        const getId = (ft) => ft?.id ?? ft?.properties?.id ?? ft?.properties?.lake_id ?? null;
+        let target = publicFC.features.find(ft => id != null && getId(ft) != null && String(getId(ft)) === String(id));
+        if (!target && nm) {
+          const nmLower = nm.toLowerCase();
+          target = publicFC.features.find(ft => String(ft?.properties?.name || '').toLowerCase() === nmLower);
+        }
+        if (target) {
+          try {
+            const gj = L.geoJSON(target);
+            const b = gj.getBounds();
+            if (b?.isValid?.() && mapRef.current) {
+              mapRef.current.flyToBounds(b, { padding: [24,24], maxZoom: 13, duration: 0.8, easeLinearity: 0.25 });
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+    setSearchOpen(false);
+  };
+
+  const handleClearSearch = () => {
+    setSearchResults([]);
+    setSearchError(null);
+    setSearchOpen(false);
+    setLastQuery("");
+    setSearchMode('suggest');
+  };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -349,7 +449,22 @@ function MapPage() {
   />
 
       {/* UI overlays */}
-      <SearchBar onMenuClick={() => setSidebarOpen(true)} onFilterClick={() => setFilterTrayOpen((v) => !v)} />
+      <SearchBar
+        onMenuClick={() => setSidebarOpen(true)}
+        onFilterClick={() => setFilterTrayOpen((v) => !v)}
+        onSearch={handleSearch}
+        onClear={handleClearSearch}
+        onTyping={(val) => { setSearchMode('suggest'); if (val && val.length >= 2) { setSearchOpen(false); } }}
+        mode={searchMode}
+      />
+      <SearchResultsPopover
+        open={searchOpen}
+        results={searchResults}
+        loading={searchLoading}
+        error={searchError}
+        onClose={() => setSearchOpen(false)}
+        onSelect={handleSelectResult}
+      />
       <FilterTray
         open={filterTrayOpen}
         onClose={() => setFilterTrayOpen(false)}
