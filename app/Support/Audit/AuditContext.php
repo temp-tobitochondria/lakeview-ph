@@ -27,7 +27,8 @@ class AuditContext
     public static function ip(): ?string { return self::$ip; }
 
     public static function put(string $key, mixed $value): void { self::$local[$key] = $value; }
-    public static function get(string $key, mixed $default=null): mixed { return self::$local[$key] ?? $default; }
+    // Note: avoid implicit nullable deprecation by not typing $default as mixed when default is null
+    public static function get(string $key, $default = null): mixed { return self::$local[$key] ?? $default; }
 
     /**
      * Lazily hydrate actor & tenant from the current authenticated user if not already set.
@@ -35,19 +36,21 @@ class AuditContext
      */
     public static function hydrateFromAuthIfMissing(): void
     {
-        if (self::$actorId === null) {
-            try {
+        try {
+            // Only attempt hydration if either field is missing
+            if (self::$actorId === null || self::$tenantId === null) {
                 $u = auth()->user();
                 if ($u) {
-                    self::$actorId  = $u->id;
-                    // Only override tenant if we did not previously capture one
+                    if (self::$actorId === null) {
+                        self::$actorId = $u->id;
+                    }
                     if (self::$tenantId === null) {
                         self::$tenantId = $u->tenant_id ?? null;
                     }
                 }
-            } catch (\Throwable) {
-                // ignore silently; context remains system/null
             }
+        } catch (\Throwable) {
+            // ignore silently; context remains system/null
         }
     }
 }
