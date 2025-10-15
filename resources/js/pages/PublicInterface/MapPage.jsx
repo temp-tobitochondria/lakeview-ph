@@ -128,9 +128,13 @@ function MapPage() {
 
   const handleSelectResult = async (item) => {
     if (!item) return;
-    // Prefer backend-provided coordinates
+    // Prefer backend-provided coordinates; fall back to generic geom
     if (item.coordinates_geojson) {
       flyToCoordinates(item.coordinates_geojson);
+    } else if (item.geom) {
+      flyToCoordinates(item.geom);
+    } else if (item.attributes && (item.attributes.coordinates_geojson || item.attributes.geom)) {
+      flyToCoordinates(item.attributes.coordinates_geojson || item.attributes.geom);
     }
     // Attempt to select lake on map by id or name
     try {

@@ -19,10 +19,7 @@ function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mo
   const defaultTopics = [
     { label: 'Lake names', subtitle: 'e.g., Taal Lake, Laguna de Bay' },
     { label: 'Analytical queries', subtitle: 'e.g., largest lake, deepest lake' },
-    { label: 'Regions or provinces', subtitle: 'e.g., lakes in Laguna' },
-    { label: 'Parameters', subtitle: 'e.g., high pH lakes, low DO lakes' },
-    { label: 'Watersheds', subtitle: 'e.g., Angat watershed' },
-    { label: 'Layers/categories', subtitle: 'e.g., protected areas, fish sanctuaries' }
+    { label: 'Regions or provinces', subtitle: 'e.g., lakes in Laguna' }
   ];
 
   const triggerSearch = useCallback(() => {

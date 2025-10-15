@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Semantic\SemanticSearch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SearchController extends Controller
 {
@@ -90,10 +91,30 @@ class SearchController extends Controller
                     if ($areaNum === null && isset($row['area_km2_from_layer']) && is_numeric($row['area_km2_from_layer'])) {
                         $areaNum = (float)$row['area_km2_from_layer']; $unit='km²';
                     }
+                    // Analytical metric inclusion (depth/elevation/area/shoreline)
+                    $metricText = '';
+                    if ($attributeUsed && isset($row['metric_value']) && is_numeric($row['metric_value'])) {
+                        $mv = (float) $row['metric_value'];
+                        if ($attributeUsed === 'depth') {
+                            $metricText = 'with a mean depth of ' . rtrim(rtrim(number_format($mv, 1, '.', ''), '0'), '.') . ' m';
+                        } elseif ($attributeUsed === 'elevation') {
+                            $metricText = 'with an elevation of ' . rtrim(rtrim(number_format($mv, 1, '.', ''), '0'), '.') . ' m';
+                        } elseif ($attributeUsed === 'shoreline_m') {
+                            $km = $mv / 1000.0; // metres to km
+                            $metricText = 'with a shoreline length of ' . rtrim(rtrim(number_format($km, 1, '.', ''), '0'), '.') . ' km';
+                        } elseif ($attributeUsed === 'area_m2') {
+                            $km2 = $mv / 1000000.0; // m² to km²
+                            $metricText = 'with a surface area of ' . rtrim(rtrim(number_format($km2, 2, '.', ''), '0'), '.') . ' km²';
+                        }
+                    }
                     $areaText = $areaNum !== null ? (rtrim(rtrim(number_format($areaNum, 2, '.', ''), '0'), '.') . ($unit ? " {$unit}" : '')) : '';
                     $parts = [];
                     if ($loc !== '') $parts[] = sprintf('%s is in %s', $name, $loc); else $parts[] = sprintf('%s is a lake', $name);
-                    if ($areaText !== '') $parts[] = sprintf('with the surface area of %s', $areaText);
+                    if ($metricText !== '') {
+                        $parts[] = $metricText;
+                    } elseif ($areaText !== '') {
+                        $parts[] = sprintf('with the surface area of %s', $areaText);
+                    }
                     $desc = implode(' ', $parts) . '.';
                     $row['description'] = $desc;
                 }
@@ -127,6 +148,7 @@ class SearchController extends Controller
                     $sql = <<<SQL
 SELECT l.id,
        COALESCE(NULLIF(l.name, ''), NULLIF(l.alt_name, ''), 'Lake') AS name,
+       l.region, l.province,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson,
        ST_Area(ly.geom::geography) AS metric_value
 FROM lakes l
@@ -140,6 +162,7 @@ SQL;
                     $sql = <<<SQL
 SELECT l.id,
        COALESCE(NULLIF(l.name, ''), NULLIF(l.alt_name, ''), 'Lake') AS name,
+       l.region, l.province,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson,
        ST_Perimeter(ly.geom::geography) AS metric_value
 FROM lakes l
@@ -149,11 +172,12 @@ WHERE ly.geom IS NOT NULL
 ORDER BY metric_value {$orderDir} NULLS LAST
 LIMIT :limit
 SQL;
-                } else { // depth / elevation from lakes table
-                    $col = $attributeUsed === 'depth' ? 'l.depth' : 'l.elevation';
+                } else { // depth / elevation from lakes table (schema uses mean_depth_m, elevation_m)
+                    $col = $attributeUsed === 'depth' ? 'l.mean_depth_m' : 'l.elevation_m';
                     $sql = <<<SQL
 SELECT l.id,
        COALESCE(NULLIF(l.name, ''), NULLIF(l.alt_name, ''), 'Lake') AS name,
+       l.region, l.province,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson,
        {$col} AS metric_value
 FROM lakes l
@@ -172,18 +196,20 @@ SQL;
                 ]);
             } else { // watersheds
                 $attributeUsed = 'area_m2';
+                // Compute area from published layers to avoid depending on missing columns on watersheds
                 $sql = <<<SQL
                     SELECT w.id,
-                           COALESCE(w.name, w.watershed_name) AS name,
-                           ST_AsGeoJSON(w.geom) AS geom,
-                           ST_Area(w.geom::geography) AS metric_value
+                           w.name AS name,
+                           ST_AsGeoJSON(ly.geom) AS geom,
+                           ST_Area(ly.geom::geography) AS metric_value
                     FROM watersheds w
-                    WHERE w.geom IS NOT NULL
+                    LEFT JOIN layers ly ON ly.body_type='watershed' AND ly.body_id=w.id AND ly.is_active=true AND ly.visibility='public'
+                    WHERE ly.geom IS NOT NULL
                     %s
                     ORDER BY metric_value {$orderDir} NULLS LAST
                     LIMIT :limit
                 SQL;
-                $wherePlace = $place ? "AND (w.region ILIKE :place OR w.basin ILIKE :place)" : '';
+                $wherePlace = $place ? "AND (w.name ILIKE :place OR COALESCE(w.description,'') ILIKE :place)" : '';
                 $rows = DB::select(sprintf($sql, $wherePlace), $params);
                 return response()->json([
                     'data' => $mapRows($rows, 'watersheds', $attributeUsed),
@@ -220,22 +246,23 @@ SQL;
             $params = ['kw' => $kw, 'limit' => $limit] + ($place ? ['place' => '%'.$place.'%'] : []);
             $rows = DB::select(sprintf($sql, $wherePlace), $params);
         } elseif ($entity === 'watersheds') {
+            // Search by name/description; pull geom from active layer if available
             $sql = <<<SQL
                 SELECT w.id,
-                       COALESCE(w.name, w.watershed_name) AS name,
-                       w.region, w.basin,
-                       ST_AsGeoJSON(w.geom) AS geom
+                       COALESCE(w.name, COALESCE(ly.layer_name, ly.name)) AS name,
+                       CASE WHEN ly.geom IS NOT NULL THEN ST_AsGeoJSON(ly.geom) ELSE NULL END AS geom
                 FROM watersheds w
+                LEFT JOIN layers ly ON ly.body_type='watershed' AND ly.body_id=w.id AND ly.is_active=true AND ly.visibility='public'
                 WHERE (
-                    COALESCE(w.name, w.watershed_name) ILIKE :kw OR
-                    w.region ILIKE :kw OR
-                    w.basin ILIKE :kw
+                    w.name ILIKE :kw OR
+                    COALESCE(w.description,'') ILIKE :kw OR
+                    COALESCE(ly.layer_name, ly.name) ILIKE :kw
                 )
                 %s
                 ORDER BY name ASC
                 LIMIT :limit
             SQL;
-            $wherePlace = $place ? "AND (w.region ILIKE :place OR w.basin ILIKE :place)" : '';
+            $wherePlace = $place ? "AND (w.name ILIKE :place OR COALESCE(w.description,'') ILIKE :place)" : '';
             $params = ['kw' => $kw, 'limit' => $limit] + ($place ? ['place' => '%'.$place.'%'] : []);
             $rows = DB::select(sprintf($sql, $wherePlace), $params);
         } elseif ($entity === 'layers') {
@@ -257,33 +284,59 @@ SQL;
             $params = ['kw' => $kw, 'limit' => $limit];
             $rows = DB::select($sql, $params);
         } elseif ($entity === 'parameters') {
-            $sql = <<<SQL
-                SELECT p.id,
-                       COALESCE(p.parameter_name, p.name) AS name,
-                       p.category, p.description, p.unit
-                FROM parameters p
-                WHERE (
-                    COALESCE(p.parameter_name, p.name) ILIKE :kw OR
-                    p.category ILIKE :kw OR
-                    p.description ILIKE :kw OR
-                    p.unit ILIKE :kw
-                )
-                ORDER BY name ASC
-                LIMIT :limit
-            SQL;
+            // Parameters table uses 'name'; include aliases if alias table exists
+            $hasAliases = Schema::hasTable('parameter_aliases');
+            if ($hasAliases) {
+                $sql = <<<SQL
+                    SELECT DISTINCT p.id,
+                           p.name AS name,
+                           p.category, p.unit
+                    FROM parameters p
+                    LEFT JOIN parameter_aliases pa ON pa.parameter_id = p.id
+                    WHERE (
+                        p.name ILIKE :kw OR p.code ILIKE :kw OR
+                        COALESCE(p.category,'') ILIKE :kw OR
+                        COALESCE(p.unit,'') ILIKE :kw OR
+                        COALESCE(pa.alias,'') ILIKE :kw
+                    )
+                    ORDER BY name ASC
+                    LIMIT :limit
+                SQL;
+            } else {
+                $sql = <<<SQL
+                    SELECT DISTINCT p.id,
+                           p.name AS name,
+                           p.category, p.unit
+                    FROM parameters p
+                    WHERE (
+                        p.name ILIKE :kw OR p.code ILIKE :kw OR
+                        COALESCE(p.category,'') ILIKE :kw OR
+                        COALESCE(p.unit,'') ILIKE :kw
+                    )
+                    ORDER BY name ASC
+                    LIMIT :limit
+                SQL;
+            }
             $params = ['kw' => $kw, 'limit' => $limit];
             $rows = DB::select($sql, $params);
         } elseif ($entity === 'lake_flows') {
+            // Match available schema: name/alt_name/source/flow_type and the parent lake name
             $sql = <<<SQL
                 SELECT f.id,
-                       COALESCE(f.name, CONCAT(f.flow_type, ' flow')) AS name,
-                       f.flow_type, f.source_lake, f.target_lake
+                       COALESCE(NULLIF(f.name,''), NULLIF(f.alt_name,''), CONCAT(f.flow_type, ' flow')) AS name,
+                       f.flow_type,
+                       f.source,
+                       l.name AS lake_name,
+                       ST_AsGeoJSON(f.coordinates) AS coordinates_geojson,
+                       f.latitude, f.longitude
                 FROM lake_flows f
+                LEFT JOIN lakes l ON l.id = f.lake_id
                 WHERE (
                     COALESCE(f.name, '') ILIKE :kw OR
+                    COALESCE(f.alt_name, '') ILIKE :kw OR
+                    COALESCE(f.source, '') ILIKE :kw OR
                     f.flow_type ILIKE :kw OR
-                    f.source_lake ILIKE :kw OR
-                    f.target_lake ILIKE :kw
+                    COALESCE(l.name,'') ILIKE :kw
                 )
                 ORDER BY name ASC
                 LIMIT :limit
@@ -299,6 +352,21 @@ SQL;
                 'intent' => [ 'code' => 'ATTRIBUTE', 'entity' => $tableUsed ],
                 'diagnostics' => [ 'approach' => 'controller-attribute', 'place' => $place ],
             ]);
+        }
+
+        // If user asked for watersheds but nothing matched, return a small generic list to avoid "nothing shows"
+        if ($entity === 'watersheds') {
+            $fallback = DB::select(
+                'SELECT w.id, w.name AS name, NULL::text AS geom FROM watersheds w ORDER BY w.name ASC LIMIT :limit',
+                ['limit' => $limit]
+            );
+            if (!empty($fallback)) {
+                return response()->json([
+                    'data' => $mapRows($fallback, 'watersheds', null),
+                    'intent' => [ 'code' => 'ATTRIBUTE', 'entity' => 'watersheds', 'note' => 'generic-fallback' ],
+                    'diagnostics' => [ 'approach' => 'controller-attribute-fallback' ],
+                ]);
+            }
         }
 
         // Fallback: delegate to semantic engine
@@ -375,104 +443,9 @@ SQL;
             $results[] = [ 'entity' => 'lakes', 'id' => $r->id, 'label' => $r->name, 'subtitle' => null ];
         }
 
-        // Watersheds
-        if (count($results) < $limit) {
-            $remain = $limit - count($results);
-            $sql = <<<SQL
-                SELECT w.id, COALESCE(w.name, w.watershed_name) AS name, 'watersheds' AS entity,
-                       COALESCE(NULLIF(w.region, ''), w.basin) AS subtitle,
-                       CASE
-                         WHEN COALESCE(w.name, w.watershed_name) ILIKE :kwp THEN 0
-                         WHEN w.region ILIKE :kwp OR w.basin ILIKE :kwp THEN 1
-                         WHEN COALESCE(w.name, w.watershed_name) ILIKE :kw OR w.region ILIKE :kw OR w.basin ILIKE :kw THEN 2
-                         ELSE 3
-                       END AS rank
-                FROM watersheds w
-                WHERE (
-                    COALESCE(w.name, w.watershed_name) ILIKE :kw OR
-                    w.region ILIKE :kw OR
-                    w.basin ILIKE :kw
-                )
-                %s
-                ORDER BY rank ASC, name ASC
-                LIMIT :limit
-            SQL;
-            $extra = '';
-            $params = ['kw' => $kw, 'kwp' => $kwp, 'limit' => $remain];
-            if ($prefixOnly) {
-                $extra .= " AND (COALESCE(w.name,w.watershed_name) ILIKE :kwp OR w.region ILIKE :kwp OR w.basin ILIKE :kwp)";
-            }
-            $rows = DB::select(sprintf($sql, $extra), $params);
-            foreach ($rows as $r) {
-                $results[] = [ 'entity' => 'watersheds', 'id' => $r->id, 'label' => $r->name, 'subtitle' => $r->subtitle ?? null ];
-            }
-        }
+        // Watersheds suggestions removed per refinement request
 
-        // Layers
-        if (count($results) < $limit) {
-            $remain = $limit - count($results);
-            $sql = <<<SQL
-                SELECT ly.id, COALESCE(ly.layer_name, ly.name) AS name, 'layers' AS entity,
-                       COALESCE(NULLIF(ly.category, ''), NULLIF(ly.source, '')) AS subtitle,
-                       CASE
-                         WHEN COALESCE(ly.layer_name, ly.name) ILIKE :kwp THEN 0
-                         WHEN ly.category ILIKE :kwp OR ly.source ILIKE :kwp THEN 1
-                         WHEN COALESCE(ly.layer_name, ly.name) ILIKE :kw OR ly.category ILIKE :kw OR ly.source ILIKE :kw THEN 2
-                         ELSE 3
-                       END AS rank
-                FROM layers ly
-                WHERE (
-                    COALESCE(ly.layer_name, ly.name) ILIKE :kw OR
-                    ly.category ILIKE :kw OR
-                    ly.source ILIKE :kw
-                )
-                %s
-                ORDER BY rank ASC, name ASC
-                LIMIT :limit
-            SQL;
-            $extra = '';
-            $params = ['kw' => $kw, 'kwp' => $kwp, 'limit' => $remain];
-            if ($prefixOnly) {
-                $extra .= " AND (COALESCE(ly.layer_name,ly.name) ILIKE :kwp OR ly.category ILIKE :kwp OR ly.source ILIKE :kwp)";
-            }
-            $rows = DB::select(sprintf($sql, $extra), $params);
-            foreach ($rows as $r) {
-                $results[] = [ 'entity' => 'layers', 'id' => $r->id, 'label' => $r->name, 'subtitle' => $r->subtitle ?? null ];
-            }
-        }
-
-        // Parameters
-        if (count($results) < $limit) {
-            $remain = $limit - count($results);
-            $sql = <<<SQL
-                SELECT p.id, COALESCE(p.parameter_name, p.name) AS name, 'parameters' AS entity,
-                       COALESCE(NULLIF(p.category, ''), NULLIF(p.unit, '')) AS subtitle,
-                       CASE
-                         WHEN COALESCE(p.parameter_name, p.name) ILIKE :kwp THEN 0
-                         WHEN p.category ILIKE :kwp OR p.unit ILIKE :kwp THEN 1
-                         WHEN COALESCE(p.parameter_name, p.name) ILIKE :kw OR p.category ILIKE :kw OR p.unit ILIKE :kw THEN 2
-                         ELSE 3
-                       END AS rank
-                FROM parameters p
-                WHERE (
-                    COALESCE(p.parameter_name, p.name) ILIKE :kw OR
-                    p.category ILIKE :kw OR
-                    p.unit ILIKE :kw
-                )
-                %s
-                ORDER BY rank ASC, name ASC
-                LIMIT :limit
-            SQL;
-            $extra = '';
-            $params = ['kw' => $kw, 'kwp' => $kwp, 'limit' => $remain];
-            if ($prefixOnly) {
-                $extra .= " AND (COALESCE(p.parameter_name,p.name) ILIKE :kwp OR p.category ILIKE :kwp OR p.unit ILIKE :kwp)";
-            }
-            $rows = DB::select(sprintf($sql, $extra), $params);
-            foreach ($rows as $r) {
-                $results[] = [ 'entity' => 'parameters', 'id' => $r->id, 'label' => $r->name, 'subtitle' => $r->subtitle ?? null ];
-            }
-        }
+        // Layers and Parameters suggestions intentionally removed per refinement request
 
         // Optional: analytical hint when matching keywords
         $qlc = strtolower($q);
