@@ -25,12 +25,14 @@ import PublicSettingsModal from "../../components/settings/PublicSettingsModal";
 import FeedbackModal from "../../components/feedback/FeedbackModal";
 import HeatmapLoadingIndicator from "../../components/HeatmapLoadingIndicator";
 import HeatmapLegend from "../../components/HeatmapLegend";
+import PollutionLegend from "../../components/PollutionLegend";
 import BackToDashboardButton from "../../components/BackToDashboardButton";
 import BaseLakesLayer from "../../components/BaseLakesLayer";
 import { useAuthRole } from "./hooks/useAuthRole";
 import { usePublicLakes } from "./hooks/usePublicLakes";
 import { useLakeSelection } from "./hooks/useLakeSelection";
 import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
+import { usePollutionHeatmap } from "./hooks/usePollutionHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import { useHotkeys } from "./hooks/useHotkeys";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
@@ -260,6 +262,7 @@ function MapPage() {
   }, [lakeOverlayFeature, publicFC, selectedLakeId]);
 
   const { enabled: heatEnabled, loading: heatLoading, error: heatError, resolution: heatResolution, toggle: togglePopulationHeatmap, clear: clearHeatmap, hasLayer: hasHeatLayer, clearError: clearHeatError } = usePopulationHeatmap({ mapRef, selectedLake, lakeBounds: selectedLakeBounds });
+  const { enabled: pollutionEnabled, loading: pollutionLoading, error: pollutionError, resolution: pollutionResolution, toggle: togglePollutionHeatmap, clear: clearPollution, hasLayer: hasPollutionLayer, clearError: clearPollutionError } = usePollutionHeatmap({ mapRef, selectedLake, lakeBounds: selectedLakeBounds });
 
   // population estimate event handling now inside hook
 
@@ -426,6 +429,10 @@ function MapPage() {
   onClearHeatmap={clearHeatmap}
   heatEnabled={heatEnabled}
   heatLoading={heatLoading}
+  onTogglePollution={togglePollutionHeatmap}
+  onClearPollution={clearPollution}
+  pollutionEnabled={pollutionEnabled}
+  pollutionLoading={pollutionLoading}
         layers={lakeLayers}
         activeLayerId={lakeActiveLayerId}
         onResetToActive={resetToActive}
@@ -474,14 +481,18 @@ function MapPage() {
       <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />
       <ScreenshotButton />
       {heatLoading && <HeatmapLoadingIndicator />}
-      {heatError && !heatLoading && (
+      {(heatError || pollutionError) && !(heatLoading || pollutionLoading) && (
         <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1200, background: 'rgba(127,29,29,0.8)', color: '#fff', padding: '8px 10px', borderRadius: 6, fontSize: 12, maxWidth: 220 }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Heatmap Error</div>
-          <div style={{ lineHeight: 1.3 }}>{heatError}</div>
-          <button onClick={clearHeatError} style={{ marginTop: 6, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>Dismiss</button>
+          <div style={{ lineHeight: 1.3 }}>{heatError || pollutionError}</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            {heatError && <button onClick={clearHeatError} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>Dismiss Pop</button>}
+            {pollutionError && <button onClick={clearPollutionError} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>Dismiss Poll</button>}
+          </div>
         </div>
       )}
   {hasHeatLayer && !heatLoading && <HeatmapLegend resolution={heatResolution} />}
+  {hasPollutionLayer && !pollutionLoading && <PollutionLegend />}
       {/* Back to Dashboard */}
       <BackToDashboardButton role={userRole} />
 

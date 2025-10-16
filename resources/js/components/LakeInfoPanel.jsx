@@ -3,6 +3,7 @@ import { FiX } from "react-icons/fi";
 import OverviewTab from "./lake-info-panel/OverviewTab";
 import WaterQualityTab from "./lake-info-panel/WaterQualityTab";
 import HeatmapTab from "./lake-info-panel/HeatmapTab";
+import PollutionTab from "./lake-info-panel/PollutionTab";
 import LayersTab from "./lake-info-panel/LayersTab";
 import TestsTab from "./lake-info-panel/TestsTab";
 import LoadingSpinner from "./LoadingSpinner";
@@ -33,6 +34,11 @@ function LakeInfoPanel({
   onClearHeatmap,
   heatEnabled = false,
   heatLoading = false,
+  // Pollution heatmap props
+  onTogglePollution,
+  onClearPollution,
+  pollutionEnabled = false,
+  pollutionLoading = false,
   layers = [],
   activeLayerId = null,
   onSelectLayer,
@@ -150,7 +156,8 @@ function LakeInfoPanel({
         <button className={`lake-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>Overview</button>
   <button className={`lake-tab ${activeTab === "water" ? "active" : ""}`} onClick={() => setActiveTab("water")}>Water Quality</button>
   <button className={`lake-tab ${activeTab === "tests" ? "active" : ""}`} onClick={() => setActiveTab("tests")}>Tests</button>
-        <button className={`lake-tab ${activeTab === "population" ? "active" : ""}`} onClick={() => setActiveTab("population")}>Population Density</button>
+  <button className={`lake-tab ${activeTab === "population" ? "active" : ""}`} onClick={() => setActiveTab("population")}>Population Density</button>
+  <button className={`lake-tab ${activeTab === "pollution" ? "active" : ""}`} onClick={() => setActiveTab("pollution")}>Pollution Heatmap</button>
         <button className={`lake-tab ${activeTab === "layers" ? "active" : ""}`} onClick={() => setActiveTab("layers")}>Layers</button>
         {/* Flows tab removed; flows now in Overview */}
       </div>
@@ -202,6 +209,16 @@ function LakeInfoPanel({
             hasHeatLayer={hasHeatLayer}
             heatEnabled={heatEnabled}
             heatLoading={heatLoading}
+          />
+        )}
+
+        {activeTab === "pollution" && (
+          <PollutionTab
+            lake={lake}
+            onTogglePollution={onTogglePollution}
+            onClearPollution={onClearPollution}
+            enabled={pollutionEnabled}
+            loading={pollutionLoading}
           />
         )}
 
