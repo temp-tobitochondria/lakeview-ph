@@ -51,6 +51,10 @@ function LakeInfoPanel({
   flows = [],            // pass through from MapPage
   onJumpToFlow,          // callback to focus map on a flow
   hasHeatLayer = false,
+  // Municipal choropleth toggle (wired from MapPage)
+  showMunicipChoro = false,
+  onToggleMunicipChoro,
+  municipalLoading = false,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [closing, setClosing] = useState(false);
@@ -171,6 +175,10 @@ function LakeInfoPanel({
             showFlows={showFlows}
             onToggleFlows={onToggleFlows}
             onJumpToFlow={onJumpToFlow}
+            // Municipal choropleth
+            showMunicipChoro={showMunicipChoro}
+            onToggleMunicipChoro={onToggleMunicipChoro}
+            municipalLoading={municipalLoading}
           />
         )}
         {activeTab === "water" && (

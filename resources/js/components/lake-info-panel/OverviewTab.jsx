@@ -20,6 +20,10 @@ function OverviewTab({
   showFlows = false,       // whether markers are shown on map
   onToggleFlows,           // (checked:boolean) => void
   onJumpToFlow,            // (flow) => void (fly map to flow)
+  // Municipal/City choropleth
+  showMunicipChoro = false,
+  onToggleMunicipChoro,    // (checked:boolean) => void
+  municipalLoading = false,
 }) {
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -112,6 +116,7 @@ function OverviewTab({
 
   const showToggle = canToggleWatershed && typeof onToggleWatershed === 'function';
   const showFlowToggle = flowsStatus === 'present' && (flows && flows.length > 0) && typeof onToggleFlows === 'function';
+  const showMunicipToggle = typeof onToggleMunicipChoro === 'function';
 
   if (initialLoading) {
     return (
@@ -156,14 +161,38 @@ function OverviewTab({
           )}
         </div>
 
-        <div><strong>Region:</strong></div>
-        <div title={regionDisplay || ''}>{regionDisplay || '–'}</div>
+  <div><strong>Region:</strong></div>
+  <div title={regionDisplay || ''} style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{regionDisplay || '–'}</div>
 
   <div><strong>Province:</strong></div>
-        <div title={provinceDisplay || ''}>{provinceDisplay || '–'}</div>
+    <div title={provinceDisplay || ''} style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{provinceDisplay || '–'}</div>
 
   <div><strong>Municipality/City:</strong></div>
-        <div title={municipalityDisplay || ''}>{municipalityDisplay || '–'}</div>
+        <div title={municipalityDisplay || ''} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+          <span style={{ display: 'block', flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word', maxHeight: '6em', overflowY: 'auto' }}>{municipalityDisplay || '–'}</span>
+          {showMunicipToggle && (
+            <button
+              type="button"
+              aria-pressed={showMunicipChoro}
+              title={showMunicipChoro ? 'Hide municipal/city choropleth' : 'Show municipal/city choropleth'}
+              onClick={() => onToggleMunicipChoro?.(!showMunicipChoro)}
+              disabled={municipalLoading}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#fff',
+                padding: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: municipalLoading ? 'wait' : 'pointer',
+                borderRadius: 6,
+              }}
+            >
+              <FiMap size={16} />
+            </button>
+          )}
+        </div>
 
         <div><strong>Surface Area:</strong></div>
         <div>{areaStr}</div>
