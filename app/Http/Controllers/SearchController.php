@@ -220,7 +220,8 @@ SQL;
         }
 
         // Attribute/fuzzy search by entity using ILIKE
-        $kw = '%' . trim($q) . '%';
+    $kw = '%' . trim($q) . '%';
+    $hasLakeKeyword = (bool) preg_match('/\blakes?\b/i', $q);
         $rows = [];
         $tableUsed = $entity;
         if ($entity === 'lakes') {
@@ -233,17 +234,21 @@ SQL;
                 FROM lakes l
                 LEFT JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.is_active=true AND ly.visibility='public'
                 WHERE (
-                    l.name ILIKE :kw OR
-                    l.alt_name ILIKE :kw OR
-                    (l.region::text) ILIKE :kw OR
-                    (l.province::text) ILIKE :kw
+                    l.name ILIKE :kwName OR
+                    l.alt_name ILIKE :kwName OR
+                    (:useRegionMatch = 1 AND ((l.region::text) ILIKE :kw OR (l.province::text) ILIKE :kw))
                 )
                 %s
                 ORDER BY name ASC
                 LIMIT :limit
             SQL;
             $wherePlace = $place ? "AND ((l.region::text) ILIKE :place OR (l.province::text) ILIKE :place)" : '';
-            $params = ['kw' => $kw, 'limit' => $limit] + ($place ? ['place' => '%'.$place.'%'] : []);
+            $params = [
+                'kw' => $kw,
+                'kwName' => $hasLakeKeyword ? '%lake%' : $kw,
+                'useRegionMatch' => $place ? 0 : 1,
+                'limit' => $limit,
+            ] + ($place ? ['place' => '%'.$place.'%'] : []);
             $rows = DB::select(sprintf($sql, $wherePlace), $params);
         } elseif ($entity === 'watersheds') {
             // Search by name/description; pull geom from active layer if available
