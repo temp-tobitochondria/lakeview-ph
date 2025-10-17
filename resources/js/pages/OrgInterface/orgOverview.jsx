@@ -1,6 +1,6 @@
 // resources/js/pages/OrgInterface/OrgOverview.jsx
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   FiUsers,          // Active Members
   FiDatabase,       // Tests Logged
@@ -25,28 +25,44 @@ L.Icon.Default.mergeOptions({
 import api from "../../lib/api";
 import kpiCache from '../../lib/kpiCache';
 
-function KpiCard({ title, value, loading, error, onRefresh, icon }) {
+function KpiCard({ title, value, loading, error, icon, to }) {
   const display = loading ? '…' : (error ? '—' : (value ?? '0'));
-  return (
+
+  const cardInner = (
     <div className="kpi-card">
       <div className="kpi-icon">{icon}</div>
       <div className="kpi-info">
-        <button className="kpi-title btn-link" onClick={onRefresh} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>{title}</button>
+        <div className="kpi-title-wrap"><span className="kpi-title btn-link">{title}</span></div>
         <span className="kpi-value">{display}</span>
       </div>
     </div>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="kpi-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
+        {cardInner}
+      </Link>
+    );
+  }
+
+  return cardInner;
 }
 
 /* ============================================================
    KPI Grid (4 stats; empty values for now)
    ============================================================ */
-function KPIGrid({ stats, refresh }) {
+function KPIGrid({ stats, refresh, tenantId }) {
+  // Build links: members page filtered to active, tests page, tests page filtered to draft
+  const membersLink = `/org-dashboard/members${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}&status=active` : '?status=active'}`;
+  const testsLink = `/org-dashboard/wq-tests${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : ''}`;
+  const pendingLink = `/org-dashboard/wq-tests${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}&status=draft` : '?status=draft'}`;
+
   return (
     <div className="kpi-grid">
-      <KpiCard title="Active Members" icon={<FiUsers />} {...stats.members} onRefresh={refresh} />
-      <KpiCard title="Tests Logged" icon={<FiDatabase />} {...stats.tests} onRefresh={refresh} />
-      <KpiCard title="Pending Approvals" icon={<FiClipboard />} {...stats.pending} onRefresh={refresh} />
+      <KpiCard title="Active Members" icon={<FiUsers />} {...stats.members} to={membersLink} />
+      <KpiCard title="Tests Logged" icon={<FiDatabase />} {...stats.tests} to={testsLink} />
+      <KpiCard title="Pending Approvals" icon={<FiClipboard />} {...stats.pending} to={pendingLink} />
     </div>
   );
 }
@@ -190,7 +206,7 @@ export default function OrgOverview({ tenantId: propTenantId }) {
 
   return (
     <>
-      <KPIGrid stats={stats} refresh={fetchAll} />
+      <KPIGrid stats={stats} tenantId={tenantId} />
       <TestsMap />
       <RecentLogs />
     </>

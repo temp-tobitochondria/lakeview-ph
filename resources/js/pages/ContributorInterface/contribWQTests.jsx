@@ -1,5 +1,6 @@
 // resources/js/pages/ContributorInterface/contribWQTests.jsx
 import React, { useMemo, useState, useEffect } from "react";
+import { useLocation } from 'react-router-dom';
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
@@ -34,21 +35,30 @@ export default function ContribWQTests() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [authLoaded, setAuthLoaded] = useState(false);
+  const location = useLocation();
+  const qp = new URLSearchParams(location.search);
 
   const [lakes, setLakes] = useState([]);
   const [tests, setTests] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [membersFetchForbidden, setMembersFetchForbidden] = useState(false);
   const [paramCatalog, setParamCatalog] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // filters/search
   const [q, setQ] = useState("");
   const [lakeId, setLakeId] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() => qp.get('status') || '');
+  const [memberId, setMemberId] = useState(() => qp.get('member_id') || qp.get('created_by_user_id') || '');
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [year, setYear] = useState("");
   const [quarter, setQuarter] = useState("");
   const [month, setMonth] = useState("");
+
+  // If created_by_user_id is provided in the query params, apply a client-side filter later
+  const createdByUserIdFromQs = qp.get('created_by_user_id') || qp.get('user_id') || null;
+  const memberIdFromQs = qp.get('member_id') || qp.get('created_by_user_id') || null;
 
   // modal state
   const [open, setOpen] = useState(false);
@@ -80,6 +90,56 @@ export default function ContribWQTests() {
     return () => { mounted = false; };
   }, []);
 
+  // fetch members (org_admin + contributor) once org context resolved
+  useEffect(() => {
+    let mounted = true;
+    if (!authLoaded) return () => {};
+    if (!currentOrgId) return () => {};
+    (async () => {
+      try {
+        const r = await api.get(`/org/${currentOrgId}/users`);
+        if (!mounted) return;
+        const raw = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
+        const filtered = (Array.isArray(raw) ? raw : []).filter((u) => {
+          if (!u) return false;
+          const roleStr = (u.role || '').toString();
+          if (['org_admin', 'contributor'].includes(roleStr)) return true;
+          const rid = Number(u.role_id);
+          if (!Number.isNaN(rid) && [2,3].includes(rid)) return true;
+          return false;
+        });
+        setMembers(filtered);
+        setMembersFetchForbidden(false);
+      } catch (e) {
+        // If the API forbids listing users for this contributor, fall back to building
+        // a members list from tests we've already fetched (created_by fields).
+        console.warn('[ContribWQTests] failed to fetch members', e);
+        const status = e?.response?.status || (e?.message ? (e.message.includes('Forbidden') ? 403 : null) : null);
+        if (status === 403) {
+          setMembersFetchForbidden(true);
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [authLoaded, currentOrgId]);
+
+  // If listing org users is forbidden for this contributor role, construct a members list
+  // from existing tests' created_by fields so the member filter still works.
+  useEffect(() => {
+    if (!membersFetchForbidden) return;
+    // derive unique users from tests
+    const map = new Map();
+    tests.forEach((t) => {
+      const id = t.created_by_user_id ?? t.createdBy?.id ?? t.created_by;
+      const name = t.createdBy?.name || t.created_by_name || t.created_by_display || t.sampler_name || null;
+      if (id && !map.has(String(id))) {
+        map.set(String(id), { id: String(id), name: name || `User ${id}` });
+      }
+    });
+    // do not add a placeholder for the current user here
+    setMembers(Array.from(map.values()));
+  }, [membersFetchForbidden, tests, currentUserId]);
+
   useEffect(() => {
     let mounted = true;
     let timer = null;
@@ -104,6 +164,7 @@ export default function ContribWQTests() {
           if (mounted) setParamCatalog([]);
         }
       })();
+      // member fetching moved to dedicated effect when org context is resolved
     }, 50);
     return () => { mounted = false; if (timer) clearTimeout(timer); };
   }, []);
@@ -203,10 +264,12 @@ export default function ContribWQTests() {
     let from = dateFrom ? startOfDay(dateFrom) : null;
     let to = dateTo ? endOfDay(dateTo) : null;
     if (from && to && from > to) { const tmp = from; from = to; to = tmp; }
-
     return tests.filter((t) => {
       if (lakeId && String(t.lake_id) !== String(lakeId)) return false;
       if (status && String(t.status) !== status) return false;
+      // Apply optional created_by_user_id or member filter from query string / UI
+      if (typeof createdByUserIdFromQs !== 'undefined' && createdByUserIdFromQs && String(t.created_by_user_id) !== String(createdByUserIdFromQs)) return false;
+      if (memberId && String((t.created_by_user_id ?? t.createdBy?.id ?? t.created_by) || '') !== String(memberId)) return false;
       const yqm = yqmFrom(t);
       if (year && String(yqm.year) !== String(year)) return false;
       if (quarter && String(yqm.quarter) !== String(quarter)) return false;
@@ -223,7 +286,7 @@ export default function ContribWQTests() {
       }
       return true;
     });
-  }, [tests, q, lakeId, status, year, quarter, month, dateFrom, dateTo]);
+  }, [tests, q, lakeId, status, memberId, year, quarter, month, dateFrom, dateTo]);
 
   const actions = [
     {
@@ -285,7 +348,7 @@ export default function ContribWQTests() {
       onResetWidths={() => setResetSignal((x) => x + 1)}
       onRefresh={doRefresh}
       onToggleFilters={() => setFiltersOpen((v) => !v)}
-      filtersBadgeCount={[lakeId, status, year, quarter, month, dateFrom, dateTo].filter(Boolean).length}
+  filtersBadgeCount={[lakeId, status, memberId, year, quarter, month, dateFrom, dateTo].filter(Boolean).length}
       onExport={null}
       onAdd={null}
     />
@@ -294,6 +357,7 @@ export default function ContribWQTests() {
   const filterFields = [
     { id: 'lake', label: 'Lake', type: 'select', value: lakeId, onChange: setLakeId, options: [{ value: '', label: 'All lakes' }, ...lakes.map((l) => ({ value: String(l.id), label: l.name }))] },
     { id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: [{ value: '', label: 'All' }, { value: 'draft', label: 'Draft' }, { value: 'public', label: 'Published' }] },
+    { id: 'member', label: 'Member', type: 'select', value: memberId, onChange: setMemberId, options: [{ value: '', label: 'Any Member' }, ...members.map((m) => ({ value: String(m.id), label: m.name || m.full_name || m.display_name || m.email || `User ${m.id}` }))] },
     { id: 'year', label: 'Year', type: 'select', value: year, onChange: setYear, options: [{ value: '', label: 'Year' }, ...years.map((y) => ({ value: String(y), label: String(y) }))] },
     { id: 'quarter', label: 'Quarter', type: 'select', value: quarter, onChange: setQuarter, options: [{ value: '', label: 'Quarter' }, { value: '1', label: 'Q1' }, { value: '2', label: 'Q2' }, { value: '3', label: 'Q3' }, { value: '4', label: 'Q4' }] },
     { id: 'month', label: 'Month', type: 'select', value: month, onChange: setMonth, options: [{ value: '', label: 'Month' }, ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({ value: String(m), label: String(m).padStart(2,'0') }))] },
@@ -301,7 +365,7 @@ export default function ContribWQTests() {
     { id: 'to', label: 'To', type: 'date', value: dateTo, onChange: setDateTo },
   ];
 
-  const clearAllFilters = () => { setLakeId(''); setStatus(''); setYear(''); setQuarter(''); setMonth(''); setDateFrom(''); setDateTo(''); };
+  const clearAllFilters = () => { setLakeId(''); setStatus(''); setMemberId(''); setYear(''); setQuarter(''); setMonth(''); setDateFrom(''); setDateTo(''); };
 
   return (
     <div className="dashboard-content">

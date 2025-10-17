@@ -1,6 +1,6 @@
 // resources/js/pages/ContributorInterface/contribOverview.jsx
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { FiClipboard, FiDatabase, FiUsers } from 'react-icons/fi';
 import AppMap from '../../components/AppMap';
 import L from 'leaflet';
@@ -21,25 +21,33 @@ L.Icon.Default.mergeOptions({
 import api from '../../lib/api';
 import kpiCache from '../../lib/kpiCache';
 
-function KpiCard({ title, value, loading, error, onRefresh, icon }) {
+function KpiCard({ title, value, loading, error, icon, to }) {
   const display = loading ? '…' : (error ? '—' : (value ?? '0'));
-  return (
+
+  const cardInner = (
     <div className="kpi-card">
       <div className="kpi-icon">{icon}</div>
       <div className="kpi-info">
-        <button className="kpi-title btn-link" onClick={onRefresh} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>{title}</button>
+        <div className="kpi-title-wrap"><span className="kpi-title btn-link">{title}</span></div>
         <span className="kpi-value">{display}</span>
       </div>
     </div>
   );
+
+  if (to) return <Link to={to} className="kpi-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>{cardInner}</Link>;
+  return cardInner;
 }
 
-function KPIGrid({ stats, refresh }) {
+function KPIGrid({ stats, tenantId, userId }) {
+  const myDraftLink = `/contrib-dashboard/wq-tests${userId ? `?member_id=${encodeURIComponent(userId)}&status=draft` : '?status=draft'}`;
+  const myPublishedLink = `/contrib-dashboard/wq-tests${userId ? `?member_id=${encodeURIComponent(userId)}&status=public` : '?status=public'}`;
+  const orgPublishedLink = `/contrib-dashboard/wq-tests${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}&status=public` : '?status=public'}`;
+
   return (
     <div className="kpi-grid">
-      <KpiCard title="My Draft Tests" icon={<FiClipboard />} {...stats.myDraft} onRefresh={refresh} />
-      <KpiCard title="My Published Tests" icon={<FiDatabase />} {...stats.myPublished} onRefresh={refresh} />
-      <KpiCard title="Org Published Tests" icon={<FiUsers />} {...stats.orgPublished} onRefresh={refresh} />
+      <KpiCard title="My Draft Tests" icon={<FiClipboard />} {...stats.myDraft} to={myDraftLink} />
+      <KpiCard title="My Published Tests" icon={<FiDatabase />} {...stats.myPublished} to={myPublishedLink} />
+      <KpiCard title="Org Published Tests" icon={<FiUsers />} {...stats.orgPublished} to={orgPublishedLink} />
     </div>
   );
 }
@@ -143,7 +151,7 @@ export default function ContribOverview({ tenantId: propTenantId }) {
 
   return (
     <>
-      <KPIGrid stats={stats} refresh={fetchAll} />
+      <KPIGrid stats={stats} tenantId={tenantId} userId={userId} />
       <TestsMap />
     </>
   );

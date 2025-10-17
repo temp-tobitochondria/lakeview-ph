@@ -1,5 +1,6 @@
 // Refactored version aligned with adminUsers.jsx UI/UX but scoped to contributors
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useLocation } from 'react-router-dom';
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { FiEdit, FiTrash, FiUsers } from 'react-icons/fi';
@@ -32,7 +33,9 @@ const normalizeContributors = (rows = []) => rows.map(u => ({
 
 export default function OrgMembers() {
   // Core state
-  const [tenantId, setTenantId] = useState(null);
+  const location = useLocation();
+  const qp = new URLSearchParams(location.search);
+  const [tenantId, setTenantId] = useState(() => qp.get('tenant_id') || null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -41,7 +44,7 @@ export default function OrgMembers() {
   const [q, setQ] = useState('');
 
   // Advanced filters (persisted)
-  const [fStatus, setFStatus] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').status || ''; } catch { return ''; } });
+  const [fStatus, setFStatus] = useState(() => { try { return qp.get('status') || JSON.parse(localStorage.getItem(ADV_KEY) || '{}').status || ''; } catch { return ''; } });
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Persist advanced filters

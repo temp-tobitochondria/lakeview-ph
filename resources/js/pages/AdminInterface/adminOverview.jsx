@@ -1,5 +1,6 @@
 // resources/js/pages/AdminInterface/AdminOverview.jsx
 import React, { useMemo, useEffect, useState, useCallback } from "react";
+import { Link } from 'react-router-dom';
 import {
   FiBriefcase,    // Organizations
   FiUsers,        // Registered Users
@@ -26,15 +27,15 @@ function KPIGrid() {
   // Local state lifted into parent via hooks in AdminOverview; here we just render placeholders
   return (
     <div className="kpi-grid">
-      <KpiCard id="orgs" icon={<FiBriefcase />} title="Organizations" />
-      <KpiCard id="users" icon={<FiUsers />} title="Registered Users" />
-      <KpiCard id="lakes" icon={<FiMap />} title="Lakes in Database" />
-      <KpiCard id="events" icon={<FiDroplet />} title="Water Quality Reports in Database" />
+      <KpiCard id="orgs" icon={<FiBriefcase />} title="Organizations" to="/admin-dashboard/organizations" />
+      <KpiCard id="users" icon={<FiUsers />} title="Registered Users" to="/admin-dashboard/users" />
+      <KpiCard id="lakes" icon={<FiMap />} title="Lakes in Database" to="/admin-dashboard/lakes" />
+      <KpiCard id="events" icon={<FiDroplet />} title="Water Quality Reports in Database" to="/admin-dashboard/wq-tests" />
     </div>
   );
 }
 
-function KpiCard({ id, icon, title }) {
+function KpiCard({ id, icon, title, to }) {
   // We'll read values from the DOM-level shared store via a simple event-based approach
   // The AdminOverview component will dispatch a custom event with payload { id, value, loading, error }
   const [state, setState] = useState({ value: null, loading: true, error: null });
@@ -51,15 +52,28 @@ function KpiCard({ id, icon, title }) {
 
   const display = state.loading ? '…' : (state.error ? '—' : (state.value ?? '0'));
 
-  return (
+  const cardInner = (
     <div className="kpi-card">
       <div className="kpi-icon">{icon}</div>
       <div className="kpi-info">
-        <button className="kpi-title btn-link" onClick={() => window.dispatchEvent(new CustomEvent('lv:kpi:refresh'))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>{title}</button>
+        <div className="kpi-title-wrap">
+          <span className="kpi-title btn-link">{title}</span>
+        </div>
         <span className="kpi-value">{display}</span>
       </div>
     </div>
   );
+
+  if (to) {
+    // Wrap the whole card in a Link so the entire card is clickable.
+    return (
+      <Link to={to} className="kpi-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
+        {cardInner}
+      </Link>
+    );
+  }
+
+  return cardInner;
 }
 
 /* ============================================================

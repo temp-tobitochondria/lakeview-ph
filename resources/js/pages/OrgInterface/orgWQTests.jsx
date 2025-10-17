@@ -1,5 +1,6 @@
 // resources/js/pages/OrgInterface/OrgWQTests.jsx
 import React, { useMemo, useState, useEffect } from "react";
+import { useLocation } from 'react-router-dom';
 import { FiDroplet } from "react-icons/fi";
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../../components/table/TableToolbar";
@@ -43,6 +44,10 @@ export default function OrgWQTests({
   const [currentTenantId, setCurrentTenantId] = useState(null);
   const [authLoaded, setAuthLoaded] = useState(false);
 
+  const location = useLocation();
+  const qp = new URLSearchParams(location.search);
+  const createdByUserIdFromQs = qp.get('created_by_user_id') || qp.get('user_id') || null;
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -69,6 +74,32 @@ export default function OrgWQTests({
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Fetch members (org_admin + contributor) when tenant context is resolved
+  useEffect(() => {
+    let mounted = true;
+    if (!authLoaded) return () => {};
+    if (!currentTenantId) return () => {};
+    (async () => {
+      try {
+        const r = await api.get(`/org/${currentTenantId}/users`);
+        if (!mounted) return;
+        const raw = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
+        const filtered = (Array.isArray(raw) ? raw : []).filter((u) => {
+          if (!u) return false;
+          const roleStr = (u.role || '').toString();
+          if (['org_admin', 'contributor'].includes(roleStr)) return true;
+          const rid = Number(u.role_id);
+          if (!Number.isNaN(rid) && [2,3].includes(rid)) return true;
+          return false;
+        });
+        setMembers(filtered);
+      } catch (e) {
+        console.error('[OrgWQTests] failed to fetch members', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [authLoaded, currentTenantId]);
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +128,7 @@ export default function OrgWQTests({
           if (mounted) setParamCatalog(parameterCatalog || []);
         }
       })();
+      // member fetching moved to a dedicated effect so it runs after auth/tenant is resolved
     }, 50);
 
     return () => { mounted = false; if (timer) clearTimeout(timer); };
@@ -106,18 +138,20 @@ export default function OrgWQTests({
 
   const [lakes, setLakes] = useState(initialLakes);
   const [tests, setTests] = useState(initialTests);
+  const [members, setMembers] = useState([]);
   const [paramCatalog, setParamCatalog] = useState(parameterCatalog);
   const [loading, setLoading] = useState(false);
 
   // filters/search
   const [q, setQ] = useState("");
-  const [lakeId, setLakeId] = useState("");
-  const [status, setStatus] = useState("");
+  const [lakeId, setLakeId] = useState(() => qp.get('lake_id') || '');
+  const [status, setStatus] = useState(() => qp.get('status') || '');
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [year, setYear] = useState("");
   const [quarter, setQuarter] = useState("");
   const [month, setMonth] = useState("");
+  const [memberId, setMemberId] = useState(() => qp.get('member_id') || qp.get('created_by_user_id') || '');
 
   // modal state
   const [open, setOpen] = useState(false);
@@ -329,7 +363,9 @@ export default function OrgWQTests({
       if (lakeId && String(t.lake_id) !== String(lakeId)) return false;
       if (status && String(t.status) !== status) return false;
 
-      const yqm = yqmFrom(t);
+  const yqm = yqmFrom(t);
+  // Member filter: check created_by_user_id or related createdBy object
+  if (memberId && String((t.created_by_user_id ?? t.createdBy?.id ?? t.created_by) || '') !== String(memberId)) return false;
       if (year && String(yqm.year) !== String(year)) return false;
       if (quarter && String(yqm.quarter) !== String(quarter)) return false;
       if (month && String(yqm.month) !== String(month)) return false;
@@ -359,7 +395,7 @@ export default function OrgWQTests({
       }
       return true;
     });
-  }, [tests, q, lakeId, status, year, quarter, month, dateFrom, dateTo]);
+  }, [tests, q, lakeId, status, memberId, year, quarter, month, dateFrom, dateTo]);
 
   const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
   const actions = [
@@ -427,7 +463,7 @@ export default function OrgWQTests({
   onRefresh={doRefresh}
       onToggleFilters={() => setFiltersOpen((v) => !v)}
       filtersBadgeCount={
-        [lakeId, status, year, quarter, month, dateFrom, dateTo].filter((v) => !!v).length
+        [lakeId, status, memberId, year, quarter, month, dateFrom, dateTo].filter((v) => !!v).length
       }
       onExport={null}
       onAdd={null}
@@ -437,6 +473,7 @@ export default function OrgWQTests({
   const filterFields = [
     { id: 'lake', label: 'Lake', type: 'select', value: lakeId, onChange: setLakeId, options: [{ value: '', label: 'All lakes' }, ...lakes.map((l) => ({ value: String(l.id), label: l.name }))] },
     { id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: [{ value: '', label: 'All' }, { value: 'draft', label: 'Draft' }, { value: 'public', label: 'Published' }] },
+    { id: 'member', label: 'Member', type: 'select', value: memberId, onChange: setMemberId, options: [{ value: '', label: 'Any Member' }, ...members.map((m) => ({ value: String(m.id), label: m.name || m.full_name || m.display_name || m.email || `User ${m.id}` }))] },
     { id: 'year', label: 'Year', type: 'select', value: year, onChange: setYear, options: [{ value: '', label: 'Year' }, ...years.map((y) => ({ value: String(y), label: String(y) }))] },
     { id: 'quarter', label: 'Quarter', type: 'select', value: quarter, onChange: setQuarter, options: [{ value: '', label: 'Quarter' }, { value: '1', label: 'Q1' }, { value: '2', label: 'Q2' }, { value: '3', label: 'Q3' }, { value: '4', label: 'Q4' }] },
     { id: 'month', label: 'Month', type: 'select', value: month, onChange: setMonth, options: [{ value: '', label: 'Month' }, ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({ value: String(m), label: String(m).padStart(2,'0') }))] },
