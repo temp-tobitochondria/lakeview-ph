@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useImperativeHandle } from "react";
 import { FiSettings, FiX } from 'react-icons/fi';
 import Popover from "../common/Popover";
-import { apiPublic } from "../../lib/api";
+import { apiPublic, getToken } from "../../lib/api";
 import { fetchSampleEvents, deriveOrgOptions } from "./data/fetchers"; // removed unused fetchParameters
 import { alertSuccess, alertError } from '../../lib/alerts';
 import { runOneSample, runTwoSample } from './statsAdapter'; // consolidated test execution
@@ -431,6 +431,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
 
   const exportPdf = async () => {
     try {
+      // Require user to be signed-in
+      const token = getToken();
+      if (!token) {
+        await alertError('Sign in required', 'You must be a registered user to export results.');
+        return;
+      }
       if (!result) return;
       const title = `Advanced statistics - ${paramCode || ''}`;
       const style = `body { font-family: Arial, Helvetica, sans-serif; color: #111; padding: 18px; } h1 { font-size: 18px; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #ddd; padding: 6px; }`;
