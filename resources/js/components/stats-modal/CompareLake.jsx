@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState, useRef, useImperativeHandle } from "react";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
+import { FiActivity, FiBarChart2, FiInfo } from "react-icons/fi";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 import { apiPublic, buildQuery } from "../../lib/api";
 import { fetchParameters } from "./data/fetchers";
 import Popover from "../common/Popover";
+import InfoModal from "../common/InfoModal";
+import { buildGraphExplanation } from "../utils/graphExplain";
 
 function CompareLake({
   lakeOptions = [],
@@ -40,11 +42,31 @@ function CompareLake({
   const [stationCacheB, setStationCacheB] = useState({ all: [], byOrg: {} });
   const [localParams, setLocalParams] = useState([]);
   const [applied, setApplied] = useState(false);
+  const [summaryA, setSummaryA] = useState({ n: 0, mean: NaN, median: NaN });
+  const [summaryB, setSummaryB] = useState({ n: 0, mean: NaN, median: NaN });
   const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const eventStationName = (ev) => ev?.station?.name || ev?.station_name || ((ev?.latitude != null && ev?.longitude != null) ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}` : null);
+  const nameForLake = (lk) => {
+    if (!lk) return '';
+    try {
+      const found = lakeOptions.find((x) => String(x.id) === String(lk));
+      return found ? found.name : String(lk);
+    } catch (e) {
+      return String(lk);
+    }
+  };
+  const classForLake = (lk) => {
+    if (!lk) return '';
+    try {
+      const f = lakeOptions.find((x) => String(x.id) === String(lk));
+      return f?.class_code || f?.class || f?.water_class || f?.classification || '';
+    } catch { return ''; }
+  };
 
   // Parameters
   useEffect(() => {
@@ -163,6 +185,53 @@ function CompareLake({
   }, [lakeA, lakeB, selectedParam, selectedStationsA, selectedStationsB]);
 
   useEffect(() => { setApplied(false); }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket]);
+  // reset summaries when selections change
+  useEffect(() => { if (!applied) { setSummaryA({ n: 0, mean: NaN, median: NaN }); setSummaryB({ n: 0, mean: NaN, median: NaN }); } }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket, applied]);
+
+  // local stat helpers
+  const _mean = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; return a.reduce((s,v)=>s+v,0)/a.length; };
+  const _median = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; const s = a.slice().sort((x,y)=>x-y); const n = s.length; const m = Math.floor(n/2); return (n%2) ? s[m] : (s[m-1]+s[m])/2; };
+
+  useEffect(() => {
+    if (!applied) return;
+    try {
+      // Compute for A
+      const valsA = [];
+      for (const ev of eventsA || []) {
+        const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+        if (selectedOrgA && oidEv && String(oidEv) !== String(selectedOrgA)) continue;
+        if (selectedStationsA && selectedStationsA.length) { const nm = eventStationName(ev) || ''; if (!selectedStationsA.includes(nm)) continue; }
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value); if (!Number.isFinite(v)) continue;
+          valsA.push(v);
+        }
+      }
+      setSummaryA({ n: valsA.length, mean: _mean(valsA), median: _median(valsA) });
+      // Compute for B
+      const valsB = [];
+      for (const ev of eventsB || []) {
+        const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+        if (selectedOrgB && oidEv && String(oidEv) !== String(selectedOrgB)) continue;
+        if (selectedStationsB && selectedStationsB.length) { const nm = eventStationName(ev) || ''; if (!selectedStationsB.includes(nm)) continue; }
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value); if (!Number.isFinite(v)) continue;
+          valsB.push(v);
+        }
+      }
+      setSummaryB({ n: valsB.length, mean: _mean(valsB), median: _median(valsB) });
+    } catch (e) {
+      setSummaryA({ n: 0, mean: NaN, median: NaN });
+      setSummaryB({ n: 0, mean: NaN, median: NaN });
+    }
+  }, [applied]);
 
   const chartData = useMemo(() => {
     const selected = selectedParam;
@@ -174,7 +243,14 @@ function CompareLake({
       if (mode==='year') return `${y}`; if (mode==='quarter') return `${y}-Q${q}`; return `${y}-${String(m).padStart(2,'0')}`;
     };
     const bucketSortKey = (k) => { if (!k) return 0; const m=/^([0-9]{4})(?:-(?:Q([1-4])|([0-9]{2})))?$/.exec(k); if(!m) return 0; const y=Number(m[1]); const q=m[2]?(Number(m[2])*3):0; const mo=m[3]?Number(m[3]):0; return y*12+(q||mo); };
-  const lakeMaps = new Map(); const perStationMaps = {}; let thMin=null, thMax=null;
+  const lakeMaps = new Map(); const perStationMaps = {}; // thresholds now tracked per-lake & per-standard
+    const thByLakeAndStandard = new Map(); // lakeId -> Map(stdKey -> { stdLabel, min, max, buckets:Set })
+    const ensureStdEntry = (lkKey, stdKey, stdLabel) => {
+      if (!thByLakeAndStandard.has(lkKey)) thByLakeAndStandard.set(lkKey, new Map());
+      const inner = thByLakeAndStandard.get(lkKey);
+      if (!inner.has(stdKey)) inner.set(stdKey, { stdLabel: stdLabel || `Standard ${stdKey}`, min: null, max: null, buckets: new Set() });
+      return inner.get(stdKey);
+    };
     const process = (lakeId, arr, stationsSel, orgSel) => {
       for (const ev of arr||[]) {
         const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
@@ -198,8 +274,16 @@ function CompareLake({
             const aggS = stMap.get(bk) || { sum:0, cnt:0 };
             aggS.sum += v; aggS.cnt += 1; stMap.set(bk, aggS); lakeMap.set(nm, stMap);
           } catch (e) { /* noop */ }
-          if (r?.threshold?.min_value != null && thMin == null) thMin = Number(r.threshold.min_value);
-          if (r?.threshold?.max_value != null && thMax == null) thMax = Number(r.threshold.max_value);
+          // thresholds by standard for this lake (key by standard code)
+          const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
+          const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
+          const stdLabel = stdKey;
+          if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
+            const entry = ensureStdEntry(key, String(stdKey), stdLabel);
+            if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
+            if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
+            entry.buckets.add(bk);
+          }
         }
       }
     };
@@ -230,24 +314,152 @@ function CompareLake({
     process(lakeB, eventsBFiltered, selectedStationsB, selectedOrgB);
     const labelSet=new Set(); for(const m of lakeMaps.values()) for(const k of m.keys()) labelSet.add(k);
     const labels=Array.from(labelSet).sort((a,b)=>bucketSortKey(a)-bucketSortKey(b));
-    const datasets=[]; lakesToRender.forEach((lk,i)=>{
-      if (seriesMode === 'per-station') {
+  const datasets=[];
+    // Build per-lake depth-band maps while processing so we can optionally render one line per depth
+    // depthBandsByLake: lakeKey -> Map(depthKey -> Map(bucket -> {sum,cnt}))
+    const depthBandsByLake = new Map();
+    // (we populated lakeMaps and perStationMaps earlier; need to re-walk events to collect depth bands per-lake)
+    const collectDepthsFor = (lakeId, arr, stationsSel, orgSel) => {
+      if (!lakeId) return;
+      const lkKey = String(lakeId);
+      if (!depthBandsByLake.has(lkKey)) depthBandsByLake.set(lkKey, new Map());
+      const mapForLake = depthBandsByLake.get(lkKey);
+      for (const ev of arr||[]) {
+        const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+        if (orgSel && oidEv && String(oidEv) !== String(orgSel)) continue;
+        const sName = eventStationName(ev) || '';
+        if (stationsSel && stationsSel.length && !stationsSel.includes(sName)) continue;
+        const d = parseDate(ev.sampled_at); const bk=bucketKey(d,bucket); if(!bk) continue;
+        const results = Array.isArray(ev?.results)?ev.results:[];
+        for (const r of results) {
+          const p = r?.parameter; if(!p) continue;
+          const match = (String(p.code)===String(selected))||(String(p.id)===String(selected))||(String(r.parameter_id)===String(selected));
+          if(!match) continue;
+          if (r?.depth_m == null) continue;
+          const dk = String(Math.round(Number(r.depth_m)));
+          if (!mapForLake.has(dk)) mapForLake.set(dk, new Map());
+          const band = mapForLake.get(dk);
+          const agg = band.get(bk) || { sum:0, cnt:0 };
+          const v = Number(r.value); if (!Number.isFinite(v)) continue;
+          agg.sum += v; agg.cnt += 1; band.set(bk, agg);
+        }
+      }
+    };
+    collectDepthsFor(lakeA, eventsAFiltered, selectedStationsA, selectedOrgA);
+    collectDepthsFor(lakeB, eventsBFiltered, selectedStationsB, selectedOrgB);
+    // If a lake has no explicit depth bands but has data, assume depth 0 m by using overall series
+    const ensureZeroDepthIfMissing = (lk) => {
+      if (!lk) return;
+      const lkKey = String(lk);
+      const depthMap = depthBandsByLake.get(lkKey) || new Map();
+      const seriesMap = lakeMaps.get(lkKey) || new Map();
+      if (depthMap.size === 0 && seriesMap.size > 0) {
+        const band = new Map();
+        for (const [lb, agg] of seriesMap.entries()) band.set(lb, { sum: agg.sum, cnt: agg.cnt });
+        depthMap.set('0', band);
+        depthBandsByLake.set(lkKey, depthMap);
+      }
+    };
+    ensureZeroDepthIfMissing(lakeA);
+    ensureZeroDepthIfMissing(lakeB);
+
+    // If depth bands exist (for either lake) and we're showing averages, render a series per depth (per-lake)
+  const hasDepthSeries = Array.from(depthBandsByLake.values()).some((m) => (m && m.size > 0));
+  // Use more distinct palettes per lake for better differentiation on dark background
+  const depthColorsA = ['#2563EB', '#059669', '#14B8A6', '#10B981', '#06B6D4', '#0EA5E9', '#22C55E', '#2DD4BF']; // blues/greens/teals
+  const depthColorsB = ['#F59E0B', '#EF4444', '#8B5CF6', '#F97316', '#EC4899', '#A855F7', '#FB7185', '#EAB308']; // oranges/reds/purples
+    if (seriesMode === 'avg' && hasDepthSeries) {
+      // push per-lake, per-depth series
+      lakesToRender.forEach((lk, li) => {
         const lakeKey = String(lk);
-        const lakeStationMap = perStationMaps[lakeKey] || new Map();
-        let si = 0;
-        for (const [stationName, map] of lakeStationMap.entries()) {
-          const data = labels.map((lb)=>{ const agg=map.get(lb); return agg&&agg.cnt?(agg.sum/agg.cnt):null; });
-          datasets.push({ label: `${lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk)} — ${stationName}`, data, borderColor: `hsl(${(si*50)%360} 80% 60%)`, backgroundColor: 'transparent', pointRadius:2, pointHoverRadius:4, tension:0.15, spanGaps: true });
-          si++;
+        const lakeDepthMap = depthBandsByLake.get(lakeKey) || new Map();
+        const depthKeys = Array.from(lakeDepthMap.keys()).filter((k) => k !== 'NA').sort((a,b) => Number(a) - Number(b));
+        let di = 0;
+        for (const dk of depthKeys) {
+          const bandMap = lakeDepthMap.get(dk) || new Map();
+          const data = labels.map((lb) => { const agg = bandMap.get(lb); return agg && agg.cnt ? (agg.sum/agg.cnt) : null; });
+          const palette = li === 0 ? depthColorsA : depthColorsB;
+          const pointStyle = li === 0 ? 'circle' : 'triangle';
+          datasets.push({ label: `${nameForLake(lk) || String(lk)} — ${dk} m`, data, borderColor: palette[di % palette.length], backgroundColor: 'transparent', pointRadius: 3, pointStyle, pointHoverRadius: 4, borderWidth: 2.5, tension: 0.2, spanGaps: true });
+          di++;
+        }
+      });
+    } else {
+      // Fallback: existing behavior (per-station or per-lake avg)
+      lakesToRender.forEach((lk,i)=>{
+        if (seriesMode === 'per-station') {
+          const lakeKey = String(lk);
+          const lakeStationMap = perStationMaps[lakeKey] || new Map();
+          let si = 0;
+          for (const [stationName, map] of lakeStationMap.entries()) {
+            const data = labels.map((lb)=>{ const agg=map.get(lb); return agg&&agg.cnt?(agg.sum/agg.cnt):null; });
+            datasets.push({ label: `${lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk)} — ${stationName}`, data, borderColor: `hsl(${(si*50)%360} 80% 60%)`, backgroundColor: 'transparent', pointRadius:2, pointHoverRadius:4, tension:0.15, spanGaps: true });
+            si++;
+          }
+        } else {
+          const seriesMap = lakeMaps.get(String(lk)) || new Map();
+          const data = labels.map((lb)=>{ const agg=seriesMap.get(lb); return agg&&agg.cnt?(agg.sum/agg.cnt):null; });
+          datasets.push({ label: lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk), data, borderColor: i===0?'rgba(59,130,246,1)':`hsl(${(i*70)%360} 80% 60%)`, backgroundColor: i===0?'rgba(59,130,246,0.2)':`hsl(${(i*70)%360} 80% 60% / 0.2)`, pointRadius:3, pointHoverRadius:4, tension:0.2, spanGaps: true });
+        }
+      });
+    }
+    // Build unified threshold lines: if both lakes use the same standard, draw a single line for it
+    const combinedStandards = new Map(); // stdKey -> { stdLabel, min, max, buckets:Set, lakes:Set<string> }
+    lakesToRender.forEach((lk) => {
+      const lkKey = String(lk);
+      const inner = thByLakeAndStandard.get(lkKey);
+      if (!inner) return;
+      inner.forEach((entry, stdKey) => {
+        if (!combinedStandards.has(stdKey)) combinedStandards.set(stdKey, { stdLabel: entry.stdLabel, min: entry.min, max: entry.max, buckets: new Set(entry.buckets), lakes: new Set([lkKey]) });
+        else {
+          const e = combinedStandards.get(stdKey);
+          if (e.min == null && entry.min != null) e.min = entry.min;
+          if (e.max == null && entry.max != null) e.max = entry.max;
+          entry.buckets.forEach((b) => e.buckets.add(b));
+          e.lakes.add(lkKey);
+        }
+      });
+    });
+
+  const minColorUnified = '#16a34a';
+  const maxColorUnified = '#ef4444';
+    const lakeMinColors = ['#16a34a', '#22c55e']; // fallback per-lake
+    const lakeMaxColors = ['#ef4444', '#dc2626'];
+
+    combinedStandards.forEach((entry, stdKey) => {
+      if (entry.lakes.size > 1) {
+        // Unified line; include each lake's class in the label
+        const lakesMeta = Array.from(entry.lakes).map((lkKey) => {
+          const nm = nameForLake(lkKey);
+          const cls = classForLake(lkKey);
+          return `${nm}${cls ? `: Class ${cls}` : ''}`;
+        }).join(', ');
+        if (entry.min != null) {
+          const data = labels.map((lb) => entry.buckets.has(lb) ? entry.min : null);
+          datasets.push({ label: `${entry.stdLabel} – Min (${lakesMeta})`, data, borderColor: minColorUnified, backgroundColor: `${minColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
+        }
+        if (entry.max != null) {
+          const data = labels.map((lb) => entry.buckets.has(lb) ? entry.max : null);
+          datasets.push({ label: `${entry.stdLabel} – Max (${lakesMeta})`, data, borderColor: maxColorUnified, backgroundColor: `${maxColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
         }
       } else {
-        const seriesMap = lakeMaps.get(String(lk)) || new Map();
-        const data = labels.map((lb)=>{ const agg=seriesMap.get(lb); return agg&&agg.cnt?(agg.sum/agg.cnt):null; });
-        datasets.push({ label: lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk), data, borderColor: i===0?'rgba(59,130,246,1)':`hsl(${(i*70)%360} 80% 60%)`, backgroundColor: i===0?'rgba(59,130,246,0.2)':`hsl(${(i*70)%360} 80% 60% / 0.2)`, pointRadius:3, pointHoverRadius:4, tension:0.2, spanGaps: true });
+        // Only present in one lake; render per-lake threshold line for that lake
+        const onlyLakeKey = Array.from(entry.lakes)[0];
+        const li = lakesToRender.findIndex((lk) => String(lk) === onlyLakeKey);
+        const minColor = lakeMinColors[li % lakeMinColors.length];
+        const maxColor = lakeMaxColors[li % lakeMaxColors.length];
+        const lakeLabel = lakeOptions.find((x)=>String(x.id)===onlyLakeKey)?.name || onlyLakeKey;
+        const cls = classForLake(onlyLakeKey);
+        if (entry.min != null) {
+          const data = labels.map((lb) => entry.buckets.has(lb) ? entry.min : null);
+          datasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Min`, data, borderColor: minColor, backgroundColor: `${minColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
+        }
+        if (entry.max != null) {
+          const data = labels.map((lb) => entry.buckets.has(lb) ? entry.max : null);
+          datasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Max`, data, borderColor: maxColor, backgroundColor: `${maxColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
+        }
       }
     });
-    if (thMin != null) datasets.push({ label:'Min Threshold', data: labels.map(()=>thMin), borderColor:'rgba(16,185,129,1)', backgroundColor:'rgba(16,185,129,0.15)', borderDash:[4,4], pointRadius:0, tension:0 });
-    if (thMax != null) datasets.push({ label:'Max Threshold', data: labels.map(()=>thMax), borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,0.15)', borderDash:[4,4], pointRadius:0, tension:0 });
     return { labels, datasets };
   }, [eventsA, eventsB, lakeA, lakeB, selectedStationsA, selectedStationsB, selectedOrgA, selectedOrgB, selectedParam, bucket, lakeOptions, seriesMode]);
 
@@ -264,6 +476,8 @@ function CompareLake({
       setApplied(false);
       setEventsA([]);
       setEventsB([]);
+      setSummaryA({ n: 0, mean: NaN, median: NaN });
+      setSummaryB({ n: 0, mean: NaN, median: NaN });
     }
   }));
 
@@ -327,7 +541,12 @@ function CompareLake({
       const ordered = orderFor(groups);
       ordered.forEach((gl) => {
         const depths = groups.get(gl);
-        const points = Array.from(depths.entries()).map(([dk, agg]) => ({ y: Number(dk), x: agg.sum / agg.cnt })).sort((a,b) => a.y - b.y);
+        // Build points but guard against malformed or null values (Chart.js crashes if y is null)
+        let points = Array.from(depths.entries()).map(([dk, agg]) => {
+          const y = Number(dk);
+          const x = (agg && Number.isFinite(agg.sum) && Number.isFinite(agg.cnt) && agg.cnt > 0) ? (agg.sum / agg.cnt) : NaN;
+          return { y: Number.isFinite(y) ? y : NaN, x: Number.isFinite(x) ? x : NaN };
+        }).filter((pt) => Number.isFinite(pt.y) && Number.isFinite(pt.x)).sort((a,b) => a.y - b.y);
         if (!points.length) return;
         maxDepth = Math.max(maxDepth, points[points.length - 1].y || 0);
         datasets.push({ label: `${lakeLabel} – ${gl}`, data: points, parsing: false, showLine: true, borderColor: colorFor(i++), backgroundColor: 'transparent', pointRadius: 3, pointHoverRadius: 4, tension: 0.1 });
@@ -337,12 +556,80 @@ function CompareLake({
     if (lakeA) pushDatasets(groupsA, nameForLake(lakeA));
     if (lakeB) pushDatasets(groupsB, nameForLake(lakeB));
 
-    return { datasets, maxDepth, unit: unitRef.current || '' };
+    // Determine depth-data presence per lake
+    const hasDepthIn = (groups) => {
+      for (const depths of groups.values()) { if (depths && depths.size) return true; }
+      return false;
+    };
+    const hasDepthA = hasDepthIn(groupsA);
+    const hasDepthB = hasDepthIn(groupsB);
+
+    return { datasets, maxDepth, unit: unitRef.current || '', hasDepthA, hasDepthB };
   }, [eventsA, eventsB, selectedParam, JSON.stringify(selectedStationsA), JSON.stringify(selectedStationsB), bucket, lakeOptions, lakeA, lakeB]);
 
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
-      <h4>Compare Lakes</h4>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h4 style={{ margin: 0 }}>Compare Lakes</h4>
+        <button
+          type="button"
+          className="pill-btn liquid"
+          title="Explain this graph"
+          onClick={() => {
+            // Parse current datasets to infer which standards (codes) are present
+            const ds = chartData?.datasets || [];
+            const stdMap = new Map();
+            ds.forEach((d) => {
+              const label = d?.label || '';
+              // pattern: "<LakeName> – <Std> – Min/Max" for thresholds
+              const parts = String(label).split(' – ');
+              if (parts.length === 3) {
+                const std = parts[1];
+                const kind = parts[2];
+                if (/^Min$/i.test(kind) || /^Max$/i.test(kind)) {
+                  const rec = stdMap.get(std) || { code: std, min: null, max: null };
+                  if (/^Min$/i.test(kind)) rec.min = 1;
+                  if (/^Max$/i.test(kind)) rec.max = 1;
+                  stdMap.set(std, rec);
+                }
+              }
+            });
+            const standards = Array.from(stdMap.values());
+            const hasMin = standards.some(s => s.min != null);
+            const hasMax = standards.some(s => s.max != null);
+            const inferred = hasMin && hasMax ? 'range' : hasMin ? 'min' : hasMax ? 'max' : null;
+            const pMeta = (() => {
+              const sel = String(selectedParam || '');
+              const opt = (paramList || []).find(p => String(p.key || p.id || p.code) === sel);
+              return { code: opt?.code || sel, name: opt?.label || opt?.name || opt?.code || sel, unit: opt?.unit || '' };
+            })();
+            const nameForLake = (lk) => lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk || '') || '';
+            const ctx = {
+              chartType: viewMode === 'depth' ? 'depth' : 'time',
+              param: pMeta,
+              seriesMode,
+              bucket,
+              standards,
+              compareMode: true,
+              lakeLabels: { a: nameForLake(lakeA) || 'Lake A', b: nameForLake(lakeB) || 'Lake B' },
+              summary: { n: (summaryA.n || 0) + (summaryB.n || 0), mean: NaN, median: NaN },
+              inferredType: inferred,
+            };
+            const content = buildGraphExplanation(ctx);
+            // Append per-lake summary bullets
+            const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : 'N/A');
+            const bullets = [];
+            if (lakeA) bullets.push(`${(nameForLake(lakeA) || 'Lake A')}: Samples ${summaryA.n || 0} · Mean ${fmt(summaryA.mean)} · Median ${fmt(summaryA.median)}`);
+            if (lakeB) bullets.push(`${(nameForLake(lakeB) || 'Lake B')}: Samples ${summaryB.n || 0} · Mean ${fmt(summaryB.mean)} · Median ${fmt(summaryB.median)}`);
+            if (bullets.length) content.sections.push({ heading: 'Per-lake summary', bullets });
+            setInfoContent(content);
+            setInfoOpen(true);
+          }}
+          style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <FiInfo size={14} />
+        </button>
+      </div>
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
           <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
@@ -441,38 +728,203 @@ function CompareLake({
           </div>
         </div>
       </div>
+      {/* Summary stats for each lake */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ opacity: 0.9 }}>
+          <strong>{lakeOptions.find((x)=>String(x.id)===String(lakeA))?.name || (lakeA ? String(lakeA) : 'Lake A')}</strong>
+          <div>Samples: {summaryA.n || 0}</div>
+          <div>Mean: {Number.isFinite(summaryA.mean) ? summaryA.mean.toFixed(2) : 'N/A'}</div>
+          <div>Median: {Number.isFinite(summaryA.median) ? summaryA.median.toFixed(2) : 'N/A'}</div>
+        </div>
+        <div style={{ opacity: 0.9 }}>
+          <strong>{lakeOptions.find((x)=>String(x.id)===String(lakeB))?.name || (lakeB ? String(lakeB) : 'Lake B')}</strong>
+          <div>Samples: {summaryB.n || 0}</div>
+          <div>Mean: {Number.isFinite(summaryB.mean) ? summaryB.mean.toFixed(2) : 'N/A'}</div>
+          <div>Median: {Number.isFinite(summaryB.median) ? summaryB.median.toFixed(2) : 'N/A'}</div>
+        </div>
+      </div>
 
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
           viewMode === 'depth' ? (
-            depthProfile && depthProfile.datasets && depthProfile.datasets.length ? (
-              <Line
-                ref={chartRef}
-                data={{ datasets: depthProfile.datasets }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: (ctx) => {
-                      const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
-                      return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
-                    } } },
-                  },
-                  scales: {
-                    x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                    y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                  },
-                }}
-              />
+            depthProfile && depthProfile.hasDepthA && depthProfile.hasDepthB && depthProfile.datasets && depthProfile.datasets.length ? (
+              (() => {
+                // Clone datasets and append threshold lines using unified/per-lake standard logic
+                const depthDatasets = (depthProfile.datasets || []).slice();
+                const maxDepth = depthProfile.maxDepth || 0;
+                // Build per-lake standards map by scanning results (so we can unify identical standards across lakes)
+                const thByLakeAndStandard = new Map(); // lakeKey -> Map(stdKey -> { stdLabel, min, max })
+                const ensureStdEntry = (lkKey, stdKey, stdLabel) => {
+                  if (!thByLakeAndStandard.has(lkKey)) thByLakeAndStandard.set(lkKey, new Map());
+                  const inner = thByLakeAndStandard.get(lkKey);
+                  if (!inner.has(stdKey)) inner.set(stdKey, { stdLabel: stdLabel || `Standard ${stdKey}`, min: null, max: null });
+                  return inner.get(stdKey);
+                };
+                try {
+                  // scan lake A
+                  for (const ev of eventsA || []) {
+                    const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+                    if (selectedOrgA && oidEv && String(oidEv) !== String(selectedOrgA)) continue;
+                    const sName = eventStationName(ev) || '';
+                    if (selectedStationsA && selectedStationsA.length && !selectedStationsA.includes(sName)) continue;
+                    const results = Array.isArray(ev?.results) ? ev.results : [];
+                    for (const r of results) {
+                      const p = r?.parameter; if (!p) continue;
+                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+                      if (!match) continue;
+                      const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
+                      const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
+                      const stdLabel = stdKey;
+                      if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
+                        const entry = ensureStdEntry(String(lakeA), String(stdKey), stdLabel);
+                        if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
+                        if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
+                      }
+                    }
+                  }
+                  // scan lake B
+                  for (const ev of eventsB || []) {
+                    const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+                    if (selectedOrgB && oidEv && String(oidEv) !== String(selectedOrgB)) continue;
+                    const sName = eventStationName(ev) || '';
+                    if (selectedStationsB && selectedStationsB.length && !selectedStationsB.includes(sName)) continue;
+                    const results = Array.isArray(ev?.results) ? ev.results : [];
+                    for (const r of results) {
+                      const p = r?.parameter; if (!p) continue;
+                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+                      if (!match) continue;
+                      const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
+                      const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
+                      const stdLabel = stdKey;
+                      if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
+                        const entry = ensureStdEntry(String(lakeB), String(stdKey), stdLabel);
+                        if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
+                        if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
+                      }
+                    }
+                  }
+                } catch (e) { /* ignore */ }
+
+                // Combine standards across lakes
+                const combinedStandards = new Map(); // stdKey -> { stdLabel, min, max, lakes:Set }
+                [lakeA, lakeB].filter(Boolean).forEach((lk) => {
+                  const lkKey = String(lk);
+                  const inner = thByLakeAndStandard.get(lkKey);
+                  if (!inner) return;
+                  inner.forEach((entry, stdKey) => {
+                    if (!combinedStandards.has(stdKey)) combinedStandards.set(stdKey, { stdLabel: entry.stdLabel, min: entry.min, max: entry.max, lakes: new Set([lkKey]) });
+                    else {
+                      const e = combinedStandards.get(stdKey);
+                      if (e.min == null && entry.min != null) e.min = entry.min;
+                      if (e.max == null && entry.max != null) e.max = entry.max;
+                      e.lakes.add(lkKey);
+                    }
+                  });
+                });
+
+                const minColorUnified = '#16a34a';
+                const maxColorUnified = '#ef4444';
+                const lakeMinColors = ['#16a34a', '#22c55e'];
+                const lakeMaxColors = ['#ef4444', '#dc2626'];
+
+                combinedStandards.forEach((entry, stdKey) => {
+                  if (entry.lakes.size > 1) {
+                    // Unified line; include each lake's class in the label
+                    const lakesMeta = Array.from(entry.lakes).map((lkKey) => {
+                      const nm = nameForLake(lkKey);
+                      const cls = classForLake(lkKey);
+                      return `${nm}${cls ? `: Class ${cls}` : ''}`;
+                    }).join(', ');
+                    if (entry.min != null) {
+                      depthDatasets.push({ label: `${entry.stdLabel} – Min (${lakesMeta})`, data: [{ x: entry.min, y: 0 }, { x: entry.min, y: Math.max(1, maxDepth) }], borderColor: minColorUnified, backgroundColor: `${minColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
+                    }
+                    if (entry.max != null) {
+                      depthDatasets.push({ label: `${entry.stdLabel} – Max (${lakesMeta})`, data: [{ x: entry.max, y: 0 }, { x: entry.max, y: Math.max(1, maxDepth) }], borderColor: maxColorUnified, backgroundColor: `${maxColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
+                    }
+                  } else {
+                    // Only present in one lake; render per-lake threshold line for that lake
+                    const onlyLakeKey = Array.from(entry.lakes)[0];
+                    const li = [lakeA, lakeB].findIndex((lk) => String(lk) === onlyLakeKey);
+                    const minColor = lakeMinColors[li % lakeMinColors.length];
+                    const maxColor = lakeMaxColors[li % lakeMaxColors.length];
+                    const lakeLabel = lakeOptions.find((x)=>String(x.id)===onlyLakeKey)?.name || onlyLakeKey;
+                    const cls = classForLake(onlyLakeKey);
+                    if (entry.min != null) {
+                      depthDatasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Min`, data: [{ x: entry.min, y: 0 }, { x: entry.min, y: Math.max(1, maxDepth) }], borderColor: minColor, backgroundColor: `${minColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
+                    }
+                    if (entry.max != null) {
+                      depthDatasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Max`, data: [{ x: entry.max, y: 0 }, { x: entry.max, y: Math.max(1, maxDepth) }], borderColor: maxColor, backgroundColor: `${maxColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
+                    }
+                  }
+                });
+
+                // Normalize datasets: ensure each dataset.data is an array of {x:number,y:number}
+                const normalizePoint = (pt) => {
+                  if (pt == null) return null;
+                  if (typeof pt === 'number') {
+                    // fallback: interpret number as x value at depth 0
+                    const x = Number(pt);
+                    return Number.isFinite(x) ? { x, y: 0 } : null;
+                  }
+                  if (typeof pt === 'object') {
+                    const x = Number(pt.x ?? pt.value ?? NaN);
+                    const y = Number(pt.y ?? pt.depth ?? NaN);
+                    return (Number.isFinite(x) && Number.isFinite(y)) ? { x, y } : null;
+                  }
+                  return null;
+                };
+                const safeDatasets = depthDatasets.map((ds) => {
+                  const raw = Array.isArray(ds.data) ? ds.data : [];
+                  const mapped = raw.map(normalizePoint).filter((p) => p !== null);
+                  return { ...ds, data: mapped, parsing: false };
+                }).filter((ds) => Array.isArray(ds.data) && ds.data.length);
+                const depthData = { datasets: safeDatasets };
+                return (
+                  <Line
+                    key={`depth-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`}
+                    ref={chartRef}
+                    data={depthData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
+                        tooltip: { callbacks: { label: (ctx) => {
+                          const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
+                          return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
+                        } } },
+                      },
+                      scales: {
+                        x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                        y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                      },
+                    }}
+                  />
+                );
+              })()
             ) : (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ opacity: 0.9 }}>No depth data available for this selection.</span>
-              </div>
+              (() => {
+                const labelA = nameForLake(lakeA) || 'Lake A';
+                const labelB = nameForLake(lakeB) || 'Lake B';
+                const hasA = depthProfile?.hasDepthA; const hasB = depthProfile?.hasDepthB;
+                let msg = 'Depth profile requires multiple depths; only surface (0 m) measurements were found for this selection.';
+                if (hasA === false && hasB === false) {
+                  msg = `Only surface (0 m) measurements are available for ${labelA} and ${labelB} for this parameter. A depth profile requires multiple depths.`;
+                } else if (hasA === false) {
+                  msg = `${labelA} only has surface (0 m) measurements for this parameter. A depth profile requires multiple depths.`;
+                } else if (hasB === false) {
+                  msg = `${labelB} only has surface (0 m) measurements for this parameter. A depth profile requires multiple depths.`;
+                }
+                return (
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ opacity: 0.9 }}>{msg}</span>
+                  </div>
+                );
+              })()
             )
           ) : (
             chartData && chartData.datasets && chartData.datasets.length ? (
-              <Line ref={chartRef} data={chartData} options={compareChartOptions} />
+              <Line key={`time-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`} ref={chartRef} data={chartData} options={compareChartOptions} />
             ) : (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : 'Fill all fields and click Apply to generate the chart.'}</span>
@@ -498,6 +950,7 @@ function CompareLake({
           {viewMode === 'time' ? 'Depth profile' : 'Time series'}
         </button>
       </div>
+      <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // resources/js/components/modals/StatsModal.jsx
-import React, { useMemo, useState, useEffect, useRef } from "react";
-import { apiPublic, buildQuery } from "../../lib/api";
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { apiPublic, buildQuery, getToken } from "../../lib/api";
+import { alertError } from "../../lib/alerts";
 import { fetchParameters, fetchSampleEvents, fetchStationsForLake, deriveOrgOptions, deriveParamOptions } from "./data/fetchers";
 import Modal from "../Modal";
 import SingleLake from "./SingleLake";
@@ -46,6 +47,7 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
   const [compareSelectedParam, setCompareSelectedParam] = useState("");
   const advancedRef = useRef(null);
   const compareRef = useRef(null);
+  const [authed, setAuthed] = useState(!!getToken());
   // Compare tab now fetches on-demand inside CompareLake to avoid rate limits
 
   const fmtIso = (d) => {
@@ -117,6 +119,13 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     } catch {}
   };
 
+  const ensureAuthOrPrompt = useCallback(async () => {
+    const token = getToken();
+    if (token) { setAuthed(true); return true; }
+    await alertError('Sign in required', 'You must be a registered user to export results.');
+    return false;
+  }, []);
+
   // Fetch lakes + parameter options when modal opens (centralized fetching)
   useEffect(() => {
     let mounted = true;
@@ -127,9 +136,10 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
         const { fetchLakeOptions } = await import("../../lib/layers");
         const lakes = await fetchLakeOptions();
         if (!mounted) return;
-        setLakeOptions(Array.isArray(lakes) ? lakes : []);
+  const base = Array.isArray(lakes) ? lakes : [];
+  setLakeOptions(base);
         const map = new Map();
-        (lakes || []).forEach((r) => map.set(String(r.id), r.class_code || ""));
+  (base || []).forEach((r) => map.set(String(r.id), r.class_code || ""));
         setLakeClassMap(map);
       } catch (e) {
         if (mounted) setLakeOptions([]);
@@ -289,12 +299,13 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="pill-btn" onClick={async () => {
+              if (!(await ensureAuthOrPrompt())) return;
               if (activeTab === 'advanced' && advancedRef.current && typeof advancedRef.current.exportPdf === 'function') {
                 advancedRef.current.exportPdf();
               } else {
                 handleExport();
               }
-            }}>Export</button>
+            }} title={authed ? undefined : 'Sign in to export'}>Export</button>
           </div>
         </div>
       }

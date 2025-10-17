@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import { apiPublic, buildQuery } from "../../lib/api";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
+import { FiActivity, FiBarChart2, FiInfo } from "react-icons/fi";
 import Popover from "../common/Popover";
+import InfoModal from "../common/InfoModal";
+import { buildGraphExplanation } from "../utils/graphExplain";
 
 // Ensure chart types/scales are registered for time-series and depth (linear) axes
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
@@ -36,6 +38,9 @@ export default function SingleLake({
   const [applied, setApplied] = useState(false);
   const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
+  const [summaryStats, setSummaryStats] = useState({ n: 0, mean: NaN, median: NaN });
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
 
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -76,7 +81,48 @@ export default function SingleLake({
   useEffect(() => {
     // If upstream filters/data changed, require Apply again
     setApplied(false);
+    // reset computed summary when filters change
+    setSummaryStats({ n: 0, mean: NaN, median: NaN });
   }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket]);
+
+  // Simple local stat helpers (avoid mandatory stdlib dependency)
+  const _mean = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; return a.reduce((s,v)=>s+v,0)/a.length; };
+  const _median = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; const s = a.slice().sort((x,y)=>x-y); const n = s.length; const m = Math.floor(n/2); return (n%2) ? s[m] : (s[m-1]+s[m])/2; };
+
+  // Compute summary stats when Apply is clicked
+  useEffect(() => {
+    if (!applied) return; // only compute after user applies
+    try {
+      const vals = [];
+      for (const ev of events || []) {
+        const sName = eventStationName(ev) || '';
+        if (!selectedStations.includes(sName)) continue;
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value);
+          if (!Number.isFinite(v)) continue;
+          vals.push(v);
+        }
+      }
+      setSummaryStats({ n: vals.length, mean: _mean(vals), median: _median(vals) });
+    } catch (e) {
+      setSummaryStats({ n: 0, mean: NaN, median: NaN });
+    }
+  }, [applied]);
+  // Safe helpers to resolve lake name and class
+  const nameForSelectedLake = useMemo(() => {
+    try { return lakeOptions.find((x) => String(x.id) === String(selectedLake))?.name || String(selectedLake || '') || ''; } catch { return String(selectedLake || '') || ''; }
+  }, [lakeOptions, selectedLake]);
+  const classForSelectedLake = useMemo(() => {
+    try {
+      const f = lakeOptions.find((x) => String(x.id) === String(selectedLake));
+      return f?.class_code || f?.class || f?.water_class || f?.classification || selectedClass || '';
+    } catch { return selectedClass || ''; }
+  }, [lakeOptions, selectedLake, selectedClass]);
+
   const chartData = useMemo(() => {
       if (!selectedParam || !selectedStations || !selectedStations.length) return null;
       // Helpers mirroring WaterQualityTab
@@ -123,7 +169,12 @@ export default function SingleLake({
   const stationMaps = new Map(); // stationName -> Map(bucket -> {sum,cnt})
       const depthBands = new Map(); // depthKey -> Map(bucket -> {sum,cnt})
       const depthBandKey = (raw) => { const n = Number(raw); if (!Number.isFinite(n)) return 'NA'; return String(Math.round(n)); };
-      let thMin = null, thMax = null;
+      // threshold collection is now per-standard (not single global)
+      const thByStandard = new Map(); // stdKey -> { stdLabel, min: number|null, max: number|null, buckets: Set<string> }
+      const ensureStdEntry = (stdKey, stdLabel) => {
+        if (!thByStandard.has(stdKey)) thByStandard.set(stdKey, { stdLabel: stdLabel || `Standard ${stdKey}`, min: null, max: null, buckets: new Set() });
+        return thByStandard.get(stdKey);
+      };
       for (const ev of evs) {
         const sName = eventStationName(ev) || '';
         if (!selectedStations.includes(sName)) continue;
@@ -150,8 +201,16 @@ export default function SingleLake({
             const agg = band.get(bk) || { sum: 0, cnt: 0 };
             agg.sum += v; agg.cnt += 1; band.set(bk, agg); depthBands.set(dk, band);
           }
-          if (r?.threshold?.min_value != null && thMin == null) thMin = Number(r.threshold.min_value);
-          if (r?.threshold?.max_value != null && thMax == null) thMax = Number(r.threshold.max_value);
+          // Collect threshold by applied standard and bucket (keyed by standard code)
+          const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
+          const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
+          const stdLabel = stdKey;
+          if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
+            const entry = ensureStdEntry(String(stdKey), stdLabel);
+            if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
+            if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
+            entry.buckets.add(bk);
+          }
         }
       }
       const allLabels = new Set();
@@ -183,15 +242,30 @@ export default function SingleLake({
         }
       }
 
-      if (thMin != null) datasets.push({ label: 'Min Threshold', data: labels.map(() => thMin), borderColor: 'rgba(16,185,129,1)', backgroundColor: 'rgba(16,185,129,0.15)', borderDash: [4,4], pointRadius: 0, tension: 0 });
-      if (thMax != null) datasets.push({ label: 'Max Threshold', data: labels.map(() => thMax), borderColor: 'rgba(239,68,68,1)', backgroundColor: 'rgba(239,68,68,0.15)', borderDash: [4,4], pointRadius: 0, tension: 0 });
+      // Add per-standard threshold lines drawn only over buckets where the standard appears
+      // Use distinct colors for min (green) and max (red). Include lake class in label for clarity.
+      const minColor = '#16a34a'; // green
+      const maxColor = '#ef4444'; // red
+      Array.from(thByStandard.entries()).forEach(([stdKey, entry]) => {
+        if (entry.min != null) {
+            const data = labels.map((lb) => entry.buckets.has(lb) ? entry.min : null);
+            const clsLbl = classForSelectedLake ? ` (Class ${classForSelectedLake})` : '';
+            datasets.push({ label: `${entry.stdLabel}${clsLbl} – Min`, data, borderColor: minColor, backgroundColor: `${minColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
+          }
+          if (entry.max != null) {
+            const data = labels.map((lb) => entry.buckets.has(lb) ? entry.max : null);
+            const clsLbl = classForSelectedLake ? ` (Class ${classForSelectedLake})` : '';
+            // Use same visual style as Min; only color differs
+            datasets.push({ label: `${entry.stdLabel}${clsLbl} – Max`, data, borderColor: maxColor, backgroundColor: `${maxColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
+          }
+      });
 
       return { labels, datasets };
   }, [events, selectedParam, JSON.stringify(selectedStations), bucket, timeRange, dateFrom, dateTo, seriesMode]);
 
   // Build depth profile datasets for the selected param across selected stations
   const depthProfile = useMemo(() => {
-    if (!selectedParam || !selectedStations || !selectedStations.length) return { datasets: [], unit: '', maxDepth: 0 };
+    if (!selectedParam || !selectedStations || !selectedStations.length) return { datasets: [], unit: '', maxDepth: 0, hasMultipleDepths: false, onlySurface: false };
     const parseDate = (iso) => { try { return new Date(iso); } catch { return null; } };
     const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const groupLabel = (d) => {
@@ -227,6 +301,7 @@ export default function SingleLake({
     const datasets = [];
     const colorFor = (idx) => `hsl(${(idx * 60) % 360} 80% 55%)`;
     let maxDepth = 0; let i = 0;
+    const allDepthKeys = new Set();
     const orderedLabels = bucket === 'month'
       ? monthNames.filter((m) => groups.has(m))
       : bucket === 'quarter'
@@ -234,12 +309,22 @@ export default function SingleLake({
         : Array.from(groups.keys()).sort((a,b) => Number(a) - Number(b));
     orderedLabels.forEach((gLabel) => {
       const depths = groups.get(gLabel);
-      const points = Array.from(depths.entries()).map(([dk, agg]) => ({ y: Number(dk), x: agg.sum / agg.cnt })).sort((a,b) => a.y - b.y);
+      const points = Array.from(depths.entries()).map(([dk, agg]) => {
+        const y = Number(dk);
+        const x = (agg && Number.isFinite(agg.sum) && Number.isFinite(agg.cnt) && agg.cnt > 0) ? (agg.sum / agg.cnt) : NaN;
+        if (!Number.isFinite(y) || !Number.isFinite(x)) return null;
+        allDepthKeys.add(dk);
+        return { y, x };
+      }).filter(Boolean).sort((a,b) => a.y - b.y);
       if (!points.length) return;
       maxDepth = Math.max(maxDepth, points[points.length - 1].y || 0);
       datasets.push({ label: gLabel, data: points, parsing: false, showLine: true, borderColor: colorFor(i++), backgroundColor: 'transparent', pointRadius: 3, pointHoverRadius: 4, tension: 0.1 });
     });
-    return { datasets, unit: unitRef.current || '', maxDepth };
+    const uniqueDepths = Array.from(allDepthKeys).map((d) => Number(d)).filter((n) => Number.isFinite(n));
+    const distinct = new Set(uniqueDepths.map((n) => n.toFixed(1)));
+    const hasMultipleDepths = distinct.size >= 2;
+    const onlySurface = distinct.size === 1 && (distinct.has('0.0') || distinct.has('0'));
+    return { datasets, unit: unitRef.current || '', maxDepth, hasMultipleDepths, onlySurface };
   }, [events, selectedParam, JSON.stringify(selectedStations), bucket]);
 
   const singleChartOptions = useMemo(() => ({
@@ -259,7 +344,60 @@ export default function SingleLake({
 
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
-      <h4>Single Lake</h4>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h4 style={{ margin: 0 }}>Single Lake</h4>
+        <button
+          type="button"
+          className="pill-btn liquid"
+          title="Explain this graph"
+          onClick={() => {
+            // Extract standards from current datasets (threshold lines are labeled "<std> – Min/Max")
+            const standards = (() => {
+              const ds = chartData?.datasets || [];
+              const map = new Map();
+              ds.forEach((d) => {
+                const label = d?.label || '';
+                const parts = String(label).split(' – ');
+                if (parts.length === 2) {
+                  const std = parts[0];
+                  const kind = parts[1];
+                  if (/^Min$/i.test(kind) || /^Max$/i.test(kind)) {
+                    const rec = map.get(std) || { code: std, min: null, max: null };
+                    if (/^Min$/i.test(kind)) rec.min = 1;
+                    if (/^Max$/i.test(kind)) rec.max = 1;
+                    map.set(std, rec);
+                  }
+                }
+              });
+              return Array.from(map.values());
+            })();
+            const hasMin = standards.some(s => s.min != null);
+            const hasMax = standards.some(s => s.max != null);
+            const inferred = hasMin && hasMax ? 'range' : hasMin ? 'min' : hasMax ? 'max' : null;
+            const pMeta = (() => {
+              const sel = String(selectedParam || '');
+              const opt = (paramOptions || []).find(p => String(p.key || p.id || p.code) === sel);
+              return { code: opt?.code || sel, name: opt?.label || opt?.name || opt?.code || sel, unit: opt?.unit || '' };
+            })();
+            const ctx = {
+              chartType: viewMode === 'depth' ? 'depth' : 'time',
+              param: pMeta,
+              seriesMode,
+              bucket,
+              standards,
+              compareMode: false,
+              summary: summaryStats,
+              inferredType: inferred,
+            };
+            const content = buildGraphExplanation(ctx);
+            setInfoContent(content);
+            setInfoOpen(true);
+          }}
+          style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <FiInfo size={14} />
+        </button>
+      </div>
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
           <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
@@ -325,37 +463,88 @@ export default function SingleLake({
           </div>
         </div>
       </div>
+      {/* Summary stats */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ opacity: 0.9 }}><strong>Samples:</strong> {summaryStats.n || 0}</div>
+        <div style={{ opacity: 0.9 }}><strong>Mean:</strong> {Number.isFinite(summaryStats.mean) ? summaryStats.mean.toFixed(2) : 'N/A'}</div>
+        <div style={{ opacity: 0.9 }}><strong>Median:</strong> {Number.isFinite(summaryStats.median) ? summaryStats.median.toFixed(2) : 'N/A'}</div>
+      </div>
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
           viewMode === 'depth' ? (
-            depthProfile && depthProfile.datasets && depthProfile.datasets.length ? (
-              <Line
-                ref={chartRef}
-                data={{ datasets: depthProfile.datasets }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: (ctx) => {
-                      const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
-                      return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
-                    } } },
-                  },
-                  scales: {
-                    x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                    y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                  },
-                }}
-              />
+            depthProfile && depthProfile.datasets && depthProfile.datasets.length && depthProfile.hasMultipleDepths ? (
+              (() => {
+                // Prepare depthData with threshold vertical lines (if any)
+                const depthDatasets = (depthProfile.datasets || []).slice();
+                const maxDepth = depthProfile.maxDepth || 0;
+                // Infer thresholds by scanning events for matching parameter and selected stations
+                let tMin = null; let tMax = null; let stdLabel = null;
+                try {
+                  for (const ev of events || []) {
+                    const sName = eventStationName(ev) || '';
+                    if (!selectedStations.includes(sName)) continue;
+                    const results = Array.isArray(ev?.results) ? ev.results : [];
+                    for (const r of results) {
+                      const p = r?.parameter; if (!p) continue;
+                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+                      if (!match) continue;
+                      const sk = r?.threshold?.standard?.code || r?.threshold?.standard?.name || null;
+                      if (!stdLabel && sk) stdLabel = sk;
+                      if (r?.threshold?.min_value != null && tMin == null) tMin = Number(r.threshold.min_value);
+                      if (r?.threshold?.max_value != null && tMax == null) tMax = Number(r.threshold.max_value);
+                      if (tMin != null && tMax != null) break;
+                    }
+                    if (tMin != null && tMax != null) break;
+                  }
+                } catch (e) { /* ignore */ }
+                const clsLbl = classForSelectedLake ? ` (Class ${classForSelectedLake})` : '';
+                if (Number.isFinite(tMin)) {
+                  depthDatasets.push({ label: `${stdLabel || 'Standard'}${clsLbl} – Min`, data: [{ x: tMin, y: 0 }, { x: tMin, y: Math.max(1, maxDepth) }], borderColor: 'rgba(16,185,129,1)', backgroundColor: 'transparent', pointRadius: 0, borderDash: [4,4], tension: 0, spanGaps: true, showLine: true, parsing: false });
+                }
+                if (Number.isFinite(tMax)) {
+                  depthDatasets.push({ label: `${stdLabel || 'Standard'}${clsLbl} – Max`, data: [{ x: tMax, y: 0 }, { x: tMax, y: Math.max(1, maxDepth) }], borderColor: 'rgba(239,68,68,1)', backgroundColor: 'transparent', pointRadius: 0, borderDash: [4,4], tension: 0, spanGaps: true, showLine: true, parsing: false });
+                }
+                const depthData = { datasets: depthDatasets };
+                return (
+                  <Line
+                    key={`depth-${selectedParam}-${selectedLake}-${seriesMode}`}
+                    ref={chartRef}
+                    data={depthData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
+                        tooltip: { callbacks: { label: (ctx) => {
+                          const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
+                          return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
+                        } } },
+                      },
+                      scales: {
+                        x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                        y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                      },
+                    }}
+                  />
+                );
+              })()
             ) : (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ opacity: 0.9 }}>No depth data available for this selection.</span>
-              </div>
+              (() => {
+                const lakeLabel = nameForSelectedLake || 'this lake';
+                let msg = 'Depth profile requires multiple depths; only surface (0 m) measurements were found for this selection.';
+                if (depthProfile && depthProfile.onlySurface) {
+                  msg = `Only surface (0 m) measurements are available for ${lakeLabel} for this parameter. A depth profile requires multiple depths.`;
+                }
+                return (
+                  <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ opacity: 0.9 }}>{msg}</span>
+                  </div>
+                );
+              })()
             )
           ) : (
             chartData && chartData.datasets && chartData.datasets.length ? (
-              <Line ref={chartRef} data={chartData} options={singleChartOptions} />
+              <Line key={`time-${selectedParam}-${selectedLake}-${seriesMode}`} ref={chartRef} data={chartData} options={singleChartOptions} />
             ) : (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ opacity: 0.9 }}>No time-series data available for this selection.</span>
@@ -382,6 +571,7 @@ export default function SingleLake({
           {viewMode === 'time' ? 'Depth profile' : 'Time series'}
         </button>
       </div>
+      <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>
   );
 }

@@ -13,7 +13,9 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
+import { FiActivity, FiBarChart2, FiInfo } from "react-icons/fi";
+import InfoModal from "../common/InfoModal";
+import { buildGraphExplanation } from "../utils/graphExplain";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
 
@@ -37,6 +39,8 @@ function WaterQualityTab({ lake }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [timeRange, setTimeRange] = useState("all");
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
 
   // Load org options for this lake based on tests seen (client-side pass 1)
   const fetchTests = async (org = "") => {
@@ -363,16 +367,29 @@ function WaterQualityTab({ lake }) {
     const out = new Map();
     for (const [pid, info] of map.entries()) {
       const datasets = [];
-      // color palette per group
-      const monthColors = { Jan: '#9CA3AF', Feb: '#A78BFA', Mar: '#93C5FD', Apr: '#10B981', May: '#F59E0B', Jun: '#D1D5DB', Jul: '#111827', Aug: '#F472B6', Sep: '#6B7280', Oct: '#34D399', Nov: '#EF4444', Dec: '#60A5FA' };
-      const quarterColors = { Q1: '#60A5FA', Q2: '#10B981', Q3: '#F59E0B', Q4: '#EF4444' };
+      // color palette per group (lighter tones for contrast on dark background)
+      const monthColors = {
+        Jan: '#93C5FD', // light blue
+        Feb: '#C4B5FD', // light purple
+        Mar: '#BFDBFE', // pale sky
+        Apr: '#86EFAC', // mint
+        May: '#FDE68A', // warm yellow
+        Jun: '#E6EEF8', // very light blue
+        Jul: '#CBD5E1', // soft gray-blue
+        Aug: '#FBCFE8', // pink
+        Sep: '#E9E7EF', // light neutral
+        Oct: '#A7F3D0', // light teal
+        Nov: '#FECACA', // soft red/pink
+        Dec: '#93C5FD', // repeat light blue
+      };
+      const quarterColors = { Q1: '#BFDBFE', Q2: '#BBF7D0', Q3: '#FDE68A', Q4: '#FECACA' };
       const colorFor = (label, idx) => {
-        if (bucket === 'month') return monthColors[label] || '#60A5FA';
-        if (bucket === 'quarter') return quarterColors[label] || '#60A5FA';
-        // year: generate color by index for stability
+        if (bucket === 'month') return monthColors[label] || '#BFDBFE';
+        if (bucket === 'quarter') return quarterColors[label] || '#BFDBFE';
+        // year: generate a light HSL color by index for stability (higher lightness)
         const hues = [200, 160, 40, 0, 280, 100, 20, 340, 220, 180, 140, 60];
         const h = hues[idx % hues.length];
-        return `hsl(${h} 80% 55%)`;
+        return `hsl(${h} 80% 65%)`;
       };
       let maxDepth = 0;
       // prepare ordered labels for groups
@@ -579,7 +596,8 @@ function WaterQualityTab({ lake }) {
           {seriesByParameter.map((p) => {
             const title = `${p.name || p.code}${p.unit ? ` (${p.unit})` : ''}`;
             // Build chart config for this parameter
-            const depthColors = ['#0ea5e9','#22c55e','#f97316','#ef4444','#a78bfa','#14b8a6','#f59e0b','#94a3b8','#e879f9','#10b981','#eab308','#60a5fa'];
+            // Use lighter / pastel colors for depth series so they contrast on the dark background
+            const depthColors = ['#93C5FD', '#86EFAC', '#FDBA74', '#FCA5A5', '#C4B5FD', '#7DD3FC', '#FDE68A', '#E6EEF8', '#FBCFE8', '#99F6E4', '#FEF08A', '#BFDBFE'];
             const hasDepthLines = p.depthSeries && p.depthSeries.length > 0;
             const depthDatasets = hasDepthLines ? p.depthSeries.map((ds, idx) => ({
               label: `${ds.depth} m`,
@@ -605,7 +623,7 @@ function WaterQualityTab({ lake }) {
                   tension: 0.2,
                 }] : []),
                 p.threshold.min != null ? {
-                  label: 'Min Threshold',
+                  label: 'Min Threshold (time)',
                   data: p.labels.map(() => Number(p.threshold.min)),
                   borderColor: 'rgba(16,185,129,1)',
                   backgroundColor: 'rgba(16,185,129,0.15)',
@@ -613,7 +631,7 @@ function WaterQualityTab({ lake }) {
                   borderDash: [4,4],
                 } : null,
                 p.threshold.max != null ? {
-                  label: 'Max Threshold',
+                  label: 'Max Threshold (time)',
                   data: p.labels.map(() => Number(p.threshold.max)),
                   borderColor: 'rgba(239,68,68,1)',
                   backgroundColor: 'rgba(239,68,68,0.15)',
@@ -650,7 +668,49 @@ function WaterQualityTab({ lake }) {
             const view = getView(p.id);
             const profile = depthProfilesByParameter.get(p.id);
             const hasProfile = p.hasDepth && profile && profile.datasets && profile.datasets.length > 0;
-            const depthData = hasProfile ? { datasets: profile.datasets } : null;
+            let depthData = null;
+            if (hasProfile) {
+              // Clone profile datasets so we can append threshold lines without mutating source
+              const depthDatasets = (profile.datasets || []).slice();
+              const maxDepth = profile.maxDepth || 0;
+              // Add vertical threshold lines (as two-point line datasets) if threshold values exist for this parameter
+                  if (p.threshold?.min != null) {
+                const minVal = Number(p.threshold.min);
+                if (Number.isFinite(minVal)) {
+                  depthDatasets.push({
+                    label: 'Min Threshold (depth)',
+                    data: [{ x: minVal, y: 0 }, { x: minVal, y: maxDepth }],
+                    borderColor: 'rgba(16,185,129,1)',
+                    backgroundColor: 'transparent',
+                    pointRadius: 0,
+                    borderDash: [4, 4],
+                    tension: 0,
+                    spanGaps: true,
+                    // ensure it's drawn as a line
+                    showLine: true,
+                    parsing: false,
+                  });
+                }
+              }
+              if (p.threshold?.max != null) {
+                const maxVal = Number(p.threshold.max);
+                if (Number.isFinite(maxVal)) {
+                  depthDatasets.push({
+                    label: 'Max Threshold (depth)',
+                    data: [{ x: maxVal, y: 0 }, { x: maxVal, y: maxDepth }],
+                    borderColor: 'rgba(239,68,68,1)',
+                    backgroundColor: 'transparent',
+                    pointRadius: 0,
+                    borderDash: [4, 4],
+                    tension: 0,
+                    spanGaps: true,
+                    showLine: true,
+                    parsing: false,
+                  });
+                }
+              }
+              depthData = { datasets: depthDatasets };
+            }
             const depthOptions = hasProfile ? {
               responsive: true,
               maintainAspectRatio: false,
@@ -688,17 +748,44 @@ function WaterQualityTab({ lake }) {
               <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <h4 style={{ margin: 0 }}>{title}</h4>
-                  {hasProfile && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {hasProfile && (
+                      <button
+                        type="button"
+                        className="pill-btn liquid"
+                        onClick={() => toggleView(p.id)}
+                        title={view === 'time' ? 'Show depth profile' : 'Show time series'}
+                        style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {view === 'time' ? <FiActivity size={14} /> : <FiBarChart2 size={14} />}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="pill-btn liquid"
-                      onClick={() => toggleView(p.id)}
-                      title={view === 'time' ? 'Show depth profile' : 'Show time series'}
+                      title="Explain this graph"
+                      onClick={() => {
+                        const standards = [];
+                        if (p?.threshold) standards.push({ code: 'Active standard', min: p.threshold.min, max: p.threshold.max });
+                        const ctx = {
+                          chartType: view === 'depth' ? 'depth' : 'time',
+                          param: { code: p.code, name: p.name, unit: p.unit },
+                          seriesMode: hasProfile ? 'avg' : 'avg',
+                          bucket,
+                          standards,
+                          compareMode: false,
+                          summary: null,
+                          inferredType: (p?.threshold?.min != null && p?.threshold?.max != null) ? 'range' : (p?.threshold?.min != null ? 'min' : (p?.threshold?.max != null ? 'max' : null)),
+                        };
+                        const content = buildGraphExplanation(ctx);
+                        setInfoContent(content);
+                        setInfoOpen(true);
+                      }}
                       style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      {view === 'time' ? <FiActivity size={14} /> : <FiBarChart2 size={14} />}
+                      <FiInfo size={14} />
                     </button>
-                  )}
+                  </div>
                 </div>
                 <div className="wq-chart" style={{ height: 160 }}>
                   {view === 'depth' && hasProfile ? (
@@ -711,6 +798,7 @@ function WaterQualityTab({ lake }) {
             );
           })}
       </div>
+      <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </>
   );
 }
