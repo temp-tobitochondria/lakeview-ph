@@ -160,6 +160,22 @@ export default function LayerWizard({
   const acceptedExt = /\.(geojson|json|kml|zip)$/i;
 
   // --- Nominatim helpers (uses server proxy /api/geocode/nominatim by default) ---
+  // Helper: derive a concise name from a Nominatim item
+  const shortNameFromNominatim = (item) => {
+    if (!item) return '';
+    // Prefer explicit name if present; fallback to first part of display_name
+    const n = (item.name || '').toString().trim();
+    if (n) return n;
+    const dn = (item.display_name || '').toString();
+    if (!dn) return '';
+    const first = dn.split(',')[0]?.trim();
+    return first || dn.trim();
+  };
+
+  // Helper: attribution string for OSM/Nominatim usage
+  const nominatimAttribution = () =>
+    'Source: OpenStreetMap Nominatim — © OpenStreetMap contributors (ODbL 1.0)';
+
   const fetchNominatimCandidates = async (q, limit = 5) => {
     if (!q || !q.trim()) return [];
     setGeocodeLoading(true);
@@ -224,7 +240,21 @@ export default function LayerWizard({
     }
     const gj = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: geom, properties: { name: item.display_name } }] };
     handleParsedGeoJSON(gj, `nominatim:${item.osm_type}/${item.osm_id}`);
-    setData((d) => ({ ...d, sourceSrid: 4326 }));
+    // Autofill Layer Name, Category, and Notes with attribution
+    const suggestedName = shortNameFromNominatim(item);
+    const suggestedNotes = `${suggestedName ? `${suggestedName} — ` : ''}${nominatimAttribution()}`.trim();
+    setData((d) => {
+      const next = {
+        ...d,
+        sourceSrid: 4326,
+        name: d.name && d.name.trim() ? d.name : (suggestedName || d.name),
+        category: d.category && d.category.trim() ? d.category : 'Profile',
+        notes: d.notes && d.notes.trim() ? d.notes : suggestedNotes,
+      };
+      // Keep wizard internal state in sync so step validation reflects updates
+      try { wizardSetRef.current?.({ name: next.name, category: next.category, notes: next.notes, sourceSrid: next.sourceSrid }); } catch (e) { /* ignore */ }
+      return next;
+    });
     setGeocodeResults([]);
     setGeocodeQuery('');
   };
