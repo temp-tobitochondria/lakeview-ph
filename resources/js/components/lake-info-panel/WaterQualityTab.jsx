@@ -367,16 +367,29 @@ function WaterQualityTab({ lake }) {
     const out = new Map();
     for (const [pid, info] of map.entries()) {
       const datasets = [];
-      // color palette per group
-      const monthColors = { Jan: '#9CA3AF', Feb: '#A78BFA', Mar: '#93C5FD', Apr: '#10B981', May: '#F59E0B', Jun: '#D1D5DB', Jul: '#111827', Aug: '#F472B6', Sep: '#6B7280', Oct: '#34D399', Nov: '#EF4444', Dec: '#60A5FA' };
-      const quarterColors = { Q1: '#60A5FA', Q2: '#10B981', Q3: '#F59E0B', Q4: '#EF4444' };
+      // color palette per group (lighter tones for contrast on dark background)
+      const monthColors = {
+        Jan: '#93C5FD', // light blue
+        Feb: '#C4B5FD', // light purple
+        Mar: '#BFDBFE', // pale sky
+        Apr: '#86EFAC', // mint
+        May: '#FDE68A', // warm yellow
+        Jun: '#E6EEF8', // very light blue
+        Jul: '#CBD5E1', // soft gray-blue
+        Aug: '#FBCFE8', // pink
+        Sep: '#E9E7EF', // light neutral
+        Oct: '#A7F3D0', // light teal
+        Nov: '#FECACA', // soft red/pink
+        Dec: '#93C5FD', // repeat light blue
+      };
+      const quarterColors = { Q1: '#BFDBFE', Q2: '#BBF7D0', Q3: '#FDE68A', Q4: '#FECACA' };
       const colorFor = (label, idx) => {
-        if (bucket === 'month') return monthColors[label] || '#60A5FA';
-        if (bucket === 'quarter') return quarterColors[label] || '#60A5FA';
-        // year: generate color by index for stability
+        if (bucket === 'month') return monthColors[label] || '#BFDBFE';
+        if (bucket === 'quarter') return quarterColors[label] || '#BFDBFE';
+        // year: generate a light HSL color by index for stability (higher lightness)
         const hues = [200, 160, 40, 0, 280, 100, 20, 340, 220, 180, 140, 60];
         const h = hues[idx % hues.length];
-        return `hsl(${h} 80% 55%)`;
+        return `hsl(${h} 80% 65%)`;
       };
       let maxDepth = 0;
       // prepare ordered labels for groups
@@ -583,7 +596,8 @@ function WaterQualityTab({ lake }) {
           {seriesByParameter.map((p) => {
             const title = `${p.name || p.code}${p.unit ? ` (${p.unit})` : ''}`;
             // Build chart config for this parameter
-            const depthColors = ['#0ea5e9','#22c55e','#f97316','#ef4444','#a78bfa','#14b8a6','#f59e0b','#94a3b8','#e879f9','#10b981','#eab308','#60a5fa'];
+            // Use lighter / pastel colors for depth series so they contrast on the dark background
+            const depthColors = ['#93C5FD', '#86EFAC', '#FDBA74', '#FCA5A5', '#C4B5FD', '#7DD3FC', '#FDE68A', '#E6EEF8', '#FBCFE8', '#99F6E4', '#FEF08A', '#BFDBFE'];
             const hasDepthLines = p.depthSeries && p.depthSeries.length > 0;
             const depthDatasets = hasDepthLines ? p.depthSeries.map((ds, idx) => ({
               label: `${ds.depth} m`,
