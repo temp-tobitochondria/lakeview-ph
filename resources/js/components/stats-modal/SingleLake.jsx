@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import { apiPublic, buildQuery } from "../../lib/api";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
+import { FiActivity, FiBarChart2, FiInfo } from "react-icons/fi";
 import Popover from "../common/Popover";
+import InfoModal from "../common/InfoModal";
+import { buildGraphExplanation } from "../utils/graphExplain";
 
 // Ensure chart types/scales are registered for time-series and depth (linear) axes
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
@@ -37,6 +39,8 @@ export default function SingleLake({
   const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [summaryStats, setSummaryStats] = useState({ n: 0, mean: NaN, median: NaN });
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
 
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -316,7 +320,60 @@ export default function SingleLake({
 
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
-      <h4>Single Lake</h4>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h4 style={{ margin: 0 }}>Single Lake</h4>
+        <button
+          type="button"
+          className="pill-btn liquid"
+          title="Explain this graph"
+          onClick={() => {
+            // Extract standards from current datasets (threshold lines are labeled "<std> – Min/Max")
+            const standards = (() => {
+              const ds = chartData?.datasets || [];
+              const map = new Map();
+              ds.forEach((d) => {
+                const label = d?.label || '';
+                const parts = String(label).split(' – ');
+                if (parts.length === 2) {
+                  const std = parts[0];
+                  const kind = parts[1];
+                  if (/^Min$/i.test(kind) || /^Max$/i.test(kind)) {
+                    const rec = map.get(std) || { code: std, min: null, max: null };
+                    if (/^Min$/i.test(kind)) rec.min = 1;
+                    if (/^Max$/i.test(kind)) rec.max = 1;
+                    map.set(std, rec);
+                  }
+                }
+              });
+              return Array.from(map.values());
+            })();
+            const hasMin = standards.some(s => s.min != null);
+            const hasMax = standards.some(s => s.max != null);
+            const inferred = hasMin && hasMax ? 'range' : hasMin ? 'min' : hasMax ? 'max' : null;
+            const pMeta = (() => {
+              const sel = String(selectedParam || '');
+              const opt = (paramOptions || []).find(p => String(p.key || p.id || p.code) === sel);
+              return { code: opt?.code || sel, name: opt?.label || opt?.name || opt?.code || sel, unit: opt?.unit || '' };
+            })();
+            const ctx = {
+              chartType: viewMode === 'depth' ? 'depth' : 'time',
+              param: pMeta,
+              seriesMode,
+              bucket,
+              standards,
+              compareMode: false,
+              summary: summaryStats,
+              inferredType: inferred,
+            };
+            const content = buildGraphExplanation(ctx);
+            setInfoContent(content);
+            setInfoOpen(true);
+          }}
+          style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <FiInfo size={14} />
+        </button>
+      </div>
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
           <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
@@ -392,25 +449,57 @@ export default function SingleLake({
         {applied ? (
           viewMode === 'depth' ? (
             depthProfile && depthProfile.datasets && depthProfile.datasets.length ? (
-              <Line
-                ref={chartRef}
-                data={{ datasets: depthProfile.datasets }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: (ctx) => {
-                      const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
-                      return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
-                    } } },
-                  },
-                  scales: {
-                    x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                    y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                  },
-                }}
-              />
+              (() => {
+                // Prepare depthData with threshold vertical lines (if any)
+                const depthDatasets = (depthProfile.datasets || []).slice();
+                const maxDepth = depthProfile.maxDepth || 0;
+                // Infer thresholds by scanning events for matching parameter and selected stations
+                let tMin = null; let tMax = null;
+                try {
+                  for (const ev of events || []) {
+                    const sName = eventStationName(ev) || '';
+                    if (!selectedStations.includes(sName)) continue;
+                    const results = Array.isArray(ev?.results) ? ev.results : [];
+                    for (const r of results) {
+                      const p = r?.parameter; if (!p) continue;
+                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+                      if (!match) continue;
+                      if (r?.threshold?.min_value != null && tMin == null) tMin = Number(r.threshold.min_value);
+                      if (r?.threshold?.max_value != null && tMax == null) tMax = Number(r.threshold.max_value);
+                      if (tMin != null && tMax != null) break;
+                    }
+                    if (tMin != null && tMax != null) break;
+                  }
+                } catch (e) { /* ignore */ }
+                if (Number.isFinite(tMin)) {
+                  depthDatasets.push({ label: 'Min Threshold', data: [{ x: tMin, y: 0 }, { x: tMin, y: Math.max(1, maxDepth) }], borderColor: 'rgba(16,185,129,1)', backgroundColor: 'transparent', pointRadius: 0, borderDash: [4,4], tension: 0, spanGaps: true, showLine: true, parsing: false });
+                }
+                if (Number.isFinite(tMax)) {
+                  depthDatasets.push({ label: 'Max Threshold', data: [{ x: tMax, y: 0 }, { x: tMax, y: Math.max(1, maxDepth) }], borderColor: 'rgba(239,68,68,1)', backgroundColor: 'transparent', pointRadius: 0, borderDash: [4,4], tension: 0, spanGaps: true, showLine: true, parsing: false });
+                }
+                const depthData = { datasets: depthDatasets };
+                return (
+                  <Line
+                    ref={chartRef}
+                    data={depthData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
+                        tooltip: { callbacks: { label: (ctx) => {
+                          const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
+                          return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
+                        } } },
+                      },
+                      scales: {
+                        x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                        y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                      },
+                    }}
+                  />
+                );
+              })()
             ) : (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ opacity: 0.9 }}>No depth data available for this selection.</span>
@@ -445,6 +534,7 @@ export default function SingleLake({
           {viewMode === 'time' ? 'Depth profile' : 'Time series'}
         </button>
       </div>
+      <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>
   );
 }
