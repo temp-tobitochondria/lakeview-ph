@@ -40,6 +40,8 @@ function CompareLake({
   const [stationCacheB, setStationCacheB] = useState({ all: [], byOrg: {} });
   const [localParams, setLocalParams] = useState([]);
   const [applied, setApplied] = useState(false);
+  const [summaryA, setSummaryA] = useState({ n: 0, mean: NaN, median: NaN });
+  const [summaryB, setSummaryB] = useState({ n: 0, mean: NaN, median: NaN });
   const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
 
@@ -163,6 +165,53 @@ function CompareLake({
   }, [lakeA, lakeB, selectedParam, selectedStationsA, selectedStationsB]);
 
   useEffect(() => { setApplied(false); }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket]);
+  // reset summaries when selections change
+  useEffect(() => { if (!applied) { setSummaryA({ n: 0, mean: NaN, median: NaN }); setSummaryB({ n: 0, mean: NaN, median: NaN }); } }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket, applied]);
+
+  // local stat helpers
+  const _mean = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; return a.reduce((s,v)=>s+v,0)/a.length; };
+  const _median = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; const s = a.slice().sort((x,y)=>x-y); const n = s.length; const m = Math.floor(n/2); return (n%2) ? s[m] : (s[m-1]+s[m])/2; };
+
+  useEffect(() => {
+    if (!applied) return;
+    try {
+      // Compute for A
+      const valsA = [];
+      for (const ev of eventsA || []) {
+        const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+        if (selectedOrgA && oidEv && String(oidEv) !== String(selectedOrgA)) continue;
+        if (selectedStationsA && selectedStationsA.length) { const nm = eventStationName(ev) || ''; if (!selectedStationsA.includes(nm)) continue; }
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value); if (!Number.isFinite(v)) continue;
+          valsA.push(v);
+        }
+      }
+      setSummaryA({ n: valsA.length, mean: _mean(valsA), median: _median(valsA) });
+      // Compute for B
+      const valsB = [];
+      for (const ev of eventsB || []) {
+        const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
+        if (selectedOrgB && oidEv && String(oidEv) !== String(selectedOrgB)) continue;
+        if (selectedStationsB && selectedStationsB.length) { const nm = eventStationName(ev) || ''; if (!selectedStationsB.includes(nm)) continue; }
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value); if (!Number.isFinite(v)) continue;
+          valsB.push(v);
+        }
+      }
+      setSummaryB({ n: valsB.length, mean: _mean(valsB), median: _median(valsB) });
+    } catch (e) {
+      setSummaryA({ n: 0, mean: NaN, median: NaN });
+      setSummaryB({ n: 0, mean: NaN, median: NaN });
+    }
+  }, [applied]);
 
   const chartData = useMemo(() => {
     const selected = selectedParam;
@@ -264,6 +313,8 @@ function CompareLake({
       setApplied(false);
       setEventsA([]);
       setEventsB([]);
+      setSummaryA({ n: 0, mean: NaN, median: NaN });
+      setSummaryB({ n: 0, mean: NaN, median: NaN });
     }
   }));
 
@@ -439,6 +490,21 @@ function CompareLake({
               <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)} style={{ minWidth: 96 }}>Apply</button>
             </div>
           </div>
+        </div>
+      </div>
+      {/* Summary stats for each lake */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ opacity: 0.9 }}>
+          <strong>{lakeOptions.find((x)=>String(x.id)===String(lakeA))?.name || (lakeA ? String(lakeA) : 'Lake A')}</strong>
+          <div>Samples: {summaryA.n || 0}</div>
+          <div>Mean: {Number.isFinite(summaryA.mean) ? summaryA.mean.toFixed(2) : 'N/A'}</div>
+          <div>Median: {Number.isFinite(summaryA.median) ? summaryA.median.toFixed(2) : 'N/A'}</div>
+        </div>
+        <div style={{ opacity: 0.9 }}>
+          <strong>{lakeOptions.find((x)=>String(x.id)===String(lakeB))?.name || (lakeB ? String(lakeB) : 'Lake B')}</strong>
+          <div>Samples: {summaryB.n || 0}</div>
+          <div>Mean: {Number.isFinite(summaryB.mean) ? summaryB.mean.toFixed(2) : 'N/A'}</div>
+          <div>Median: {Number.isFinite(summaryB.median) ? summaryB.median.toFixed(2) : 'N/A'}</div>
         </div>
       </div>
 

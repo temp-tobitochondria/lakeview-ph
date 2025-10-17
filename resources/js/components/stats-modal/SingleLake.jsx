@@ -36,6 +36,7 @@ export default function SingleLake({
   const [applied, setApplied] = useState(false);
   const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
+  const [summaryStats, setSummaryStats] = useState({ n: 0, mean: NaN, median: NaN });
 
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -76,7 +77,37 @@ export default function SingleLake({
   useEffect(() => {
     // If upstream filters/data changed, require Apply again
     setApplied(false);
+    // reset computed summary when filters change
+    setSummaryStats({ n: 0, mean: NaN, median: NaN });
   }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket]);
+
+  // Simple local stat helpers (avoid mandatory stdlib dependency)
+  const _mean = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; return a.reduce((s,v)=>s+v,0)/a.length; };
+  const _median = (arr) => { const a = (Array.isArray(arr) ? arr.filter(Number.isFinite) : []); if (!a.length) return NaN; const s = a.slice().sort((x,y)=>x-y); const n = s.length; const m = Math.floor(n/2); return (n%2) ? s[m] : (s[m-1]+s[m])/2; };
+
+  // Compute summary stats when Apply is clicked
+  useEffect(() => {
+    if (!applied) return; // only compute after user applies
+    try {
+      const vals = [];
+      for (const ev of events || []) {
+        const sName = eventStationName(ev) || '';
+        if (!selectedStations.includes(sName)) continue;
+        const results = Array.isArray(ev?.results) ? ev.results : [];
+        for (const r of results) {
+          const p = r?.parameter; if (!p) continue;
+          const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
+          if (!match) continue;
+          const v = Number(r.value);
+          if (!Number.isFinite(v)) continue;
+          vals.push(v);
+        }
+      }
+      setSummaryStats({ n: vals.length, mean: _mean(vals), median: _median(vals) });
+    } catch (e) {
+      setSummaryStats({ n: 0, mean: NaN, median: NaN });
+    }
+  }, [applied]);
   const chartData = useMemo(() => {
       if (!selectedParam || !selectedStations || !selectedStations.length) return null;
       // Helpers mirroring WaterQualityTab
@@ -324,6 +355,12 @@ export default function SingleLake({
             </div>
           </div>
         </div>
+      </div>
+      {/* Summary stats */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ opacity: 0.9 }}><strong>Samples:</strong> {summaryStats.n || 0}</div>
+        <div style={{ opacity: 0.9 }}><strong>Mean:</strong> {Number.isFinite(summaryStats.mean) ? summaryStats.mean.toFixed(2) : 'N/A'}</div>
+        <div style={{ opacity: 0.9 }}><strong>Median:</strong> {Number.isFinite(summaryStats.median) ? summaryStats.median.toFixed(2) : 'N/A'}</div>
       </div>
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
