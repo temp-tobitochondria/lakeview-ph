@@ -51,6 +51,15 @@ function CompareLake({
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const eventStationName = (ev) => ev?.station?.name || ev?.station_name || ((ev?.latitude != null && ev?.longitude != null) ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}` : null);
+  const nameForLake = (lk) => {
+    if (!lk) return '';
+    try {
+      const found = lakeOptions.find((x) => String(x.id) === String(lk));
+      return found ? found.name : String(lk);
+    } catch (e) {
+      return String(lk);
+    }
+  };
 
   // Parameters
   useEffect(() => {
