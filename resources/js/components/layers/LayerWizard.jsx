@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentUser } from '../../lib/authState';
 import { useAuthRole } from '../../pages/PublicInterface/hooks/useAuthRole';
 import { GeoJSON } from "react-leaflet";
 import AppMap from "../../components/AppMap";
@@ -16,7 +15,6 @@ import {
   normalizeForPreview,
   reprojectMultiPolygonTo4326,
   toMultiPolygon,
-  looksLikeDegrees,
 } from "../../utils/geo";
 
 import { createLayer, fetchLakeOptions, fetchWatershedOptions } from "../../lib/layers";
@@ -31,16 +29,13 @@ export default function LayerWizard({
   defaultBodyType = "lake",
   defaultVisibility = "public",
   allowSetActive = true,
-  // Reusability knobs (kept for compatibility, but both types use dropdowns now)
   allowedBodyTypes = ["lake", "watershed"],
-  selectionModeLake = "dropdown",
-  selectionModeWatershed = "dropdown",
   visibilityOptions = [
     { value: "public", label: "Public" },
     { value: "admin", label: "Admin" },
   ],
   initialBodyId = "",
-  onPublished,             // (layerResponse) => void
+  onPublished,
 }) {
   const normalizedVisibilityOptions = useMemo(() => {
     const base = Array.isArray(visibilityOptions) && visibilityOptions.length
@@ -65,26 +60,19 @@ export default function LayerWizard({
   }, [defaultVisibility, normalizedVisibilityOptions]);
 
   const [data, setData] = useState({
-    // file/geom
     fileName: "",
     geomText: "",
     uploadGeom: null,
     previewGeom: null,
     sourceSrid: 4326,
-
-    // link
     bodyType: allowedBodyTypes.includes(defaultBodyType) ? defaultBodyType : (allowedBodyTypes[0] || "lake"),
     bodyId: initialBodyId ? String(initialBodyId) : "",
-
-    // meta
     name: "",
     category: "",
     notes: "",
     visibility: resolvedDefaultVisibility,
     isActive: false,
-  isDownloadable: false,
-
-    // viewport
+    isDownloadable: false,
     includeViewport: true,
     viewport: null,
     viewportVersion: 0,
@@ -100,14 +88,31 @@ export default function LayerWizard({
   const [geocodeResults, setGeocodeResults] = useState([]);
   const [geocodeLoading, setGeocodeLoading] = useState(false);
   // Use the shared auth hook so UI reacts correctly on refresh/navigation
-  const { userRole, authUser } = useAuthRole();
+  const { userRole } = useAuthRole();
   // Multi-feature selection state
-  const [pendingFeatures, setPendingFeatures] = useState([]); // array of GeoJSON Features (polygons)
+  const [pendingFeatures, setPendingFeatures] = useState([]);
   const [pendingCrs, setPendingCrs] = useState(null); // carry CRS from source if provided
   const [pendingFileName, setPendingFileName] = useState("");
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
-  const [featureSelectedIdx, setFeatureSelectedIdx] = useState(0);
+  const [featureSelectedIdx, setFeatureSelectedIdx] = useState("");
   const [featureMapVersion, setFeatureMapVersion] = useState(0);
+  const modalMapRef = useRef(null);
+
+  // Memoize preview-ready geometries (in 4326) for each pending feature so rendering
+  // and bounds computation are deterministic and fast during re-renders.
+  const previewGeometries = useMemo(() => {
+    if (!pendingFeatures || !pendingFeatures.length) return [];
+    return pendingFeatures.map((f) => {
+      try {
+        const mp = toMultiPolygon(f.geometry);
+        let srid = null;
+        if (pendingCrs) {
+          try { srid = detectEpsg({ crs: pendingCrs }); } catch (_) { srid = null; }
+        }
+        return srid && srid !== 4326 ? reprojectMultiPolygonTo4326(mp, srid) : mp;
+      } catch (e) { return null; }
+    });
+  }, [pendingFeatures, pendingCrs]);
 
   useEffect(() => {
     if (initialBodyId === undefined || initialBodyId === null || initialBodyId === "") return;
@@ -207,10 +212,19 @@ export default function LayerWizard({
     // Clear any prior parsed geom to block navigation until selection
     setData((d) => ({ ...d, uploadGeom: null, previewGeom: null, geomText: '', fileName }));
     try { wizardSetRef.current?.({ uploadGeom: null, previewGeom: null, geomText: '', fileName }); } catch (_) {}
-    setFeatureSelectedIdx(0);
+  setFeatureSelectedIdx("");
     setFeatureModalOpen(true);
     setFeatureMapVersion((v) => v + 1);
   };
+
+  // When the modal opens, invalidate Leaflet map size to ensure tiles and layers render
+  useEffect(() => {
+    if (featureModalOpen && modalMapRef.current) {
+      setTimeout(() => {
+        try { modalMapRef.current.invalidateSize(); } catch (_) {}
+      }, 50);
+    }
+  }, [featureModalOpen]);
 
   const chooseFeature = (index) => {
     const feat = pendingFeatures[index];
@@ -589,7 +603,15 @@ export default function LayerWizard({
                 <div className="org-form" style={{ overflowY: 'auto' }}>
                   <div className="form-group">
                     <label>Polygon</label>
-                    <select value={featureSelectedIdx} onChange={(e) => { setFeatureSelectedIdx(Number(e.target.value)); setFeatureMapVersion((v) => v + 1); }}>
+                    <select
+                      value={featureSelectedIdx}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFeatureSelectedIdx(val === "" ? "" : Number(val));
+                        setFeatureMapVersion((v) => v + 1);
+                      }}
+                    >
+                      <option value="">Choose a polygon</option>
                       {pendingFeatures.map((f, idx) => (
                         <option key={idx} value={idx}>{guessFeatureLabel(f, idx)}</option>
                       ))}
@@ -597,55 +619,73 @@ export default function LayerWizard({
                   </div>
                   <div className="info-row"><FiInfo /> The map shows all polygons. The selected one is highlighted.</div>
                   <div style={{ marginTop: 8 }}>
-                    <button type="button" className="pill-btn primary" onClick={() => chooseFeature(featureSelectedIdx)}>Use this polygon</button>
+                    <button
+                      type="button"
+                      className={`pill-btn ${featureSelectedIdx === "" ? 'ghost' : 'primary'}`}
+                      disabled={featureSelectedIdx === ""}
+                      onClick={() => featureSelectedIdx !== "" && chooseFeature(featureSelectedIdx)}
+                    >
+                      Use this polygon
+                    </button>
                   </div>
                 </div>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                  <AppMap view="osm" style={{ height: '100%', width: '100%' }}>
-                    {/* All candidates (light) */}
-                    {pendingFeatures.map((f, idx) => {
-                      let g = null;
-                      try {
-                        const mp = toMultiPolygon(f.geometry);
-                        let srid = null;
-                        if (pendingCrs) {
-                          try { srid = detectEpsg({ crs: pendingCrs }); } catch (_) {}
-                        }
-                        if (srid && srid !== 4326) g = reprojectMultiPolygonTo4326(mp, srid); else g = mp;
-                        if (!srid && !looksLikeDegrees(mp)) g = null;
-                      } catch (_) {}
-                      if (!g) return null;
+                  <AppMap view="osm" style={{ height: '100%', width: '100%' }} whenCreated={(m) => { modalMapRef.current = m; setTimeout(() => { try { m.invalidateSize(); } catch (_) {} }, 50); }}>
+                    {/* All candidates (light) - only when no selection */}
+                    {featureSelectedIdx === "" && previewGeometries.map((g, idx) => {
+                      // fallback to raw pendingFeatures geometry if preview conversion failed
+                      const raw = pendingFeatures[idx]?.geometry;
+                      const geom = g || raw || null;
+                      if (!geom) return null;
                       return (
-                        <GeoJSON key={`cand-${idx}`} data={{ type: 'Feature', geometry: g }} style={{ color: '#9ca3af', weight: 1, fillOpacity: 0.05 }} />
+                        <GeoJSON
+                          key={`cand-${idx}-${featureMapVersion}`}
+                          data={{ type: 'Feature', geometry: geom }}
+                          // Leaflet default path color is #3388ff — use same hue but lighter for candidates
+                          style={{ color: '#3388ff', opacity: 0.8, weight: 1.5, fill: true, fillColor: '#3388ff', fillOpacity: 0.12 }}
+                        />
                       );
                     })}
-                    {/* Selected (bold) */}
-                    {(() => {
-                      const f = pendingFeatures[featureSelectedIdx];
-                      if (!f) return null;
-                      try {
-                        const mp = toMultiPolygon(f.geometry);
-                        let srid = null;
-                        if (pendingCrs) { try { srid = detectEpsg({ crs: pendingCrs }); } catch (_) {} }
-                        const sel = srid && srid !== 4326 ? reprojectMultiPolygonTo4326(mp, srid) : mp;
-                        if (!srid && !looksLikeDegrees(mp)) return null;
-                        return <GeoJSON key="sel" data={{ type: 'Feature', geometry: sel }} style={{ color: previewColor, weight: 3, fillOpacity: 0.15 }} />;
-                      } catch (_) { return null; }
+                    {/* Selected (bold) - only when a selection exists */}
+                    {typeof featureSelectedIdx === 'number' && (() => {
+                      const g = previewGeometries[featureSelectedIdx];
+                      if (!g) return null;
+                      // Use Leaflet default color for selected polygon
+                      return (
+                        <GeoJSON
+                          key={`sel-${featureSelectedIdx}-${featureMapVersion}`}
+                          data={{ type: 'Feature', geometry: g }}
+                          style={{ color: '#3388ff', opacity: 1, weight: 3, fill: true, fillColor: '#3388ff', fillOpacity: 0.35 }}
+                        />
+                      );
                     })()}
-                    {/* Fit bounds to selected */}
-                    {(() => {
-                      const f = pendingFeatures[featureSelectedIdx];
-                      if (!f) return null;
+                    {/* Fit bounds: union when none selected, otherwise selected */}
+                    {featureSelectedIdx === "" ? (() => {
                       try {
-                        const mp = toMultiPolygon(f.geometry);
-                        let srid = null;
-                        if (pendingCrs) { try { srid = detectEpsg({ crs: pendingCrs }); } catch (_) {} }
-                        const sel = srid && srid !== 4326 ? reprojectMultiPolygonTo4326(mp, srid) : mp;
-                        if (!srid && !looksLikeDegrees(mp)) return null;
-                        const b = boundsFromGeom(sel);
-                        if (!b) return null;
-                        return <MapViewport bounds={b} version={featureMapVersion} />;
+                        let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+                        let any = false;
+                        previewGeometries.forEach((g, idx) => {
+                          let geom = g;
+                          if (!geom) geom = pendingFeatures[idx]?.geometry;
+                          if (!geom) return;
+                          const b = boundsFromGeom(geom);
+                          if (!b) return;
+                          const [[lat1, lng1], [lat2, lng2]] = b;
+                          minLat = Math.min(minLat, lat1);
+                          minLng = Math.min(minLng, lng1);
+                          maxLat = Math.max(maxLat, lat2);
+                          maxLng = Math.max(maxLng, lng2);
+                          any = true;
+                        });
+                        if (!any) return null;
+                        return <MapViewport bounds={[[minLat, minLng], [maxLat, maxLng]]} version={featureMapVersion} />;
                       } catch (_) { return null; }
+                    })() : (() => {
+                      const g = previewGeometries[featureSelectedIdx];
+                      if (!g) return null;
+                      const b = boundsFromGeom(g);
+                      if (!b) return null;
+                      return <MapViewport bounds={b} version={featureMapVersion} />;
                     })()}
                   </AppMap>
                 </div>
@@ -679,7 +719,11 @@ export default function LayerWizard({
                 whenCreated={(m) => { if (m && !mapRef.current) mapRef.current = m; }}
               >
                 {wdata.previewGeom && (
-                  <GeoJSON key="geom" data={{ type: "Feature", geometry: wdata.previewGeom }} style={{ color: previewColor, weight: 2, fillOpacity: 0.15 }} />
+                  <GeoJSON
+                    key="geom"
+                    data={{ type: "Feature", geometry: wdata.previewGeom }}
+                    style={{ color: previewColor, opacity: 1, weight: 2, fill: true, fillColor: previewColor, fillOpacity: 0.3 }}
+                  />
                 )}
                 {/* MapViewport will fit map to either previewGeom or to a captured viewport (if present) */}
                 <MapViewport
