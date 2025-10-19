@@ -2,21 +2,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { FiClipboard, FiDatabase, FiUsers } from 'react-icons/fi';
-import AppMap from '../../components/AppMap';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-// Leaflet default icon fix
-// @ts-ignore
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
 
 import api from '../../lib/api';
 import kpiCache from '../../lib/kpiCache';
@@ -48,16 +33,6 @@ function KPIGrid({ stats, tenantId, userId }) {
       <KpiCard title="My Draft Tests" icon={<FiClipboard />} {...stats.myDraft} to={myDraftLink} />
       <KpiCard title="My Published Tests" icon={<FiDatabase />} {...stats.myPublished} to={myPublishedLink} />
       <KpiCard title="Org Published Tests" icon={<FiUsers />} {...stats.orgPublished} to={orgPublishedLink} />
-    </div>
-  );
-}
-
-function TestsMap() {
-  return (
-    <div className="map-container" style={{ marginBottom: 16 }}>
-      <AppMap view="osm" style={{ height: '100%', width: '100%' }}>
-        {/* Future: contributor's own markers or org published markers */}
-      </AppMap>
     </div>
   );
 }
@@ -152,7 +127,6 @@ export default function ContribOverview({ tenantId: propTenantId }) {
   return (
     <>
       <KPIGrid stats={stats} tenantId={tenantId} userId={userId} />
-      <TestsMap />
     </>
   );
 }
