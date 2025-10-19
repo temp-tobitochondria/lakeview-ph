@@ -20,6 +20,15 @@ export default function PolygonChooser({
 }) {
   const modalMapRef = useRef(null);
 
+  const guessFeatureLabel = (feat, idx) => {
+    const props = feat?.properties || {};
+    const keys = ['name', 'NAME', 'Name', 'title', 'lake', 'lake_name', 'Lake', 'LName', 'id', 'ID'];
+    for (const k of keys) {
+      if (props[k]) return String(props[k]);
+    }
+    return `Feature ${idx + 1}`;
+  };
+
   useEffect(() => {
     if (open && modalMapRef.current) {
       setTimeout(() => { try { modalMapRef.current.invalidateSize(); } catch (_) {} }, 50);
@@ -49,7 +58,7 @@ export default function PolygonChooser({
             <select value={featureSelectedIdx} onChange={(e) => { const val = e.target.value; setFeatureSelectedIdx(val === '' ? '' : Number(val)); setFeatureMapVersion((v) => v + 1); }}>
               <option value="">Choose a polygon</option>
               {pendingFeatures.map((f, idx) => (
-                <option key={idx} value={idx}>{(f?.properties?.name) || `Feature ${idx + 1}`}</option>
+                <option key={idx} value={idx}>{guessFeatureLabel(f, idx)}</option>
               ))}
             </select>
           </div>

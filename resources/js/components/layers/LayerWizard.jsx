@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuthRole } from '../../pages/PublicInterface/hooks/useAuthRole';
-import { GeoJSON } from "react-leaflet";
-import AppMap from "../../components/AppMap";
 import "leaflet/dist/leaflet.css";
 import {
   FiUploadCloud, FiCheckCircle, FiMap, FiGlobe, FiAlertTriangle, FiInfo,
@@ -19,11 +17,14 @@ import {
 
 import { createLayer, fetchLakeOptions, fetchWatershedOptions } from "../../lib/layers";
 import { alertSuccess, alertError } from "../../lib/alerts";
-import MapViewport from "../../components/MapViewport";
-import { kml as kmlToGeoJSON } from "@tmcw/togeojson";
-import shp from "shpjs";
-import { parseGpkgToGeoJSON, GPKG_MAX_SIZE } from "../../utils/gpkg";
+import { parseSpatialFile, ACCEPTED_EXT_REGEX } from "../../utils/parsers";
 import PolygonChooser from '../../components/PolygonChooser';
+import FileDropzone from './FileDropzone';
+import PreviewMap from './PreviewMap';
+import CRSSelector from './CRSSelector';
+import BodySelector from './BodySelector';
+import MetadataForm from './MetadataForm';
+import PublishControls from './PublishControls';
 
 export default function LayerWizard({
   defaultBodyType = "lake",
@@ -168,13 +169,8 @@ export default function LayerWizard({
     return () => { cancelled = true; };
   }, [data.bodyType]);
 
-  const worldBounds = [
-    [4.6, 116.4],
-    [21.1, 126.6],
-  ];
-
   // -------- file handlers ----------
-  const acceptedExt = /\.(geojson|json|kml|zip|gpkg)$/i;
+  const acceptedExt = ACCEPTED_EXT_REGEX;
 
   // --- Multi-feature helpers ---
   const polygonFeaturesFrom = (root) => {
@@ -374,45 +370,12 @@ export default function LayerWizard({
   const handleFile = async (file) => {
     if (!file) return;
     if (!acceptedExt.test(file.name)) {
-      setError("Only .geojson, .json, .kml, or .zip (shapefile) are supported.");
+      setError("Only .geojson, .json, .kml, .zip (shapefile), or .gpkg are supported.");
       return;
     }
     try {
-      const lower = file.name.toLowerCase();
-      if (lower.endsWith('.gpkg')) {
-        if (typeof file.size === 'number' && file.size > GPKG_MAX_SIZE) {
-          setError(`GeoPackage too large for in-browser parsing (max ~${Math.round(GPKG_MAX_SIZE / (1024*1024))}MB).`);
-          return;
-        }
-        const gj = await parseGpkgToGeoJSON(file);
-        handleUploadGeoJSON(gj, file.name);
-        return;
-      }
-      if (lower.endsWith('.kml')) {
-        const text = await file.text();
-        const dom = new DOMParser().parseFromString(text, 'text/xml');
-        const gj = kmlToGeoJSON(dom);
-        handleUploadGeoJSON(gj, file.name);
-        return;
-      }
-      if (lower.endsWith('.zip')) {
-        const buf = await file.arrayBuffer();
-        let gj = await shp(buf);
-        if (!gj || typeof gj !== 'object') throw new Error('Invalid shapefile contents');
-        if (!gj.type && !gj.features) {
-          const all = [];
-          for (const key of Object.keys(gj)) {
-            const layer = gj[key];
-            if (layer && Array.isArray(layer.features)) all.push(...layer.features);
-          }
-          gj = { type: 'FeatureCollection', features: all };
-        }
-        handleUploadGeoJSON(gj, file.name);
-        return;
-      }
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      handleUploadGeoJSON(parsed, file.name);
+      const gj = await parseSpatialFile(file);
+      handleUploadGeoJSON(gj, file.name);
     } catch (e) {
       console.error('[LayerWizard] Failed to parse file', e);
       setError(e?.message || "Failed to parse file.");
@@ -526,22 +489,7 @@ export default function LayerWizard({
             </div>
           </div>
 
-          <div
-            className="dropzone"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            onClick={() => document.getElementById("layer-file-input")?.click()}
-          >
-            <p>Drop a spatial file here or click to select</p>
-            <small>Accepted: .geojson, .json, .kml, .zip (zipped Shapefile with .shp/.dbf/.prj; Polygon/MultiPolygon geometries), .gpkg (GeoPackage)</small>
-            <input
-              id="layer-file-input"
-              type="file"
-              accept=".geojson,.json,.kml,.zip,.gpkg"
-              style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-          </div>
+          <FileDropzone onFile={handleFile} />
 
           {userRole === 'superadmin' && (
             <div className="org-form" style={{ marginTop: 10 }}>
@@ -626,42 +574,15 @@ export default function LayerWizard({
             <div className="info-row" style={{ marginBottom: 8 }}>
               <FiInfo /> The map shows a <strong>WGS84 (EPSG:4326)</strong> preview. Your original geometry will be saved with the detected/selected SRID.
             </div>
-            <div style={{ height: 420, borderRadius: 12, overflow: "hidden", border: "1px solid #e5e7eb" }}>
-              <AppMap
-                view="osm"
-                style={{ height: "100%", width: "100%" }}
-                whenCreated={(m) => { if (m && !mapRef.current) mapRef.current = m; }}
-              >
-                {wdata.previewGeom && (
-                  <GeoJSON
-                    key="geom"
-                    data={{ type: "Feature", geometry: wdata.previewGeom }}
-                    style={{ color: previewColor, opacity: 1, weight: 2, fill: true, fillColor: previewColor, fillOpacity: 0.3 }}
-                  />
-                )}
-                {/* MapViewport will fit map to either previewGeom or to a captured viewport (if present) */}
-                <MapViewport
-                  bounds={wdata.viewport ? [[wdata.viewport.bounds[0], wdata.viewport.bounds[1]], [wdata.viewport.bounds[2], wdata.viewport.bounds[3]]] : (wdata.previewGeom ? boundsFromGeom(wdata.previewGeom) : null)}
-                  version={wdata.viewportVersion || 0}
-                />
-              </AppMap>
-            </div>
+            <PreviewMap
+              geometry={wdata.previewGeom}
+              color={previewColor}
+              viewport={wdata.viewport}
+              viewportVersion={wdata.viewportVersion || 0}
+              whenCreated={(m) => { if (m && !mapRef.current) mapRef.current = m; }}
+            />
 
-            <div className="org-form" style={{ marginTop: 10 }}>
-              <div className="form-group">
-                <label>Detected/Source SRID</label>
-                <input
-                  type="number"
-                  value={wdata.sourceSrid}
-                  onChange={(e) => updateSourceSrid(e.target.value)}
-                  placeholder="e.g., 4326 or 32651"
-                />
-              </div>
-              <div className="alert-note">
-                <FiAlertTriangle /> If the file declares a CRS e.g., EPSG::32651 or CRS84,
-                it’s auto-detected. Adjust only if detection was wrong.
-              </div>
-            </div>
+            <CRSSelector srid={wdata.sourceSrid} onChange={updateSourceSrid} />
           </div>
         </div>
       ),
@@ -681,56 +602,15 @@ export default function LayerWizard({
             </div>
           </div>
           <div className="dashboard-card-body">
-            <div className="org-form">
-              {allowedBodyTypes.length > 1 && (
-                <div className="form-group">
-                  <label>Body Type</label>
-                  <select
-                      value={wdata.bodyType}
-                      onChange={(e) =>
-                        wSetData((d) => ({ ...d, bodyType: e.target.value, bodyId: "" }))
-                      }
-                  >
-                    {allowedBodyTypes.includes("lake") && (<option value="lake">Lake</option>)}
-                    {allowedBodyTypes.includes("watershed") && (<option value="watershed">Watershed</option>)}
-                  </select>
-                </div>
-              )}
-
-                {wdata.bodyType === "lake" ? (
-                <div className="form-group" style={{ minWidth: 260 }}>
-                  <label>Select Lake</label>
-                  <select
-                      value={wdata.bodyId}
-                      onChange={(e) => wSetData((d) => ({ ...d, bodyId: e.target.value }))}
-                    required
-                  >
-                    <option value="" disabled>Choose a lake</option>
-                    {lakeOptions.map((o) => (
-                      <option key={`lake-${o.id}`} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="form-group" style={{ minWidth: 260 }}>
-                  <label>Select Watershed</label>
-                  <select
-                      value={wdata.bodyId}
-                      onChange={(e) => wSetData((d) => ({ ...d, bodyId: e.target.value }))}
-                    required
-                  >
-                    <option value="" disabled>Select category…</option>
-                    {watershedOptions.map((o) => (
-                      <option key={`ws-${o.id}`} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
+            <BodySelector
+              allowedBodyTypes={allowedBodyTypes}
+              bodyType={wdata.bodyType}
+              onBodyTypeChange={(val) => wSetData((d) => ({ ...d, bodyType: val, bodyId: "" }))}
+              bodyId={wdata.bodyId}
+              onBodyIdChange={(val) => wSetData((d) => ({ ...d, bodyId: val }))}
+              lakeOptions={lakeOptions}
+              watershedOptions={watershedOptions}
+            />
           </div>
         </div>
       ),
@@ -750,39 +630,12 @@ export default function LayerWizard({
             </div>
           </div>
           <div className="dashboard-card-body">
-            <div className="org-form">
-                <div className="form-group">
-                <label>Layer Name</label>
-                <input
-                  type="text"
-                  value={wdata.name}
-                  onChange={(e) => wSetData((d) => ({ ...d, name: e.target.value }))}
-                  placeholder="e.g., Official shoreline 2024"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Category</label>
-                <select
-                  value={wdata.category}
-                  onChange={(e) => wSetData((d) => ({ ...d, category: e.target.value }))}
-                >
-                  <option value="" disabled>Select category…</option>
-                  <option value="Profile">Profile</option>
-                  <option value="Boundary">Boundary</option>
-                </select>
-              </div>
-
-              <div className="form-group" style={{ flexBasis: "100%" }}>
-                <label>Notes</label>
-                <input
-                  type="text"
-                  value={wdata.notes}
-                  onChange={(e) => wSetData((d) => ({ ...d, notes: e.target.value }))}
-                  placeholder="Short description / source credits"
-                />
-              </div>
-            </div>
+            <MetadataForm
+              name={wdata.name}
+              category={wdata.category}
+              notes={wdata.notes}
+              onChange={(patch) => wSetData((d) => ({ ...d, ...patch }))}
+            />
           </div>
         </div>
       ),
@@ -802,50 +655,16 @@ export default function LayerWizard({
             </div>
           </div>
           <div className="dashboard-card-body">
-            <div className="org-form">
-                <div className="form-group">
-                <label>Visibility</label>
-                <select
-                  value={wdata.visibility}
-                  onChange={(e) => wSetData((d) => ({ ...d, visibility: e.target.value }))}
-                >
-                  {normalizedVisibilityOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {allowSetActive && (
-                <div className="form-group">
-                  <label>Default Layer</label>
-                  <div>
-                    <button
-                      type="button"
-                      className={`pill-btn ${wdata.isActive ? 'primary' : 'ghost'}`}
-                      onClick={() => wSetData((d) => ({ ...d, isActive: !d.isActive }))}
-                      title="Toggle default layer"
-                    >
-                      {wdata.isActive ? 'Default Enabled' : 'Set as Default'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="form-group">
-                <label>Downloadable</label>
-                <div>
-                  <button
-                    type="button"
-                    className={`pill-btn ${wdata.isDownloadable ? 'primary' : 'ghost'}`}
-                    onClick={() => wSetData((d) => ({ ...d, isDownloadable: !d.isDownloadable }))}
-                    title="Toggle whether this layer can be downloaded"
-                  >
-                    {wdata.isDownloadable ? 'Download Enabled' : 'Allow Download'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PublishControls
+              visibilityOptions={normalizedVisibilityOptions}
+              value={wdata.visibility}
+              onChange={(val) => wSetData((d) => ({ ...d, visibility: val }))}
+              allowSetActive={allowSetActive}
+              isActive={wdata.isActive}
+              onToggleActive={() => wSetData((d) => ({ ...d, isActive: !d.isActive }))}
+              isDownloadable={wdata.isDownloadable}
+              onToggleDownloadable={() => wSetData((d) => ({ ...d, isDownloadable: !d.isDownloadable }))}
+            />
             {error && (
               <div className="alert-note" style={{ marginTop: 8 }}>
                 <FiAlertTriangle /> {error}
