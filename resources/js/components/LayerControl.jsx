@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { FiLayers } from "react-icons/fi";
 
-function LayerControl({ selectedView, setSelectedView, showContours, setShowContours }) {
+function LayerControl({ selectedView, setSelectedView, showContours, setShowContours, showContourLabels, setShowContourLabels }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -38,6 +38,15 @@ function LayerControl({ selectedView, setSelectedView, showContours, setShowCont
               onChange={(e) => setShowContours && setShowContours(e.target.checked)}
             />
             <span>Contours (PostGIS)</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={!!showContourLabels}
+              onChange={(e) => setShowContourLabels && setShowContourLabels(e.target.checked)}
+              disabled={!showContours}
+            />
+            <span>Contour labels</span>
           </label>
           <label>
             <input

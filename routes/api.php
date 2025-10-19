@@ -362,3 +362,6 @@ Route::get('/population/dataset-info', [PopulationController::class, 'datasetInf
 // Vector tile endpoint for contours (PostGIS -> MVT)
 Route::get('/tiles/contours/{z}/{x}/{y}.pbf', [TileController::class, 'contours'])
     ->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+']);
+
+// Contour labels (points for labeling index contours) - only meaningful for z >= 14
+Route::get('/contours/labels', [TileController::class, 'contourLabels']);
