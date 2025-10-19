@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { FiLayers } from "react-icons/fi";
 
-function LayerControl({ selectedView, setSelectedView }) {
+function LayerControl({ selectedView, setSelectedView, showContours, setShowContours }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -28,6 +28,16 @@ function LayerControl({ selectedView, setSelectedView }) {
               onChange={() => setSelectedView("satellite")}
             />
             <span>Satellite</span>
+          </label>
+          <div style={{ borderTop: '1px solid #eee', margin: '8px 0' }} />
+          <h6 className="layer-title">Overlays</h6>
+          <label>
+            <input
+              type="checkbox"
+              checked={!!showContours}
+              onChange={(e) => setShowContours && setShowContours(e.target.checked)}
+            />
+            <span>Contours (PostGIS)</span>
           </label>
           <label>
             <input

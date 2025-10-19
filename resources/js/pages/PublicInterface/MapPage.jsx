@@ -94,6 +94,8 @@ function MapPage() {
   const [searchError, setSearchError] = useState(null);
   const [searchResults, setSearchResults] = useState([]);
   const [lastQuery, setLastQuery] = useState("");
+  // Contours overlay toggle (PostGIS vector tiles)
+  const [showContours, setShowContours] = useState(false);
 
   const handleSearch = async (arg) => {
     const query = typeof arg === 'string' ? arg : (arg?.query ?? '');
@@ -417,7 +419,7 @@ function MapPage() {
 
   return (
     <div className={themeClass} style={{ height: "100vh", width: "100vw", margin: 0, padding: 0, position: 'relative' }}>
-  <AppMap view={selectedView} zoomControl={false} whenCreated={(m) => { mapRef.current = m; try { window.lv_map = m; } catch {} }}>
+  <AppMap view={selectedView} zoomControl={false} showPostgisContours={showContours} whenCreated={(m) => { mapRef.current = m; try { window.lv_map = m; } catch {} }}>
     {/* Ensure mapRef is set even if whenCreated timing varies */}
   <MapRefBridge onReady={(m) => { if (!mapRef.current) { mapRef.current = m; try { window.lv_map = m; } catch {} } }} />
         {/* Base layer of all lakes; hides selected lake when an overlay is active */}
@@ -567,7 +569,7 @@ function MapPage() {
         onApply={(filters) => applyFilters(filters)}
         initial={activeFilters}
       />
-      <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} />
+  <LayerControl selectedView={selectedView} setSelectedView={setSelectedView} showContours={showContours} setShowContours={setShowContours} />
       <ScreenshotButton />
       {heatLoading && <HeatmapLoadingIndicator />}
       {heatError && !heatLoading && (

@@ -1,6 +1,8 @@
 // resources/js/components/AppMap.jsx
 import React from "react";
 import { MapContainer, TileLayer, useMapEvent, useMap } from "react-leaflet";
+import L from "leaflet";
+import 'leaflet.vectorgrid';
 import "leaflet/dist/leaflet.css";
 
 // No default overlays here; keep AppMap minimal.
@@ -12,14 +14,13 @@ const BASEMAPS = {
   street:
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
   topographic:
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
   osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 };
 
 const ATTRIBUTION =
-  '&copy; <a href="https://www.esri.com/">Esri</a>, ' +
-  "Earthstar Geographics, GIS User Community, " +
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors';
+  '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>, ' +
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Philippines extent
 const PH_BOUNDS = [
@@ -44,6 +45,8 @@ function AppMap({
   tileAttribution = ATTRIBUTION,
   tileUrl, // optional override, else derived from view
   onClick,
+  showPostgisContours = false,
+  contoursUrl = "/api/tiles/contours/{z}/{x}/{y}.pbf",
 }) {
   // Prefer explicit tileUrl when provided; otherwise derive from view
   const url = tileUrl || BASEMAPS[view] || BASEMAPS.osm;
@@ -70,6 +73,8 @@ function AppMap({
   {typeof onClick === 'function' ? <MapClickHandler onClick={onClick} /> : null}
   {typeof disableDrag !== 'undefined' ? <MapInteractionHandler disableDrag={disableDrag} /> : null}
       <TileLayer url={url} attribution={tileAttribution} noWrap={noWrap} />
+
+      {showPostgisContours ? <ContoursVectorLayer url={contoursUrl} /> : null}
 
       {children}
     </MapContainer>
@@ -136,3 +141,37 @@ function MapInteractionHandler({ disableDrag = false }) {
 }
 
 export default AppMap;
+
+function ContoursVectorLayer({ url }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (!map) return;
+    const layer = L.vectorGrid.protobuf(url, {
+      vectorTileLayerStyles: {
+        contours: (props, z) => {
+          const isIndex = props?.idx === 1 || (props?.elev % 50 === 0);
+          return {
+            color: isIndex ? '#111' : '#444',
+            weight: isIndex ? 1.4 : 0.8,
+            opacity: 1,
+          };
+        }
+      },
+      interactive: true,
+      maxNativeZoom: 14,
+      maxZoom: 22,
+    }).addTo(map);
+
+    layer.on('click', (e) => {
+      try {
+        const elev = e?.layer?.properties?.elev;
+        if (typeof elev !== 'undefined') {
+          L.popup().setLatLng(e.latlng).setContent(`Elev: ${elev} m`).openOn(map);
+        }
+      } catch {}
+    });
+
+    return () => { try { map.removeLayer(layer); } catch {} };
+  }, [map, url]);
+  return null;
+}

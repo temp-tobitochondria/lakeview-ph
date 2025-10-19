@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\OrgApplicationController;
 use App\Http\Controllers\FeedbackController; // user feedback
 use App\Http\Controllers\Api\Admin\FeedbackController as AdminFeedbackController; // admin feedback mgmt
 use App\Http\Controllers\GeocodeController;
+use App\Http\Controllers\TileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -357,3 +358,7 @@ Route::get('/tiles/pop/{z}/{x}/{y}', [PopulationController::class, 'tile'])
 Route::get('/population/points', [PopulationController::class, 'points']);
 Route::get('/population/dataset-years', [PopulationController::class, 'datasetYears']);
 Route::get('/population/dataset-info', [PopulationController::class, 'datasetInfo']);
+
+// Vector tile endpoint for contours (PostGIS -> MVT)
+Route::get('/tiles/contours/{z}/{x}/{y}.pbf', [TileController::class, 'contours'])
+    ->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+']);
