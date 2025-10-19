@@ -25,7 +25,6 @@ import PublicSettingsModal from "../../components/settings/PublicSettingsModal";
 import FeedbackModal from "../../components/feedback/FeedbackModal";
 import HeatmapLoadingIndicator from "../../components/HeatmapLoadingIndicator";
 import HeatmapLegend from "../../components/HeatmapLegend";
-import BackToDashboardButton from "../../components/BackToDashboardButton";
 import BaseLakesLayer from "../../components/BaseLakesLayer";
 import { useAuthRole } from "./hooks/useAuthRole";
 import { usePublicLakes } from "./hooks/usePublicLakes";
@@ -525,9 +524,6 @@ function MapPage() {
         </div>
       )}
   {hasHeatLayer && !heatLoading && <HeatmapLegend resolution={heatResolution} />}
-      {/* Back to Dashboard */}
-      <BackToDashboardButton role={userRole} />
-
       {/* Settings Modal (public context) */}
       {authUser && (
         <PublicSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
