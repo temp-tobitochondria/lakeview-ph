@@ -9,6 +9,8 @@ import {
 
 import api from "../../lib/api";
 import kpiCache from '../../lib/kpiCache';
+import DashboardHeader from '../../components/DashboardHeader';
+import { FiUsers as FiUsersIcon } from 'react-icons/fi';
 
 function KpiCard({ title, value, loading, error, icon, to }) {
   const display = loading ? '…' : (error ? '—' : (value ?? '0'));
@@ -158,6 +160,11 @@ export default function OrgOverview({ tenantId: propTenantId }) {
 
   return (
     <>
+      <DashboardHeader
+        icon={<FiUsersIcon />}
+        title="Organization Dashboard"
+        description="Overview of your organization: active members, tests logged, and pending approvals. Use the links to manage members and review tests."
+      />
       <KPIGrid stats={stats} tenantId={tenantId} />
     </>
   );

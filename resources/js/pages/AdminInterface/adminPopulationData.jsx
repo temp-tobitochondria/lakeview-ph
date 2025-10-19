@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../../lib/api';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { FiDatabase, FiUploadCloud, FiPlayCircle, FiStar, FiTrash2 } from 'react-icons/fi';
+import DashboardHeader from '../../components/DashboardHeader';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
 
@@ -24,7 +25,8 @@ export default function AdminPopulationData() {
 
   // showError: whether errors should be surfaced to the UI (we avoid showing on initial auto-load)
   const load = useCallback(async (showError = false) => {
-    setLoading(true); if (showError) setError('');
+    setLoading(true);
+    if (showError) setError('');
     try {
       const params = {};
       if (yearFilter) params.year = yearFilter;
@@ -38,8 +40,6 @@ export default function AdminPopulationData() {
       setLoading(false);
     }
   }, [yearFilter]);
-
-  useEffect(() => { load(false); }, [load]);
 
   // Lightweight polling while any row is ingesting
   useEffect(() => {

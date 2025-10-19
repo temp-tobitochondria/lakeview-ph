@@ -10,6 +10,8 @@ import {
 
 import api from "../../lib/api";
 import kpiCache from '../../lib/kpiCache';
+import DashboardHeader from '../../components/DashboardHeader';
+import { FiHome } from 'react-icons/fi';
 
 /* KPI Grid */
 function KPIGrid() {
@@ -166,16 +168,11 @@ export default function AdminOverview() {
 
   return (
     <>
-      <div className="dashboard-card" style={{ marginBottom: 16 }}>
-        <div className="dashboard-card-header">
-          <div className="dashboard-card-title">
-            <span>Overview</span>
-          </div>
-        </div>
-        <p style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>
-          Quick operational metrics and recent platform KPIs for administrators.
-        </p>
-      </div>
+      <DashboardHeader
+        icon={<FiHome />}
+        title="Overview"
+        description="Quick operational metrics and recent platform KPIs for administrators."
+      />
       <KPIGrid />
     </>
   );

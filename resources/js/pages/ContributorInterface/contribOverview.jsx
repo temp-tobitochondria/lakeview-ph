@@ -5,6 +5,8 @@ import { FiClipboard, FiDatabase, FiUsers } from 'react-icons/fi';
 
 import api from '../../lib/api';
 import kpiCache from '../../lib/kpiCache';
+import DashboardHeader from '../../components/DashboardHeader';
+import { FiHome } from 'react-icons/fi';
 
 function KpiCard({ title, value, loading, error, icon, to }) {
   const display = loading ? '…' : (error ? '—' : (value ?? '0'));
@@ -126,6 +128,11 @@ export default function ContribOverview({ tenantId: propTenantId }) {
 
   return (
     <>
+      <DashboardHeader
+        icon={<FiHome />}
+        title="Contributor Dashboard"
+        description="Quick summary of your tests and organization-level published tests. Use the links to view or manage your water quality tests."
+      />
       <KPIGrid stats={stats} tenantId={tenantId} userId={userId} />
     </>
   );
