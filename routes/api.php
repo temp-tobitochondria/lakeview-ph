@@ -21,6 +21,7 @@ use App\Http\Controllers\FeedbackController; // user feedback
 use App\Http\Controllers\Api\Admin\FeedbackController as AdminFeedbackController; // admin feedback mgmt
 use App\Http\Controllers\GeocodeController;
 use App\Http\Controllers\TileController;
+use App\Http\Controllers\ElevationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -365,3 +366,6 @@ Route::get('/tiles/contours/{z}/{x}/{y}.pbf', [TileController::class, 'contours'
 
 // Contour labels (points for labeling index contours) - only meaningful for z >= 14
 Route::get('/contours/labels', [TileController::class, 'contourLabels']);
+
+// Elevation profile (public)
+Route::post('/elevation/profile', [ElevationController::class, 'profile']);

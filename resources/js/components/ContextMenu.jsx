@@ -16,7 +16,7 @@ const bluePinIcon = new L.DivIcon({
   popupAnchor: [0, -25],
 });
 
-const ContextMenu = ({ map, onMeasureDistance, onMeasureArea }) => {
+const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile }) => {
   const [position, setPosition] = useState(null);
   const [latlng, setLatlng] = useState(null);
   const [pins, setPins] = useState([]);
@@ -132,6 +132,15 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea }) => {
             }}
           >
             <FaDrawPolygon className="context-icon" /> Measure Area
+          </li>
+          <li
+            className="context-item"
+            onClick={() => {
+              onElevationProfile && onElevationProfile();
+              setPosition(null);
+            }}
+          >
+            <FaRuler className="context-icon" /> Elevation Profile
           </li>
           <li className="context-item" onClick={handlePlacePin}>
             <FaMapMarkerAlt className="context-icon" /> Place pin here

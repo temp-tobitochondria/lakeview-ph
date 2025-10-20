@@ -26,6 +26,7 @@ import FeedbackModal from "../../components/feedback/FeedbackModal";
 import HeatmapLoadingIndicator from "../../components/HeatmapLoadingIndicator";
 import HeatmapLegend from "../../components/HeatmapLegend";
 import BaseLakesLayer from "../../components/BaseLakesLayer";
+import ElevationProfileTool from "../../components/ElevationProfileTool";
 import { useAuthRole } from "./hooks/useAuthRole";
 import { usePublicLakes } from "./hooks/usePublicLakes";
 import { useLakeSelection } from "./hooks/useLakeSelection";
@@ -86,6 +87,7 @@ function MapPage() {
   const [aboutDataMenuOpen, setAboutDataMenuOpen] = useState(false);
   const aboutDataMenuOpenRef = React.useRef(false);
   useEffect(() => { aboutDataMenuOpenRef.current = aboutDataMenuOpen; }, [aboutDataMenuOpen]);
+  const [profileActive, setProfileActive] = useState(false);
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -507,12 +509,14 @@ function MapPage() {
               map={map}
               onMeasureDistance={() => { setMeasureMode("distance"); setMeasureActive(true); }}
               onMeasureArea={() => { setMeasureMode("area"); setMeasureActive(true); }}
+              onElevationProfile={() => { setProfileActive(true); setMeasureActive(false); }}
             />
           )}
         </MapWithContextMenu>
 
         {/* Measure Tool */}
-        <MeasureTool active={measureActive} mode={measureMode} onFinish={() => setMeasureActive(false)} />
+  <MeasureTool active={measureActive} mode={measureMode} onFinish={() => setMeasureActive(false)} />
+  <ElevationProfileTool active={profileActive} onClose={() => setProfileActive(false)} />
         <CoordinatesScale />
         {/* Map Controls */}
         <MapControls defaultBounds={worldBounds} />
