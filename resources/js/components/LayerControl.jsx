@@ -29,25 +29,6 @@ function LayerControl({ selectedView, setSelectedView, showContours, setShowCont
             />
             <span>Satellite</span>
           </label>
-          <div style={{ borderTop: '1px solid #eee', margin: '8px 0' }} />
-          <h6 className="layer-title">Overlays</h6>
-          <label>
-            <input
-              type="checkbox"
-              checked={!!showContours}
-              onChange={(e) => setShowContours && setShowContours(e.target.checked)}
-            />
-            <span>Contours (PostGIS)</span>
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={!!showContourLabels}
-              onChange={(e) => setShowContourLabels && setShowContourLabels(e.target.checked)}
-              disabled={!showContours}
-            />
-            <span>Contour labels</span>
-          </label>
           <label>
             <input
               type="radio"
@@ -77,6 +58,16 @@ function LayerControl({ selectedView, setSelectedView, showContours, setShowCont
               onChange={() => setSelectedView("osm")}
             />
             <span>Streets (OSM)</span>
+          </label>
+          <div style={{ borderTop: '1px solid #eee', margin: '8px 0' }} />
+          <h6 className="layer-title">Overlays</h6>
+          <label>
+            <input
+              type="checkbox"
+              checked={!!showContours}
+              onChange={(e) => setShowContours && setShowContours(e.target.checked)}
+            />
+            <span>Elevation Contours</span>
           </label>
         </div>
       )}

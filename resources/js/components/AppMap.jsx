@@ -14,13 +14,19 @@ const BASEMAPS = {
   street:
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
   topographic:
-    "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
   osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 };
 
-const ATTRIBUTION =
-  '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>, ' +
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+const BASemap_ATTRIBUTIONS = {
+  satellite: '&copy; <a href="https://www.esri.com">Esri</a> contributors, ' +
+             'Sources: Esri, USGS, NOAA',
+  street: '&copy; <a href="https://www.esri.com">Esri</a> contributors',
+  topographic: '&copy; <a href="https://www.esri.com">Esri</a> contributors',
+  osm: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+};
 
 // Philippines extent
 const PH_BOUNDS = [
@@ -42,7 +48,7 @@ function AppMap({
   scrollWheelZoom = true,
   zoomControl = true,
   noWrap = true,
-  tileAttribution = ATTRIBUTION,
+  tileAttribution,
   tileUrl, // optional override, else derived from view
   onClick,
   showPostgisContours = false,
@@ -54,6 +60,8 @@ function AppMap({
 }) {
   // Prefer explicit tileUrl when provided; otherwise derive from view
   const url = tileUrl || BASEMAPS[view] || BASEMAPS.osm;
+  // choose attribution: explicit prop > per-basemap > default ATTRIBUTION
+  const attribution = tileAttribution || BASemap_ATTRIBUTIONS[view] || ATTRIBUTION;
 
   // Start with Philippines fully visible by default. If center/zoom provided, use them.
   const mapProps = center && typeof zoom !== "undefined"
@@ -76,10 +84,10 @@ function AppMap({
   { /* Map click handler: if parent passes onClick, attach it via a small component */ }
   {typeof onClick === 'function' ? <MapClickHandler onClick={onClick} /> : null}
   {typeof disableDrag !== 'undefined' ? <MapInteractionHandler disableDrag={disableDrag} /> : null}
-      <TileLayer url={url} attribution={tileAttribution} noWrap={noWrap} />
+  <TileLayer url={url} attribution={attribution} noWrap={noWrap} />
 
   {showPostgisContours ? <ContoursVectorLayer url={contoursUrl} /> : null}
-  {showPostgisContours && showContourLabels ? <ContourLabelsLayer /> : null}
+  {showPostgisContours ? <ContourLabelsLayer /> : null}
 
       {children}
     </MapContainer>
