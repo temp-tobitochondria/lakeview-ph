@@ -47,28 +47,14 @@ export default function TestsTab({ lake, onJumpToStation }) {
         if (!mounted) return;
         let rows = Array.isArray(res?.data) ? res.data : [];
 
-        // Derive org list and station list and years
+        // Derive org list from full payload (so selecting an org doesn't remove other orgs)
         const uniqOrgs = new Map();
-        const uniqStations = new Map();
-        const uniqYears = new Set();
         rows.forEach((r) => {
           const oid = r.organization_id ?? r.organization?.id;
           const oname = r.organization_name ?? r.organization?.name;
           if (oid && oname && !uniqOrgs.has(String(oid))) uniqOrgs.set(String(oid), { id: oid, name: oname });
-
-          const sid = r.station?.id ?? null;
-          const sname = r.station?.name ?? r.station_name ?? (r.latitude != null && r.longitude != null ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}` : null);
-          const skey = sid ?? sname;
-          if (skey && sname && !uniqStations.has(String(skey))) uniqStations.set(String(skey), { id: skey, name: sname });
-
-          if (r.sampled_at) {
-            const d = new Date(r.sampled_at);
-            if (!isNaN(d)) uniqYears.add(String(d.getFullYear()));
-          }
         });
         setOrgs(Array.from(uniqOrgs.values()));
-        setStations(Array.from(uniqStations.values()));
-        setYears(Array.from(uniqYears).map((y) => Number(y)).sort((a,b) => a - b));
 
         // Apply client-side filtering for org, station and year range
         let filtered = rows.filter((r) => {
@@ -93,7 +79,29 @@ export default function TestsTab({ lake, onJumpToStation }) {
           return true;
         });
 
+        // Derive stations and years from the filtered rows so the station list cascades with org/year
+        const uniqStations = new Map();
+        const uniqYears = new Set();
+        filtered.forEach((r) => {
+          const sid = r.station?.id ?? null;
+          const sname = r.station?.name ?? r.station_name ?? (r.latitude != null && r.longitude != null ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}` : null);
+          const skey = sid ?? sname;
+          if (skey && sname && !uniqStations.has(String(skey))) uniqStations.set(String(skey), { id: skey, name: sname });
+          if (r.sampled_at) {
+            const d = new Date(r.sampled_at);
+            if (!isNaN(d)) uniqYears.add(String(d.getFullYear()));
+          }
+        });
+        setStations(Array.from(uniqStations.values()));
+        setYears(Array.from(uniqYears).map((y) => Number(y)).sort((a,b) => a - b));
+
         setTests(filtered);
+
+        // If the currently selected stationId is not in the filtered station list, clear it
+        if (stationId) {
+          const exists = Array.from(uniqStations.values()).some((s) => String(s.id) === String(stationId));
+          if (!exists) setStationId("");
+        }
 
         // Dispatch markers for MapPage so tests render on the map while this tab is active
         const markers = filtered
@@ -181,9 +189,9 @@ export default function TestsTab({ lake, onJumpToStation }) {
         <div style={{ fontSize: 12, color: '#ddd' }}>Markers are shown on the map while this tab is open.</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'end', marginBottom: 6 }}>
             <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
-              <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Organization</label>
+              <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Dataset Source</label>
               <select value={orgId} onChange={(e) => setOrgId(e.target.value)} style={{ padding: '6px 8px' }}>
-                <option value="">All</option>
+                <option value="">All dataset sources</option>
                 {orgs.map((o) => (<option key={o.id} value={String(o.id)}>{o.name}</option>))}
               </select>
             </div>
@@ -233,7 +241,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
           <div style={{ fontSize: 13, fontWeight: 700 }}>{t.sampled_at ? new Date(t.sampled_at).toLocaleString() : '–'}</div>
           <div style={{ fontSize: 11, opacity: 0.7 }}>{t.sampled_at ? '(local time)' : ''}</div>
                 <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{t.station?.name || (t.latitude != null && t.longitude != null ? `${Number(t.latitude).toFixed(6)}, ${Number(t.longitude).toFixed(6)}` : 'Station: –')}</div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{t.organization_name || t.organization?.name || 'Organization'}</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{t.organization_name || t.organization?.name || 'Dataset Source'}</div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="pill-btn liquid" type="button" onClick={() => viewDetails(t)} title="View test"><FiEye /></button>

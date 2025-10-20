@@ -32,7 +32,6 @@ import { usePublicLakes } from "./hooks/usePublicLakes";
 import { useLakeSelection } from "./hooks/useLakeSelection";
 import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
-import { useHotkeys } from "./hooks/useHotkeys";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 import AboutData from "./AboutData";
 import api from "../../lib/api";
@@ -309,7 +308,6 @@ function MapPage() {
     selectLakeFeature, applyOverlayByLayerId, handlePanelToggleWatershed, resetToActive,
   } = useLakeSelection({ publicFC, mapRef, setPanelOpen: setLakePanelOpen });
 
-  useHotkeys({ toggleLakePanel: () => setLakePanelOpen(v => !v), closeLakePanel: () => setLakePanelOpen(false) });
 
   // Compute selected lake bounds (prefer overlay; else from base FeatureCollection)
   const selectedLakeBounds = useMemo(() => {

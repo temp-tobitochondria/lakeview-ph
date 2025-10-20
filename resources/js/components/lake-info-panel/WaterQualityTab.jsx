@@ -73,14 +73,16 @@ function WaterQualityTab({ lake }) {
       const res = await apiPublic(`/public/sample-events${qs}`);
       const rows = Array.isArray(res?.data) ? res.data : [];
       setTests(rows);
-      // Derive orgs list from payload
-      const uniq = new Map();
-      rows.forEach((r) => {
-        const oid = r.organization_id ?? r.organization?.id;
-        const name = r.organization_name ?? r.organization?.name;
-        if (oid && name && !uniq.has(String(oid))) uniq.set(String(oid), { id: oid, name });
-      });
-      setOrgs(Array.from(uniq.values()));
+      // Derive orgs list from payload only when not fetching for a specific org
+      if (!org) {
+        const uniq = new Map();
+        rows.forEach((r) => {
+          const oid = r.organization_id ?? r.organization?.id;
+          const name = r.organization_name ?? r.organization?.name;
+          if (oid && name && !uniq.has(String(oid))) uniq.set(String(oid), { id: oid, name });
+        });
+        setOrgs(Array.from(uniq.values()));
+      }
     } catch (e) {
       console.error("[WaterQualityTab] Failed to load tests", e);
       await alertError("Failed", e?.message || "Could not load water quality tests");
@@ -161,14 +163,19 @@ function WaterQualityTab({ lake }) {
         if (timeRange === 'all') { fromEff = undefined; toEff = undefined; }
         else if (!dateFrom && !dateTo) { const d = new Date(today); d.setFullYear(d.getFullYear() - 5); fromEff = fmtIso(d); toEff = fmtIso(today); }
         else { fromEff = dateFrom || undefined; toEff = dateTo || undefined; }
-        const list = await fetchStationsForLake({ lakeId, from: fromEff, to: toEff, limit: lim });
+        const list = await fetchStationsForLake({ lakeId, from: fromEff, to: toEff, limit: lim, organizationId: orgId });
         if (mounted) setStations(Array.isArray(list) ? list : []);
+        // If the currently selected station is no longer in the list, clear it
+        if (mounted) {
+          const has = Array.isArray(list) ? list.includes(station) : false;
+          if (!has) setStation("");
+        }
       } catch {
         if (mounted) setStations([]);
       }
     })();
     return () => { mounted = false; };
-  }, [lakeId, dateFrom, dateTo, timeRange]);
+  }, [lakeId, dateFrom, dateTo, timeRange, orgId, station]);
 
   // Determine whether there are any named stations (not coordinate-only entries).
   // Coordinate-only station labels are formatted like: "12.345678, 98.765432".
@@ -551,11 +558,11 @@ function WaterQualityTab({ lake }) {
             <option value="month">Month</option>
           </select>
         </div>
-        {/* Organization */}
+        {/* Dataset Source */}
         <div className="form-group" style={{ minWidth: 0 }}>
-          <label style={{ marginBottom: 2, fontSize: 11, color: '#fff' }}>Organization</label>
+          <label style={{ marginBottom: 2, fontSize: 11, color: '#fff' }}>Dataset Source</label>
           <select value={orgId} onChange={(e) => setOrgId(e.target.value)} style={{ padding: '6px 8px' }}>
-            <option value="">All</option>
+            <option value="">All dataset sources</option>
             {orgs.map((o) => (
               <option key={o.id} value={String(o.id)}>{o.name}</option>
             ))}

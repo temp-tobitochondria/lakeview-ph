@@ -18,6 +18,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 // A lightweight tool to draw a path and request an elevation profile from the backend
 export default function ElevationProfileTool({ active, onClose }) {
   const map = useMap();
+  const [animState, setAnimState] = useState(''); // '' | 'enter' | 'exit'
   const [points, setPoints] = useState([]);
   const [mousePos, setMousePos] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -46,6 +47,16 @@ export default function ElevationProfileTool({ active, onClose }) {
         if (container) container.style.cursor = "";
       } catch {}
       containerCursor.current = "";
+    }
+  }, [active]);
+
+  // entrance animation when becoming active
+  useEffect(() => {
+    if (active) {
+      const t = setTimeout(() => setAnimState('enter'), 20);
+      return () => clearTimeout(t);
+    } else {
+      setAnimState('');
     }
   }, [active]);
 
@@ -222,6 +233,19 @@ export default function ElevationProfileTool({ active, onClose }) {
     zIndex: 1200,
   };
 
+  const handleClose = () => {
+    try { const c = map?.getContainer?.(); if (c) c.style.cursor = ""; } catch {};
+    // play exit animation then notify parent
+    setAnimState('exit');
+    setTimeout(() => {
+      setPoints([]);
+      setProfile(null);
+      setPaused(false);
+      setMousePos(null);
+      onClose?.();
+    }, 300);
+  };
+
   return active ? (
     <>
       {line && line.length > 1 && (
@@ -245,16 +269,16 @@ export default function ElevationProfileTool({ active, onClose }) {
         />
       ))}
       {/* Bottom panel with actions and chart, matching WaterQualityTab/LakeInfoPanel styling */}
-      <div style={cardWrap}>
-        <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
+      <div className="elev-card-wrap" style={cardWrap}>
+        <div className={`elev-card ${animState} insight-card`} style={{ backgroundColor: '#0f172a' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
             <h4 style={{ margin: 0, color: '#fff' }}>Elevation Profile</h4>
-            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => setPoints([])} className="pill-btn liquid" style={{ padding: '4px 6px' }}>Clear</button>
               <button onClick={() => requestProfile()} className="pill-btn liquid" style={{ padding: '4px 6px' }} disabled={points.length < 2 || loading}>
                 {loading ? 'Sampling…' : 'Compute'}
               </button>
-              <button onClick={() => { try { const c = map?.getContainer?.(); if (c) c.style.cursor = ""; } catch {}; setPoints([]); setProfile(null); setPaused(false); setMousePos(null); onClose?.(); }} className="pill-btn liquid" style={{ padding: '4px 6px' }}>
+              <button onClick={handleClose} className="pill-btn liquid" style={{ padding: '4px 6px' }}>
                 Close
               </button>
             </div>

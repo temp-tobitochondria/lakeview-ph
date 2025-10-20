@@ -327,6 +327,54 @@ export default function SingleLake({
     return { datasets, unit: unitRef.current || '', maxDepth, hasMultipleDepths, onlySurface };
   }, [events, selectedParam, JSON.stringify(selectedStations), bucket]);
 
+  // Determine whether an info modal is meaningful (chart generated)
+  const canShowInfo = useMemo(() => {
+    if (!applied) return false;
+    if (viewMode === 'time') {
+      // chartData is created only when selectedParam and stations are present and Apply clicked
+      try { return Boolean(chartData && Array.isArray(chartData.datasets) && chartData.datasets.length); } catch { return false; }
+    }
+    // depth view
+    try { return Boolean(depthProfile && Array.isArray(depthProfile.datasets) && depthProfile.datasets.length); } catch { return false; }
+  }, [applied, viewMode, /*chartData*/ events, depthProfile]);
+
+  // Cascading control: parameter can only be chosen when lake, dataset source,
+  // and at least one location are chosen.
+  const canChooseParam = useMemo(() => {
+    return Boolean(selectedLake && selectedOrg && Array.isArray(selectedStations) && selectedStations.length > 0);
+  }, [selectedLake, selectedOrg, selectedStations]);
+
+  const computeMissingFields = () => {
+    const missing = [];
+    if (!selectedLake) { missing.push('Select a lake'); return missing; }
+    if (!selectedOrg) missing.push('choose a dataset source');
+    if (!selectedStations || selectedStations.length === 0) missing.push('choose at least one location');
+    if (!selectedParam) missing.push('select a parameter');
+    return missing;
+  };
+
+  const handleApply = async () => {
+    const missing = computeMissingFields();
+    if (missing.length) {
+      // Build natural-language sentence
+      const sentence = `Please ${missing.join(', ')}.`;
+      try {
+        const Swal = (await import('sweetalert2')).default;
+        Swal.fire({
+          icon: 'warning',
+          title: 'Missing fields',
+          html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`,
+          width: 560,
+          showCloseButton: true,
+        });
+      } catch (e) {
+        window.alert(sentence);
+      }
+      return;
+    }
+    setApplied(true);
+  };
+
   const singleChartOptions = useMemo(() => ({
       responsive: true,
       maintainAspectRatio: false,
@@ -349,8 +397,10 @@ export default function SingleLake({
         <button
           type="button"
           className="pill-btn liquid"
-          title="Explain this graph"
+          title={canShowInfo ? 'Explain this graph' : 'Generate a chart first'}
+          disabled={!canShowInfo}
           onClick={() => {
+            if (!canShowInfo) return;
             // Extract standards from current datasets (threshold lines are labeled "<std> – Min/Max")
             const standards = (() => {
               const ds = chartData?.datasets || [];
@@ -406,14 +456,14 @@ export default function SingleLake({
               <option key={l.id} value={l.id}>{l.name}</option>
             ))}
           </select>
-          <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); setApplied(false); }} disabled={!selectedLake} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">All orgs</option>
+          <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); onStationsChange([]); setApplied(false); }} disabled={!selectedLake} style={{ minWidth: 160, flex: '0 0 auto' }}>
+            <option value="">All dataset sources</option>
             {orgOptions.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
           <div style={{ position: 'relative', flex: '0 0 auto' }}>
-            <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !stations?.length} title={!stations?.length ? 'No stations available' : undefined} onClick={() => {
+            <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stations?.length} title={!selectedOrg ? 'Choose a dataset source first' : (!stations?.length ? 'No stations available' : undefined)} onClick={() => {
               if (!stationsOpen) {
                 // we used to capture button position here but the state was removed; keep this lookup if needed later
                 try { stationBtnRef.current?.getBoundingClientRect(); } catch {};
@@ -426,14 +476,14 @@ export default function SingleLake({
               {stations.length ? stations.map((s) => {
                 const checked = selectedStations.includes(s);
                 return (
-                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer' }}>
+                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer', color: '#fff' }}>
                     <input type="checkbox" checked={checked} onChange={() => {
                       const next = checked ? selectedStations.filter((x) => x !== s) : [...selectedStations, s];
                       onStationsChange(next);
                       onParamChange("");
                       setApplied(false);
                     }} />
-                    <span>{s}</span>
+                    <span style={{ color: '#fff' }}>{s}</span>
                   </label>
                 );
               }) : (
@@ -446,7 +496,7 @@ export default function SingleLake({
               </div>
             </Popover>
           </div>
-          <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!(selectedStations && selectedStations.length)} style={{ minWidth: 160, flex: '0 0 auto' }}>
+          <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ minWidth: 160, flex: '0 0 auto' }}>
             <option value="">Select parameter</option>
             {paramOptions.map((p) => (
               <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
@@ -458,7 +508,7 @@ export default function SingleLake({
                 <button type="button" aria-pressed={seriesMode==='avg'} title="Show aggregated average series" className={`pill-btn ${seriesMode==='avg' ? 'active liquid' : ''}`} onClick={() => setSeriesMode('avg')} style={{ padding:'6px 8px' }}>Average</button>
                 <button type="button" aria-pressed={seriesMode==='per-station'} title="Show one line per selected station" className={`pill-btn ${seriesMode==='per-station' ? 'active liquid' : ''}`} onClick={() => setSeriesMode('per-station')} style={{ padding:'6px 8px' }}>Per-station</button>
               </div>
-              <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)} style={{ minWidth: 96 }}>Apply</button>
+              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ minWidth: 96 }}>Apply</button>
             </div>
           </div>
         </div>

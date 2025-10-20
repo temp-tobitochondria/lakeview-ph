@@ -8,23 +8,6 @@ import TestsTab from "./lake-info-panel/TestsTab";
 import LoadingSpinner from "./LoadingSpinner";
 import LakeFeedbackModal from "./lake-info-panel/LakeFeedbackModal";
 
-/**
- * Props
- * - isOpen: boolean
- * - onClose: () => void
- * - lake: { id, name, ... }
- * - onToggleHeatmap?: (enabled:boolean, km:number) => void
- * - onClearHeatmap?: () => void
- * - heatEnabled?: boolean
- * - heatLoading?: boolean
- * - layers?: Array<{ id, name, notes?, uploaded_by_org?, is_active? }>
- * - activeLayerId?: number|string|null
- * - onSelectLayer?: (layer: object) => void
- * - onResetToActive?: () => void
- * - onToggleWatershed?: (checked: boolean) => void
- * - showWatershed?: boolean
- * - canToggleWatershed?: boolean
- */
 function LakeInfoPanel({
   isOpen,
   onClose,
@@ -51,6 +34,23 @@ function LakeInfoPanel({
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [closing, setClosing] = useState(false);
+  // When the panel is first opened we want to add the "open" class after a
+  // tick so the CSS transition runs. If we mount with `open` already set the
+  // browser doesn't animate.
+  const [animateOpen, setAnimateOpen] = useState(false);
+  useEffect(() => {
+    let t = null;
+    if (isOpen) {
+      // ensure we're not in a closing state and schedule the entrance
+      setClosing(false);
+      // small delay to allow the initial render to apply base styles
+      t = setTimeout(() => setAnimateOpen(true), 20);
+    } else {
+      // hide immediately (closing handled by handleClose)
+      setAnimateOpen(false);
+    }
+    return () => { if (t) clearTimeout(t); };
+  }, [isOpen]);
   const [selectedLayerId, setSelectedLayerId] = useState(activeLayerId ?? null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -91,8 +91,17 @@ function LakeInfoPanel({
     onResetToActive?.();
   };
 
+  // Compute panel class so we can defer adding `open` until animateOpen is true.
+  const panelClass = (() => {
+    if (isOpen) {
+      if (closing) return 'lake-info-panel closing';
+      return `lake-info-panel ${animateOpen ? 'open' : ''}`;
+    }
+    return `lake-info-panel ${closing ? 'closing' : ''}`;
+  })();
+
   return (
-    <div className={`lake-info-panel ${isOpen && !closing ? "open" : "closing"}`}>
+    <div className={panelClass}>
       {/* Header */}
       <div className="lake-info-header">
         <div>

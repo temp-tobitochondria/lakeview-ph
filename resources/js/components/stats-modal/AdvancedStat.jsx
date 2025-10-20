@@ -60,15 +60,15 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       ]
     },
     {
-      heading: 'Organizations (required)',
-      text: 'Pick the data source. For two‑lake comparisons, select one organization per lake to avoid mixing sources.'
+      heading: 'Dataset Sources (required)',
+      text: 'Pick the dataset source. For two‑lake comparisons, select one dataset source per lake to avoid mixing sources.'
     },
     {
       heading: 'Quick start',
       bullets: [
         'Select Applied Standard and Parameter (e.g., DO, pH).',
-        'Choose Primary Lake + its Organization.',
-        'Optionally set Compare to a Class or another Lake (then pick its Organization).',
+        'Choose Primary Lake + its Dataset Source.',
+        'Optionally set Compare to a Class or another Lake (then pick its Dataset Source).',
         'Open the gear to set years and (optionally) an exact depth.',
         'Pick a Test (disabled when not applicable) and click Run Test.',
         'Review the summary, p‑value, and advisories; use Export for PDF.'
@@ -117,9 +117,9 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     {
       heading: 'Tips & edge cases',
       bullets: [
-        'Run disabled? Check Standard, Parameter, Lake, Org(s), Test, and years.',
+  'Run disabled? Check Standard, Parameter, Lake, Dataset Source(s), Test, and years.',
         'Data minimums: Many tests need ≥2 samples (per group).',
-        'Empty depth list? Adjust years, lake, parameter, or organization.',
+  'Empty depth list? Adjust years, lake, parameter, or dataset source.',
         'Two‑lake mode uses server per‑lake aggregates; the client doesn’t average stations.'
       ]
     }
@@ -211,7 +211,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setYearError(err);
   }, [yearFrom, yearTo]);
 
-  // Populate organization options for primary lake when lake or (debounced) date range changes
+  // Populate dataset source options for primary lake when lake or (debounced) date range changes
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -232,7 +232,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     return () => { mounted = false; };
   }, [lakeId, debouncedYearFrom, debouncedYearTo]);
 
-  // Populate secondary organization options when comparing to another lake (debounced years)
+  // Populate secondary dataset source options when comparing to another lake (debounced years)
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -718,14 +718,14 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       </div>
       <div style={{ gridColumn: '3 / span 1', minWidth:0 }}>
         <select required className="pill-btn" value={organizationId} onChange={e=>{ setOrganizationId(e.target.value); setResult(null); }} style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }}>
-          <option value="">Organization</option>
+          <option value="">Dataset Source</option>
           {orgOptions.map(o => <option key={`org-${o.id}`} value={o.id}>{o.name || o.id}</option>)}
         </select>
       </div>
       {compareValue && String(compareValue).startsWith('lake:') ? (
         <div style={{ gridColumn: '4 / span 1', minWidth:0 }}>
           <select required={true} className="pill-btn" value={secondaryOrganizationId} onChange={e=>{ setSecondaryOrganizationId(e.target.value); setResult(null); }} style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }}>
-            <option value="">Secondary Organization</option>
+            <option value="">Secondary Dataset Source</option>
             {secondaryOrgOptions.map(o => <option key={`org2-${o.id}`} value={o.id}>{o.name || o.id}</option>)}
           </select>
         </div>

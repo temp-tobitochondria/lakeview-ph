@@ -31,7 +31,11 @@ export default function LakeForm({
   const [form, setForm] = useState(EMPTY);
 
   useEffect(() => {
-    setForm({ ...EMPTY, ...initialValue });
+    // Normalize any legacy 'present' value to 'unknown' so the "Exists" option
+    // is not selectable in the UI while preserving user data shape.
+    const normalized = { ...EMPTY, ...initialValue };
+    if (normalized.flows_status === 'present') normalized.flows_status = 'unknown';
+    setForm(normalized);
   }, [initialValue, open]);
 
   const submit = async (e) => {
@@ -91,10 +95,12 @@ export default function LakeForm({
         <label className="lv-field">
           <span>Flows data</span>
           <select
-            value={form.flows_status ?? "unknown"}
+            // Force default to 'unknown' when no value is set so the UI shows
+            // "Not yet recorded" by default.
+            value={(form.flows_status || "unknown")}
             onChange={(e) => setForm({ ...form, flows_status: e.target.value })}
           >
-            <option value="present">Exists</option>
+            {/* Removed 'Exists' option per request; default is 'Not yet recorded' */}
             <option value="none">None</option>
             <option value="unknown">Not yet recorded</option>
           </select>

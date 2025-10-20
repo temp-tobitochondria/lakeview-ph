@@ -184,6 +184,81 @@ function CompareLake({
     return hasLake && hasParam && hasStations;
   }, [lakeA, lakeB, selectedParam, selectedStationsA, selectedStationsB]);
 
+  // Controls whether the parameter select should be enabled. Parameter selection
+  // requires that for every selected lake, the dataset source and at least one
+  // location are chosen. If only one lake is selected, only that lake's fields
+  // are required.
+  const canChooseParam = useMemo(() => {
+    const lakes = [ { lake: lakeA, org: selectedOrgA, stations: selectedStationsA }, { lake: lakeB, org: selectedOrgB, stations: selectedStationsB } ];
+    // If no lake selected, cannot choose param
+    if (!lakes.some(l => l.lake)) return false;
+    for (const l of lakes) {
+      if (!l.lake) continue; // lake not selected -> skip
+      if (!l.org) return false; // dataset source required
+      if (!Array.isArray(l.stations) || l.stations.length === 0) return false; // at least one location required
+    }
+    return true;
+  }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB]);
+
+  // Helper to compute missing fields to show to the user
+  const computeMissingFields = () => {
+    const missing = [];
+    if (!lakeA && !lakeB) { missing.push('Select at least one lake (Lake A or Lake B)'); return missing; }
+    const check = (label, lake, org, stations) => {
+      if (!lake) return;
+      if (!org) missing.push(`${label}: Dataset source`);
+      if (!stations || stations.length === 0) missing.push(`${label}: Locations`);
+    };
+    check('Lake A', lakeA, selectedOrgA, selectedStationsA);
+    check('Lake B', lakeB, selectedOrgB, selectedStationsB);
+    if (!selectedParam) missing.push('Parameter');
+    return missing;
+  };
+
+  const handleApply = async () => {
+    const missing = computeMissingFields();
+    if (missing.length) {
+      // If the single missing message is the 'select at least one lake' hint,
+      // render that directly.
+      if (missing.length === 1 && /^Select at least one lake/i.test(missing[0])) {
+        const sentence = `Please select at least one lake (Lake A or Lake B).`;
+        try {
+          const Swal = (await import('sweetalert2')).default;
+          Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+        } catch (e) { window.alert(sentence); }
+        return;
+      }
+
+      // Group missing items by lake and parameter, then build a natural phrase.
+      const lakeMissing = { A: [], B: [] };
+      let paramMissing = false;
+      missing.forEach((m) => {
+        if (/^Lake A:/i.test(m)) lakeMissing.A.push(m.replace(/^Lake A:\s*/i, ''));
+        else if (/^Lake B:/i.test(m)) lakeMissing.B.push(m.replace(/^Lake B:\s*/i, ''));
+        else if (/^Parameter$/i.test(m)) paramMissing = true;
+      });
+
+      const mapToken = (tok) => {
+        if (/dataset source/i.test(tok)) return 'a dataset source';
+        if (/locations?/i.test(tok)) return 'at least one location';
+        return tok.toLowerCase();
+      };
+
+      const clauses = [];
+      if (lakeMissing.A.length) clauses.push(`choose ${lakeMissing.A.map(mapToken).join(' and ')} for Lake A`);
+      if (lakeMissing.B.length) clauses.push(`choose ${lakeMissing.B.map(mapToken).join(' and ')} for Lake B`);
+      if (paramMissing) clauses.push('select a parameter');
+
+      const sentence = `Please ${clauses.join('; ')}.`;
+      try {
+        const Swal = (await import('sweetalert2')).default;
+        Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+      } catch (e) { window.alert(sentence); }
+      return;
+    }
+    setApplied(true);
+  };
+
   useEffect(() => { setApplied(false); }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket]);
   // reset summaries when selections change
   useEffect(() => { if (!applied) { setSummaryA({ n: 0, mean: NaN, median: NaN }); setSummaryB({ n: 0, mean: NaN, median: NaN }); } }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB, selectedParam, timeRange, dateFrom, dateTo, bucket, applied]);
@@ -404,29 +479,38 @@ function CompareLake({
       });
     }
     // Build unified threshold lines: if both lakes use the same standard, draw a single line for it
-    const combinedStandards = new Map(); // stdKey -> { stdLabel, min, max, buckets:Set, lakes:Set<string> }
+    // Combine standards across lakes but only when the threshold values (min/max)
+    // are identical. If two lakes have the same standard but different min/max
+    // values, render them separately so each class' thresholds are visible.
+    const combinedStandards = new Map(); // uniqueKey -> { stdLabel, min, max, buckets:Set, lakes:Set<string>, stdKey }
     lakesToRender.forEach((lk) => {
       const lkKey = String(lk);
       const inner = thByLakeAndStandard.get(lkKey);
       if (!inner) return;
       inner.forEach((entry, stdKey) => {
-        if (!combinedStandards.has(stdKey)) combinedStandards.set(stdKey, { stdLabel: entry.stdLabel, min: entry.min, max: entry.max, buckets: new Set(entry.buckets), lakes: new Set([lkKey]) });
+        const minVal = entry.min != null ? Number(entry.min) : null;
+        const maxVal = entry.max != null ? Number(entry.max) : null;
+        const uniqueKey = `${stdKey}::${minVal ?? 'null'}::${maxVal ?? 'null'}`;
+        if (!combinedStandards.has(uniqueKey)) combinedStandards.set(uniqueKey, { stdLabel: entry.stdLabel, min: minVal, max: maxVal, buckets: new Set(entry.buckets), lakes: new Set([lkKey]), stdKey });
         else {
-          const e = combinedStandards.get(stdKey);
-          if (e.min == null && entry.min != null) e.min = entry.min;
-          if (e.max == null && entry.max != null) e.max = entry.max;
+          const e = combinedStandards.get(uniqueKey);
+          // min/max are identical by construction of uniqueKey; merge buckets and lakes
           entry.buckets.forEach((b) => e.buckets.add(b));
           e.lakes.add(lkKey);
         }
       });
     });
 
+  // Unified colors when min/max are identical across lakes
   const minColorUnified = '#16a34a';
   const maxColorUnified = '#ef4444';
-    const lakeMinColors = ['#16a34a', '#22c55e']; // fallback per-lake
-    const lakeMaxColors = ['#ef4444', '#dc2626'];
+  // Per-lake min/max colors for distinct thresholds
+  // Lake A: Min = green, Max = red
+  // Lake B: Min = yellow, Max = orange
+  const lakeMinColors = ['#16a34a', '#f59e0b']; // Lake A min (green), Lake B min (yellow/orange)
+  const lakeMaxColors = ['#ef4444', '#f97316']; // Lake A max (red), Lake B max (orange)
 
-    combinedStandards.forEach((entry, stdKey) => {
+    combinedStandards.forEach((entry) => {
       if (entry.lakes.size > 1) {
         // Unified line; include each lake's class in the label
         const lakesMeta = Array.from(entry.lakes).map((lkKey) => {
@@ -443,7 +527,7 @@ function CompareLake({
           datasets.push({ label: `${entry.stdLabel} – Max (${lakesMeta})`, data, borderColor: maxColorUnified, backgroundColor: `${maxColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true });
         }
       } else {
-        // Only present in one lake; render per-lake threshold line for that lake
+        // Only present in one lake (or same values grouped under uniqueKey); render per-lake threshold line for that lake
         const onlyLakeKey = Array.from(entry.lakes)[0];
         const li = lakesToRender.findIndex((lk) => String(lk) === onlyLakeKey);
         const minColor = lakeMinColors[li % lakeMinColors.length];
@@ -567,6 +651,15 @@ function CompareLake({
     return { datasets, maxDepth, unit: unitRef.current || '', hasDepthA, hasDepthB };
   }, [eventsA, eventsB, selectedParam, JSON.stringify(selectedStationsA), JSON.stringify(selectedStationsB), bucket, lakeOptions, lakeA, lakeB]);
 
+  // Determine whether an info modal is meaningful (chart generated)
+  const canShowInfo = useMemo(() => {
+    if (!applied) return false;
+    if (viewMode === 'time') {
+      try { return Boolean(chartData && Array.isArray(chartData.datasets) && chartData.datasets.length); } catch { return false; }
+    }
+    try { return Boolean(depthProfile && Array.isArray(depthProfile.datasets) && depthProfile.datasets.length); } catch { return false; }
+  }, [applied, viewMode, chartData, depthProfile]);
+
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -574,7 +667,8 @@ function CompareLake({
         <button
           type="button"
           className="pill-btn liquid"
-          title="Explain this graph"
+          title={canShowInfo ? 'Explain this graph' : 'Generate a chart first'}
+          disabled={!canShowInfo}
           onClick={() => {
             // Parse current datasets to infer which standards (codes) are present
             const ds = chartData?.datasets || [];
@@ -636,12 +730,12 @@ function CompareLake({
             <option value="">Lake A</option>
             {lakeOptions.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
           </select>
-          <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">All orgs</option>
+          <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam("" ); }} disabled={!lakeA} style={{ minWidth: 160, flex: '0 0 auto' }}>
+            <option value="">All dataset sources</option>
             {orgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
           </select>
           <div style={{ position: 'relative', flex: '0 0 auto' }}>
-            <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA} onClick={() => {
+            <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => {
               if (!stationsOpenA) {
                 const r = stationBtnARef.current?.getBoundingClientRect();
                 /* position not used; kept for future */
@@ -655,12 +749,12 @@ function CompareLake({
                 stationsA.map((s) => {
                   const checked = selectedStationsA.includes(s);
                   return (
-                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer' }}>
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer', color: '#fff' }}>
                       <input type="checkbox" checked={checked} onChange={() => {
                         const next = checked ? selectedStationsA.filter((x)=>x!==s) : [...selectedStationsA, s];
                         setSelectedStationsA(next); setSelectedParam("");
                       }} />
-                      <span>{s}</span>
+                      <span style={{ color: '#fff' }}>{s}</span>
                     </label>
                   );
                 })
@@ -680,11 +774,11 @@ function CompareLake({
             {lakeOptions.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
           </select>
           <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">All orgs</option>
+            <option value="">All dataset sources</option>
             {orgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
           </select>
           <div style={{ position: 'relative', flex: '0 0 auto' }}>
-            <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB} onClick={() => {
+            <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => {
               if (!stationsOpenB) {
                 const r = stationBtnBRef.current?.getBoundingClientRect();
                 /* position not used; kept for future */
@@ -698,9 +792,9 @@ function CompareLake({
                 stationsB.map((s) => {
                   const checked = selectedStationsB.includes(s);
                   return (
-                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer' }}>
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer', color: '#fff' }}>
                       <input type="checkbox" checked={checked} onChange={() => { const next = checked ? selectedStationsB.filter((x)=>x!==s) : [...selectedStationsB, s]; setSelectedStationsB(next); setSelectedParam(""); }} />
-                      <span>{s}</span>
+                      <span style={{ color: '#fff' }}>{s}</span>
                     </label>
                   );
                 })
@@ -713,7 +807,7 @@ function CompareLake({
             </Popover>
           </div>
 
-          <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || (!lakeA && !lakeB)} style={{ minWidth: 160, flex: '0 0 auto' }}>
+          <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ minWidth: 160, flex: '0 0 auto' }}>
             <option value="">Select parameter</option>
             {paramList.map((p) => (<option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>))}
           </select>
@@ -723,7 +817,7 @@ function CompareLake({
                 <button type="button" aria-pressed={seriesMode==='avg'} title="Show aggregated average series" className={`pill-btn ${seriesMode==='avg' ? 'active liquid' : ''}`} onClick={() => setSeriesMode('avg')} style={{ padding:'6px 8px' }}>Average</button>
                 <button type="button" aria-pressed={seriesMode==='per-station'} title="Show one line per selected station" className={`pill-btn ${seriesMode==='per-station' ? 'active liquid' : ''}`} onClick={() => setSeriesMode('per-station')} style={{ padding:'6px 8px' }}>Per-station</button>
               </div>
-              <button type="button" className="pill-btn liquid" disabled={!isComplete} onClick={() => setApplied(true)} style={{ minWidth: 96 }}>Apply</button>
+              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ minWidth: 96 }}>Apply</button>
             </div>
           </div>
         </div>
@@ -805,29 +899,28 @@ function CompareLake({
                   }
                 } catch (e) { /* ignore */ }
 
-                // Combine standards across lakes
-                const combinedStandards = new Map(); // stdKey -> { stdLabel, min, max, lakes:Set }
+                // Combine standards across lakes but only when min/max values match.
+                // Key by stdKey::min::max so different threshold values remain distinct.
+                const combinedStandards = new Map(); // uniqueKey -> { stdLabel, min, max, lakes:Set }
                 [lakeA, lakeB].filter(Boolean).forEach((lk) => {
                   const lkKey = String(lk);
                   const inner = thByLakeAndStandard.get(lkKey);
                   if (!inner) return;
                   inner.forEach((entry, stdKey) => {
-                    if (!combinedStandards.has(stdKey)) combinedStandards.set(stdKey, { stdLabel: entry.stdLabel, min: entry.min, max: entry.max, lakes: new Set([lkKey]) });
-                    else {
-                      const e = combinedStandards.get(stdKey);
-                      if (e.min == null && entry.min != null) e.min = entry.min;
-                      if (e.max == null && entry.max != null) e.max = entry.max;
-                      e.lakes.add(lkKey);
-                    }
+                    const minVal = entry.min != null ? Number(entry.min) : null;
+                    const maxVal = entry.max != null ? Number(entry.max) : null;
+                    const uniqueKey = `${stdKey}::${minVal ?? 'null'}::${maxVal ?? 'null'}`;
+                    if (!combinedStandards.has(uniqueKey)) combinedStandards.set(uniqueKey, { stdLabel: entry.stdLabel, min: minVal, max: maxVal, lakes: new Set([lkKey]) });
+                    else combinedStandards.get(uniqueKey).lakes.add(lkKey);
                   });
                 });
 
                 const minColorUnified = '#16a34a';
                 const maxColorUnified = '#ef4444';
-                const lakeMinColors = ['#16a34a', '#22c55e'];
-                const lakeMaxColors = ['#ef4444', '#dc2626'];
+                const lakeMinColors = ['#16a34a', '#f59e0b'];
+                const lakeMaxColors = ['#ef4444', '#f97316'];
 
-                combinedStandards.forEach((entry, stdKey) => {
+                combinedStandards.forEach((entry) => {
                   if (entry.lakes.size > 1) {
                     // Unified line; include each lake's class in the label
                     const lakesMeta = Array.from(entry.lakes).map((lkKey) => {

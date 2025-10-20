@@ -9,7 +9,7 @@ import { FiColumns } from "react-icons/fi";
  * - columns: [{ id, header, accessor?, render?, width?, className?, disableToggle?, defaultHidden?, alwaysVisible? }]
  * - data: array
  * - pageSize: number
- * - actions: [{ label, title, icon, onClick(row), type? }] // type can be 'edit' | 'delete'
+ * - actions: [{ label, title, icon, onClick(row), type?, visible?(row) }] // type can be 'edit' | 'delete'; visible can be a function(row)=>bool or boolean
  * - resetSignal: number  // increment to reset widths / hidden state
  * - columnPicker: boolean | { label?: string, defaultHidden?: string[], locked?: string[] }
  * - toolbar: React.ReactNode | { left?: React.ReactNode, right?: React.ReactNode }
@@ -469,7 +469,13 @@ export default function TableLayout({
                   <td className="lv-td sticky-right lv-td-actions">
                     {(typeof disableActionsWhen === 'function' && disableActionsWhen(row._raw ?? row)) ? null : (
                       <div className="lv-actions-inline">
-                        {actions.map((act, i) => (
+                        {actions
+                          .filter((act) => {
+                            if (typeof act.visible === 'function') return act.visible(row._raw ?? row);
+                            if (typeof act.visible === 'boolean') return act.visible;
+                            return true;
+                          })
+                          .map((act, i) => (
                           <button
                             key={i}
                             className={`icon-btn simple ${act.type === "delete" ? "danger" : act.type === "edit" ? "accent" : ""}`}

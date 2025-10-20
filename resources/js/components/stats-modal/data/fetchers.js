@@ -91,9 +91,9 @@ export async function fetchSampleEvents({ lakeId, from, to, limit = 1000, organi
 }
 
 // Try admin stations first, fallback to sample events derived stations.
-export async function fetchStationsForLake({ lakeId, from, to, limit = 1000 } = {}) {
+export async function fetchStationsForLake({ lakeId, from, to, limit = 1000, organizationId } = {}) {
   if (!lakeId) return [];
-  const key = `stations:${lakeId}|${from||''}|${to||''}|${limit}`;
+  const key = `stations:${lakeId}|${from||''}|${to||''}|${limit}|${organizationId||''}`;
   const cached = _getCache(key);
   if (cached) return cached.slice();
   // Attempt admin stations
@@ -110,7 +110,7 @@ export async function fetchStationsForLake({ lakeId, from, to, limit = 1000 } = 
   } catch {}
   // Fallback to sample events
   try {
-    const qs = buildQuery({ lake_id: lakeId, sampled_from: from || undefined, sampled_to: to || undefined, limit });
+  const qs = buildQuery({ lake_id: lakeId, sampled_from: from || undefined, sampled_to: to || undefined, limit, organization_id: organizationId || undefined });
     let res;
     try { res = await apiPublic(`/public/sample-events${qs}`); }
     catch (e) { if (e?.status === 429) { await new Promise(r=>setTimeout(r,500)); res = await apiPublic(`/public/sample-events${qs}`); } else throw e; }

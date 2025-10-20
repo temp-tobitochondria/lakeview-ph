@@ -300,24 +300,16 @@ export default function ContribWQTests() {
       label: "Edit",
       title: "Edit",
       icon: <FiEdit2 />,
-      onClick: async (row) => {
-        if (!(currentUserId && row.created_by_user_id === currentUserId)) {
-          await alertError('Permission denied', 'You cannot edit this test.');
-          return;
-        }
-        setSelected(row); setEditing(true); setOpen(true);
-      },
+      visible: (row) => Boolean(currentUserId && String(row.created_by_user_id) === String(currentUserId)),
+      onClick: async (row) => { setSelected(row); setEditing(true); setOpen(true); },
     },
     {
       label: "Delete",
       title: "Delete",
       type: "delete",
       icon: <FiTrash2 />,
+      visible: (row) => Boolean(currentUserId && String(row.created_by_user_id) === String(currentUserId)),
       onClick: async (row) => {
-        if (!(currentUserId && row.created_by_user_id === currentUserId)) {
-          await alertError('Permission denied', 'You cannot delete this test.');
-          return;
-        }
         const ok = await swalConfirm({ title: 'Delete this test?', text: `This cannot be undone.`, icon: 'warning', confirmButtonText: 'Delete' });
         if (!ok) return;
         try {

@@ -1,0 +1,36 @@
+/* resources/css/components/elevation-profile.css */
+/* Slide-up entrance and slide-down exit for the elevation profile card */
+.elev-card-wrap {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1200;
+  pointer-events: none; /* card contents will handle events */
+}
+.elev-card {
+  pointer-events: auto;
+  transform-origin: bottom center;
+  will-change: transform, opacity;
+  transition: transform 280ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+.elev-card.enter {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.elev-card.exit {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+/* Slight shadow/emphasis to match existing insight-card look */
+.elev-card .insight-card {
+  box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+}
+
+/* Small responsive tweak to ensure mobile spacing */
+@media (max-width: 640px) {
+  .elev-card-wrap { left: 8px; right: 8px; bottom: 8px; }
+}
