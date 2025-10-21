@@ -1,12 +1,8 @@
 // Lightweight shared data utilities used by Stats modal components.
 
-// Derive a display name for an event's station, falling back to coordinates
+// Derive a display name for an event's station. Coordinate-only is no longer supported.
 export const eventStationName = (ev) => (
-  ev?.station?.name ||
-  ev?.station_name ||
-  ((ev?.latitude != null && ev?.longitude != null)
-    ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}`
-    : null)
+  ev?.station?.name || ev?.station_name || null
 );
 
 export const mean = (arr) => {

@@ -21,18 +21,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
 
-  // Determine whether there are any named stations (not coordinate-only entries).
-  // Coordinate-only station labels are formatted like: "12.345678, 98.765432".
-  const hasNamedStations = useMemo(() => {
-    if (!stations || stations.length === 0) return false;
-    const coordRe = /^\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$/;
-    return stations.some((s) => typeof s.name === 'string' && s.name.trim() !== '' && !coordRe.test(s.name));
-  }, [stations]);
-
-  // If there are no named stations, clear any selected station so filtering doesn't apply.
-  useEffect(() => { if (!hasNamedStations) setStationId(""); }, [hasNamedStations]);
-
-  // Fetch tests and dispatch markers when filters change.
   useEffect(() => {
     if (!lakeId) { setTests([]); setOrgs([]); setStations([]); setYears([]); setInitialLoading(false); return; }
     let mounted = true;
@@ -47,7 +35,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
         if (!mounted) return;
         let rows = Array.isArray(res?.data) ? res.data : [];
 
-        // Derive org list from full payload (so selecting an org doesn't remove other orgs)
         const uniqOrgs = new Map();
         rows.forEach((r) => {
           const oid = r.organization_id ?? r.organization?.id;
@@ -56,7 +43,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
         });
         setOrgs(Array.from(uniqOrgs.values()));
 
-        // Apply client-side filtering for org, station and year range
         let filtered = rows.filter((r) => {
           if (orgId) {
             const oid = r.organization_id ?? r.organization?.id;
@@ -64,9 +50,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
           }
           if (stationId) {
             const sid = r.station?.id ?? null;
-            const sname = r.station?.name ?? r.station_name ?? (r.latitude != null && r.longitude != null ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}` : null);
-            const skey = sid ?? sname;
-            if (!skey || String(skey) !== String(stationId)) return false;
+            if (!sid || String(sid) !== String(stationId)) return false;
           }
           if (yearFrom || yearTo) {
             if (!r.sampled_at) return false;
@@ -79,14 +63,12 @@ export default function TestsTab({ lake, onJumpToStation }) {
           return true;
         });
 
-        // Derive stations and years from the filtered rows so the station list cascades with org/year
         const uniqStations = new Map();
         const uniqYears = new Set();
         filtered.forEach((r) => {
           const sid = r.station?.id ?? null;
-          const sname = r.station?.name ?? r.station_name ?? (r.latitude != null && r.longitude != null ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}` : null);
-          const skey = sid ?? sname;
-          if (skey && sname && !uniqStations.has(String(skey))) uniqStations.set(String(skey), { id: skey, name: sname });
+          const sname = r.station?.name ?? r.station_name ?? null;
+          if (sid && sname && !uniqStations.has(String(sid))) uniqStations.set(String(sid), { id: sid, name: sname });
           if (r.sampled_at) {
             const d = new Date(r.sampled_at);
             if (!isNaN(d)) uniqYears.add(String(d.getFullYear()));
@@ -97,18 +79,15 @@ export default function TestsTab({ lake, onJumpToStation }) {
 
         setTests(filtered);
 
-        // If the currently selected stationId is not in the filtered station list, clear it
         if (stationId) {
           const exists = Array.from(uniqStations.values()).some((s) => String(s.id) === String(stationId));
           if (!exists) setStationId("");
         }
 
-        // Dispatch markers for MapPage so tests render on the map while this tab is active
         const markers = filtered
           .map((r) => {
-            // support multiple coordinate shapes
-            const lat = r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null) ?? r.station?.latitude ?? r.station?.lat;
-            const lon = r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null) ?? r.station?.longitude ?? r.station?.lon;
+            const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
+            const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
             if (lat == null || lon == null) return null;
             return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
           })
@@ -125,16 +104,14 @@ export default function TestsTab({ lake, onJumpToStation }) {
     return () => { mounted = false; };
   }, [lakeId, orgId, stationId, yearFrom, yearTo]);
 
-  // Respond to explicit requests to emit markers (sent when tab becomes active)
   useEffect(() => {
     const onRequest = async () => {
       try {
-        // If we already have tests loaded, emit their markers immediately
         if (tests && tests.length) {
           const markers = tests
             .map((r) => {
-              const lat = r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null) ?? r.station?.latitude ?? r.station?.lat;
-              const lon = r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null) ?? r.station?.longitude ?? r.station?.lon;
+              const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
+              const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
               if (lat == null || lon == null) return null;
               return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
             })
@@ -145,7 +122,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
           return;
         }
 
-        // Otherwise, no-op (the main fetch will dispatch markers when ready)
       } catch (err) {
         console.warn('[TestsTab] failed to respond to marker request', err);
       }
@@ -154,8 +130,8 @@ export default function TestsTab({ lake, onJumpToStation }) {
     return () => window.removeEventListener('lv-request-wq-markers', onRequest);
   }, [tests]);
   const extractCoords = (t) => {
-    const lat = t.latitude ?? t.lat ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[1] : null) : null) ?? t.station?.latitude ?? t.station?.lat;
-    const lon = t.longitude ?? t.lon ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[0] : null) : null) ?? t.station?.longitude ?? t.station?.lon;
+    const lat = t.station?.latitude ?? t.station?.lat ?? t.latitude ?? t.lat ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[1] : null) : null);
+    const lon = t.station?.longitude ?? t.station?.lon ?? t.longitude ?? t.lon ?? (t.point?.coordinates ? (Array.isArray(t.point.coordinates) ? t.point.coordinates[0] : null) : null);
     if (lat == null || lon == null) return null;
     return { lat: Number(lat), lon: Number(lon) };
   };
@@ -195,22 +171,13 @@ export default function TestsTab({ lake, onJumpToStation }) {
                 {orgs.map((o) => (<option key={o.id} value={String(o.id)}>{o.name}</option>))}
               </select>
             </div>
-            {hasNamedStations ? (
-              <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
-                <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Station</label>
-                <select value={stationId} onChange={(e) => setStationId(e.target.value)} style={{ padding: '6px 8px' }}>
-                  <option value="">All</option>
-                  {stations.map((s) => (<option key={s.id} value={String(s.id)}>{s.name}</option>))}
-                </select>
-              </div>
-            ) : (
-              <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
-                <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Station</label>
-                <select disabled aria-disabled="true" title="Samples are coordinate-only — no fixed stations" style={{ padding: '6px 8px', color: '#bbb', backgroundColor: 'transparent' }}>
-                  <option>Samples are coordinate-only — no fixed stations</option>
-                </select>
-              </div>
-            )}
+            <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
+              <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Station</label>
+              <select value={stationId} onChange={(e) => setStationId(e.target.value)} style={{ padding: '6px 8px' }}>
+                <option value="">All</option>
+                {stations.map((s) => (<option key={s.id} value={String(s.id)}>{s.name}</option>))}
+              </select>
+            </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
               <div className="form-group" style={{ minWidth: 0 }}>
                 <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Year from</label>
@@ -240,7 +207,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
               <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{t.sampled_at ? new Date(t.sampled_at).toLocaleString() : '–'}</div>
           <div style={{ fontSize: 11, opacity: 0.7 }}>{t.sampled_at ? '(local time)' : ''}</div>
-                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{t.station?.name || (t.latitude != null && t.longitude != null ? `${Number(t.latitude).toFixed(6)}, ${Number(t.longitude).toFixed(6)}` : 'Station: –')}</div>
+                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{t.station?.name || 'Station: –'}</div>
                 <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{t.organization_name || t.organization?.name || 'Dataset Source'}</div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -257,7 +224,6 @@ export default function TestsTab({ lake, onJumpToStation }) {
   );
 }
 
-// Render modal at file end to avoid returning siblings from main component
 export function TestsTabModalHost({ open, record, onClose }) {
   return (
     <PublicWQTestModal open={open} record={record} onClose={onClose} />

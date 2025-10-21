@@ -177,19 +177,10 @@ function WaterQualityTab({ lake }) {
     return () => { mounted = false; };
   }, [lakeId, dateFrom, dateTo, timeRange, orgId, station]);
 
-  // Determine whether there are any named stations (not coordinate-only entries).
-  // Coordinate-only station labels are formatted like: "12.345678, 98.765432".
-  const hasNamedStations = useMemo(() => {
-    if (!stations || stations.length === 0) return false;
-    const coordRe = /^\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$/;
-    return stations.some((s) => typeof s === 'string' && s.trim() !== '' && !coordRe.test(s));
-  }, [stations]);
-
-  // If there are no named stations, clear any selected station so filtering doesn't apply.
-  useEffect(() => { if (!hasNamedStations) setStation(""); }, [hasNamedStations]);
+  // Stations are required; coordinate-only records are not supported
 
   // Resolve station name for an event (consistent with fetchers)
-  const eventStationName = (ev) => ev?.station?.name || ev?.station_name || ((ev?.latitude != null && ev?.longitude != null) ? `${Number(ev.latitude).toFixed(6)}, ${Number(ev.longitude).toFixed(6)}` : null);
+  const eventStationName = (ev) => ev?.station?.name || ev?.station_name || null;
   const visibleTests = useMemo(() => {
     if (!tests?.length) return [];
     if (!station) return tests.slice();
@@ -201,8 +192,14 @@ function WaterQualityTab({ lake }) {
   useEffect(() => {
     try {
       const markers = (visibleTests || [])
-        .filter((r) => r && r.latitude != null && r.longitude != null)
-        .map((r) => ({ lat: Number(r.latitude), lon: Number(r.longitude), label: (r.station?.name || null) }));
+        .map((r) => {
+          if (!r) return null;
+          const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
+          const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
+          if (lat == null || lon == null) return null;
+          return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
+        })
+        .filter(Boolean);
       window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } }));
     } catch {}
   }, [visibleTests]);
@@ -568,23 +565,14 @@ function WaterQualityTab({ lake }) {
             ))}
           </select>
         </div>
-        {/* Station: show normal select when named stations exist; otherwise show a disabled select with explanation */}
-        {hasNamedStations ? (
-            <div className="form-group" style={{ minWidth: 0 }}>
-            <label style={{ marginBottom: 2, fontSize: 11, color: '#fff' }}>Station</label>
-            <select value={station} onChange={(e) => setStation(e.target.value)} style={{ padding: '6px 8px' }}>
-              <option value="">All</option>
-              {stations.map((s) => (<option key={s} value={s}>{s}</option>))}
-            </select>
-          </div>
-        ) : (
-          <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
-            <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Station</label>
-            <select disabled aria-disabled="true" title="Samples are coordinate-only — no fixed stations" style={{ padding: '6px 8px', color: '#bbb', backgroundColor: 'transparent' }}>
-              <option>Samples are coordinate-only — no fixed stations</option>
-            </select>
-          </div>
-        )}
+        {/* Station selector */}
+        <div className="form-group" style={{ minWidth: 0 }}>
+          <label style={{ marginBottom: 2, fontSize: 11, color: '#fff' }}>Station</label>
+          <select value={station} onChange={(e) => setStation(e.target.value)} style={{ padding: '6px 8px' }}>
+            <option value="">All</option>
+            {stations.map((s) => (<option key={s} value={s}>{s}</option>))}
+          </select>
+        </div>
       </div>
   <div style={{ fontSize: 11, color: '#bbb', marginBottom: 6 }}>(Dates shown in local time)</div>
       {loading && (

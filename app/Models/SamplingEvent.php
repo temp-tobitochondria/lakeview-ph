@@ -23,7 +23,6 @@ class SamplingEvent extends Model
         'lake_id',
         'station_id',
         'applied_standard_id',
-        'geom_point',
         'sampled_at',
         'sampler_name',
         'method',

@@ -58,11 +58,17 @@ export default function SingleLake({
   const [paramX, setParamX] = useState('');
   const [paramY, setParamY] = useState('');
   const { events, loading } = useSampleEvents(selectedLake, selectedOrg, timeRange, dateFrom, dateTo);
+  // All datasets are expected to have station identifiers
+  const hasStationIds = true;
   const { orgOptions: orgOptionsLocal, stationsByOrg, allStations } = useStationsCache(selectedLake);
   const stationsList = useMemo(() => (!selectedOrg ? (allStations || []) : (stationsByOrg?.[String(selectedOrg)] || [])), [selectedOrg, allStations, stationsByOrg]);
   useEffect(() => {
     setApplied(false);
   }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType, paramX, paramY, spatialSnapshot, spatialDepth]);
+
+  // per-station mode available when stations are present
+
+  // All chart types available as stations are required
   const summaryStats = useSummaryStats({ applied, events, selectedStations, selectedParam });
   const nameForSelectedLake = useMemo(() => lakeName(lakeOptions, selectedLake) || String(selectedLake || '') || '', [lakeOptions, selectedLake]);
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
@@ -85,14 +91,15 @@ export default function SingleLake({
   }, [applied, chartType, chartData, depthProfile, spatialTrend, correlation]);
 
   const canChooseParam = useMemo(() => {
-    return Boolean(selectedLake && selectedOrg && Array.isArray(selectedStations) && selectedStations.length > 0);
+    if (!selectedLake || !selectedOrg) return false;
+    return Array.isArray(selectedStations) && selectedStations.length > 0;
   }, [selectedLake, selectedOrg, selectedStations]);
 
   const computeMissingFields = () => {
     const missing = [];
     if (!selectedLake) { missing.push('Select a lake'); return missing; }
     if (!selectedOrg) missing.push('choose a dataset source');
-    if (!selectedStations || selectedStations.length === 0) missing.push('choose at least one location');
+  if (!selectedStations || selectedStations.length === 0) missing.push('choose at least one location');
     if (chartType === 'correlation') {
       if (selectedStations && selectedStations.length !== 1) missing.push('choose exactly one location for correlation');
       if (!paramX) missing.push('select parameter X');
@@ -128,9 +135,9 @@ export default function SingleLake({
   const singleChartOptions = useMemo(() => baseLineChartOptions(), []);
 
   const isComplete = useMemo(() => {
-    if (!selectedLake || !selectedStations || !selectedStations.length) return false;
-    if (chartType === 'correlation') return selectedStations.length === 1 && paramX && paramY && String(paramX) !== String(paramY);
-    return Boolean(selectedParam);
+    if (!selectedLake) return false;
+    if (chartType === 'correlation') return selectedStations && selectedStations.length === 1 && paramX && paramY && String(paramX) !== String(paramY);
+    return Boolean(selectedStations && selectedStations.length > 0 && selectedParam);
   }, [selectedLake, JSON.stringify(selectedStations), chartType, paramX, paramY, selectedParam]);
 
   return (
@@ -207,22 +214,78 @@ export default function SingleLake({
                 ))}
               </select>
             </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Locations</div>
-              <div style={{ position: 'relative' }}>
-                <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stationsList?.length} title={!selectedOrg ? 'Choose a dataset source first' : (!stationsList?.length ? 'No stations available' : undefined)} onClick={() => setStationsOpen((v) => !v)} style={{ width: '100%' }}>
-                  {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
-                </button>
-                <StationPicker
-                  anchorRef={stationBtnRef}
-                  open={stationsOpen}
-                  onClose={() => setStationsOpen(false)}
-                  stations={stationsList}
-                  value={selectedStations}
-                  onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
-                />
+            {true ? (
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Locations</div>
+                <div style={{ position: 'relative' }}>
+                  <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stationsList?.length} title={!selectedOrg ? 'Choose a dataset source first' : (!stationsList?.length ? 'No stations available' : undefined)} onClick={() => setStationsOpen((v) => !v)} style={{ width: '100%' }}>
+                    {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
+                  </button>
+                  <StationPicker
+                    anchorRef={stationBtnRef}
+                    open={stationsOpen}
+                    onClose={() => setStationsOpen(false)}
+                    stations={stationsList}
+                    value={selectedStations}
+                    onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
+                  />
+                </div>
               </div>
+            ) : null}
+
+            {/* Chart Type */}
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
+              <select className="pill-btn" value={chartType} onChange={(e) => {
+                const next = e.target.value;
+                setChartType(next);
+                if (next === 'correlation') {
+                  // Seed X/Y if empty to help users see something quickly
+                  if (!paramX && selectedParam) setParamX(selectedParam);
+                  if (!paramY) {
+                    const alt = (paramOptions || []).find(p => String(p.key || p.id || p.code) !== String(paramX || selectedParam));
+                    if (alt) setParamY(alt.key || alt.id || alt.code);
+                  }
+                }
+                setApplied(false);
+              }} style={{ width: '100%' }}>
+                <option value="time">Time series</option>
+                <option value="depth">Depth profile</option>
+                <option value="spatial">Spatial trend</option>
+                <option value="correlation">Correlation</option>
+              </select>
+              
             </div>
+
+            {(chartType === 'time' || chartType === 'depth') && (
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
+                <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+              </div>
+            )}
+            {chartType === 'spatial' && (
+              <>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Snapshot</div>
+                  <select className="pill-btn" value={spatialSnapshot} onChange={(e) => { setSpatialSnapshot(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+                    <option value="latest">Latest per station</option>
+                    <option value="mean">Mean within range</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Depth</div>
+                  <select className="pill-btn" value={spatialDepth} onChange={(e) => { setSpatialDepth(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+                    <option value="surface">Surface only (0 m)</option>
+                    <option value="avg">All depths (avg)</option>
+                  </select>
+                </div>
+              </>
+            )}
+            {chartType === 'correlation' && (
+              <div style={{ fontSize: 12, opacity: 0.8 }}>
+                Station requirement: select exactly one location.
+              </div>
+            )}
 
             {/* Parameters */}
             {chartType !== 'correlation' ? (
@@ -256,59 +319,6 @@ export default function SingleLake({
                   </select>
                 </div>
               </>
-            )}
-
-            {/* Chart Type */}
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
-              <select className="pill-btn" value={chartType} onChange={(e) => {
-                const next = e.target.value;
-                setChartType(next);
-                if (next === 'correlation') {
-                  // Seed X/Y if empty to help users see something quickly
-                  if (!paramX && selectedParam) setParamX(selectedParam);
-                  if (!paramY) {
-                    const alt = (paramOptions || []).find(p => String(p.key || p.id || p.code) !== String(paramX || selectedParam));
-                    if (alt) setParamY(alt.key || alt.id || alt.code);
-                  }
-                }
-                setApplied(false);
-              }} style={{ width: '100%' }}>
-                <option value="time">Time series</option>
-                <option value="depth">Depth profile</option>
-                <option value="spatial">Spatial trend</option>
-                <option value="correlation">Correlation</option>
-              </select>
-            </div>
-
-            {(chartType === 'time' || chartType === 'depth') && (
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
-                <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
-              </div>
-            )}
-            {chartType === 'spatial' && (
-              <>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Snapshot</div>
-                  <select className="pill-btn" value={spatialSnapshot} onChange={(e) => { setSpatialSnapshot(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                    <option value="latest">Latest per station</option>
-                    <option value="mean">Mean within range</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Depth</div>
-                  <select className="pill-btn" value={spatialDepth} onChange={(e) => { setSpatialDepth(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                    <option value="surface">Surface only (0 m)</option>
-                    <option value="avg">All depths (avg)</option>
-                  </select>
-                </div>
-              </>
-            )}
-            {chartType === 'correlation' && (
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                Station requirement: select exactly one location.
-              </div>
             )}
 
             <div>

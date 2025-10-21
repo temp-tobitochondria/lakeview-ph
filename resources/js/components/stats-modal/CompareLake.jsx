@@ -45,6 +45,9 @@ function CompareLake({
   const { events: eventsA, loading: loadingA } = useSampleEvents(lakeA, selectedOrgA, timeRange, dateFrom, dateTo);
   const { events: eventsB, loading: loadingB } = useSampleEvents(lakeB, selectedOrgB, timeRange, dateFrom, dateTo);
   const loading = loadingA || loadingB;
+  // Station identifiers are required for all datasets
+  const hasStationIdsA = true;
+  const hasStationIdsB = true;
   const [localParams, setLocalParams] = useState([]);
   const [applied, setApplied] = useState(false);
   const summaryA = useSummaryStats({ applied, events: eventsA, selectedStations: selectedStationsA, selectedParam });
@@ -96,7 +99,7 @@ function CompareLake({
     for (const l of lakes) {
       if (!l.lake) continue; // lake not selected -> skip
       if (!l.org) return false; // dataset source required
-      if (!Array.isArray(l.stations) || l.stations.length === 0) return false; // at least one location required
+      if (!Array.isArray(l.stations) || l.stations.length === 0) return false; // require at least one station
     }
     return true;
   }, [lakeA, lakeB, selectedOrgA, selectedOrgB, selectedStationsA, selectedStationsB]);
@@ -283,12 +286,14 @@ function CompareLake({
                 <option value="">All dataset sources</option>
                 {orgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
               </select>
-              <div style={{ position: 'relative' }}>
-                <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ width: '100%' }}>
-                  {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
-                </button>
-                <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
-              </div>
+              {true ? (
+                <div style={{ position: 'relative' }}>
+                  <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ width: '100%' }}>
+                    {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
+                  </button>
+                  <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
+                </div>
+              ) : null}
             </div>
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
@@ -303,12 +308,14 @@ function CompareLake({
                 <option value="">All dataset sources</option>
                 {orgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
               </select>
-              <div style={{ position: 'relative' }}>
-                <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ width: '100%' }}>
-                  {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
-                </button>
-                <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
-              </div>
+              {true ? (
+                <div style={{ position: 'relative' }}>
+                  <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ width: '100%' }}>
+                    {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
+                  </button>
+                  <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
+                </div>
+              ) : null}
             </div>
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />

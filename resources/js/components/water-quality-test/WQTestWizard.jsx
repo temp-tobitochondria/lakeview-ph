@@ -31,7 +31,6 @@ const INITIAL_DATA = {
   lake_id: "",
   lake_name: "",
   lake_class_code: "",
-  loc_mode: "coord",
   lat: "",
   lng: "",
   station_id: "",
@@ -343,7 +342,6 @@ export default function WQTestWizard({
       return null;
     }
   };
-  const setLocMode = (data, setData, mode) => setData({ ...data, loc_mode: mode });
   const setCoords = (data, setData, lat, lng) => {
     const nlat = Number(lat), nlng = Number(lng);
     if (!Number.isFinite(nlat) || !Number.isFinite(nlng)) return setData({ ...data, lat, lng });
@@ -403,6 +401,12 @@ export default function WQTestWizard({
   };
 
   const submit = (data) => {
+    if (!data?.station_id) {
+      alertError('Missing station', 'A station is required for every sampling event. Please select or create a station.');
+      const err = new Error('Station is required');
+      err.code = 'VALIDATION';
+      throw err;
+    }
     const payload = {
       organization_id: data.organization_id ?? null,
       lake_id: data.lake_id ? Number(data.lake_id) : null,
@@ -492,10 +496,8 @@ export default function WQTestWizard({
       key: STEP_LABELS[0].key,
       title: STEP_LABELS[0].title,
       canNext: (d) => {
-        if (!d.lake_id) return false;
-        if (d.loc_mode === "coord") return d.lat !== "" && d.lng !== "";
-        if (d.station_id) return true;
-        return false;
+        // Station is required for all sampling events
+        return !!d.lake_id && !!d.station_id;
       },
       render: ({ data, setData }) => (
         <div className="wizard-pane">
@@ -514,148 +516,69 @@ export default function WQTestWizard({
               </select>
             </FG>
           </FormRow>
+          {/* Station selection (required) */}
+          <FormRow>
+            <FG label="Existing Station *" style={{ minWidth: 260 }}>
+              <select
+                value={data.station_id}
+                onChange={(e) => pickStation(data, setData, e.target.value)}
+                disabled={!data.lake_id}
+              >
+                <option value="">
+                  {data.lake_id ? "Select a station…" : "Choose a lake first"}
+                </option>
+                {stationOptions(data).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </FG>
 
-              <div className="org-form" style={{ marginTop: 8 }}>
-            <div className="form-group" style={{ minWidth: 220 }}>
-              <label>Mode</label>
-              <div className="segmented-pills">
-                <button
-                  className={`pill-btn ${data.loc_mode === "coord" ? "primary" : "ghost"}`}
-                  onClick={() => setLocMode(data, setData, "coord")}
-                  type="button"
-                >
-                  Coordinates
-                </button>
-                <button
-                  className={`pill-btn ${data.loc_mode === "station" ? "primary" : "ghost"}`}
-                  onClick={() => setLocMode(data, setData, "station")}
-                  type="button"
-                >
-                  Station
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {data.loc_mode === "coord" ? (
-            <>
-              <FormRow>
-                <FG label="Latitude *">
-                  <input
-                    type="number"
-                    value={data.lat}
-                    onChange={(e) => setCoords(data, setData, e.target.value, data.lng)}
-                  />
-                </FG>
-                <FG label="Longitude *">
-                  <input
-                    type="number"
-                    value={data.lng}
-                    onChange={(e) => setCoords(data, setData, data.lat, e.target.value)}
-                  />
-                </FG>
-              </FormRow>
-
-              <div style={{ marginTop: 8 }}>
-                <div style={{ padding: 12, border: '1px dashed #e5e7eb', borderRadius: 6, background: '#fff' }}>
-                  <div style={{ marginBottom: 8 }}><strong>Pin Drop</strong></div>
-                  <div style={{ marginBottom: 8 }}>You can also click the map below to drop a pin — the selected coordinates will appear above.</div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ minWidth: 220 }}>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>Selected Latitude</div>
-                      <div style={{ fontWeight: 600 }}>{data.lat !== '' && data.lat !== null ? String(data.lat) : '—'}</div>
-                    </div>
-                    <div style={{ minWidth: 220 }}>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>Selected Longitude</div>
-                      <div style={{ fontWeight: 600 }}>{data.lng !== '' && data.lng !== null ? String(data.lng) : '—'}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <FormRow>
-                <FG label="Existing Station" style={{ minWidth: 260 }}>
-                  <select
-                    value={data.station_id}
-                    onChange={(e) => pickStation(data, setData, e.target.value)}
+            {canManageStations && (
+              <FG label="Actions" style={{ minWidth: 220 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="pill-btn primary"
+                    onClick={async () => {
+                      if (!data.lake_id) return;
+                      await fetchStationsForLake(data.lake_id).catch(() => {});
+                      setStationEdit(null);
+                      setStationModalOpen(true);
+                    }}
                     disabled={!data.lake_id}
                   >
-                    <option value="">
-                      {data.lake_id ? "Select a station…" : "Choose a lake first"}
-                    </option>
-                    {stationOptions(data).map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </FG>
+                    <FiPlus /> New Station
+                  </button>
+                  <button
+                    className="pill-btn ghost"
+                    disabled={!data.station_id}
+                    onClick={async () => {
+                      if (!data.station_id) return;
+                      await fetchStationsForLake(data.lake_id).catch(() => {});
+                      setStationEdit(
+                        stationOptions(data).find((s) => String(s.id) === String(data.station_id)) || null
+                      );
+                      setStationModalOpen(true);
+                    }}
+                  >
+                    <FiEdit2 />
+                  </button>
+                  <button
+                    className="pill-btn ghost danger"
+                    disabled={!data.station_id}
+                    onClick={() => deleteStationApi(data, setData, Number(data.station_id))}
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
+              </FG>
+            )}
+          </FormRow>
 
-                {canManageStations && (
-                  <FG label="Actions" style={{ minWidth: 220 }}>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        className="pill-btn primary"
-                        onClick={async () => {
-                          if (!data.lake_id) return;
-                          await fetchStationsForLake(data.lake_id).catch(() => {});
-                          setStationEdit(null);
-                          setStationModalOpen(true);
-                        }}
-                        disabled={!data.lake_id}
-                      >
-                        <FiPlus /> New Station
-                      </button>
-                      <button
-                        className="pill-btn ghost"
-                        disabled={!data.station_id}
-                        onClick={async () => {
-                          if (!data.station_id) return;
-                          await fetchStationsForLake(data.lake_id).catch(() => {});
-                          setStationEdit(
-                            stationOptions(data).find((s) => String(s.id) === String(data.station_id)) || null
-                          );
-                          setStationModalOpen(true);
-                        }}
-                      >
-                        <FiEdit2 />
-                      </button>
-                      <button
-                        className="pill-btn ghost danger"
-                        disabled={!data.station_id}
-                        onClick={() => deleteStationApi(data, setData, Number(data.station_id))}
-                      >
-                        <FiTrash2 />
-                      </button>
-                    </div>
-                  </FG>
-                )}
-              </FormRow>
-
-              <FormRow>
-                <FG label={`Latitude ${data.station_id ? "" : "*"}`}>
-                  <input
-                    type="number"
-                    value={data.lat}
-                    onChange={(e) => setCoords(data, setData, e.target.value, data.lng)}
-                  />
-                </FG>
-                <FG label={`Longitude ${data.station_id ? "" : "*"}`}>
-                  <input
-                    type="number"
-                    value={data.lng}
-                    onChange={(e) => setCoords(data, setData, data.lat, e.target.value)}
-                  />
-                </FG>
-              </FormRow>
-            </>
-          )}
-
-          {/* Map */}
+          {/* Map (station-only; no pin drop) */}
           <div className="map-preview" style={{ marginTop: 12 }}>
-            <AppMap onClick={(e) => handleMapClick(data, setData, e)} style={{ height: 380 }}>
+            <AppMap style={{ height: 380 }}>
               {data.lake_id && mergedLakeGeoms?.[String(data.lake_id)] ? (
                 <GeoJSON key={String(data.lake_id)} data={mergedLakeGeoms[String(data.lake_id)]} style={{ color: "#2563eb", weight: 2, fillOpacity: 0.1 }} />
               ) : null}
@@ -664,7 +587,7 @@ export default function WQTestWizard({
                 <Marker position={[data.geom_point.lat, data.geom_point.lng]} icon={DEFAULT_ICON}>
                   <Popup>
                     <div>
-                      <div><strong>Point</strong></div>
+                      <div><strong>Station Coordinates</strong></div>
                       <div>{data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? Number(data.geom_point.lat).toFixed(6) : '—'}, {data.geom_point && Number.isFinite(Number(data.geom_point.lng)) ? Number(data.geom_point.lng).toFixed(6) : '—'}</div>
                       {data.station_id ? <div>Station: {data.station_name}</div> : null}
                     </div>
@@ -900,9 +823,8 @@ export default function WQTestWizard({
               <div className="dashboard-card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div><strong>Lake:</strong> {data.lake_name || "—"}</div>
                 <div><strong>Lake Class:</strong> {data.lake_class_code || "—"}</div>
-                <div><strong>Location Mode:</strong> {data.loc_mode === "coord" ? "Coordinates" : "Station"}</div>
-                <div><strong>Point:</strong> {data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? `${Number(data.geom_point.lat).toFixed(6)}, ${Number(data.geom_point.lng).toFixed(6)}` : "—"}</div>
                 <div><strong>Station:</strong> {data.station_id ? data.station_name : "—"}</div>
+                <div><strong>Station Coordinates:</strong> {data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? `${Number(data.geom_point.lat).toFixed(6)}, ${Number(data.geom_point.lng).toFixed(6)}` : "—"}</div>
                 <div><strong>Sampled At:</strong> {data.sampled_at ? new Date(data.sampled_at).toLocaleString(undefined, { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}</div>
                 <div><strong>Period:</strong> {d ? `${yr} · Q${qt} · M${String(mo).padStart(2,"0")}` : "—"}</div>
                 <div><strong>Sampler:</strong> {data.sampler_name || "—"}</div>

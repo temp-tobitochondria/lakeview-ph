@@ -6,7 +6,7 @@ import { bucketKey as makeBucketKey, bucketSortKey as sortBucketKey } from '../u
 // Props: { events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake }
 export default function useTimeSeriesData({ events, selectedParam, selectedStations = [], bucket, timeRange, dateFrom, dateTo, seriesMode = 'avg', classForSelectedLake }) {
   const chartData = useMemo(() => {
-    if (!selectedParam || !selectedStations || !selectedStations.length) return null;
+    if (!selectedParam) return null;
     const parseDate = parseIsoDate;
     const bucketKey = makeBucketKey;
     const bucketSortKey = sortBucketKey;
@@ -40,7 +40,7 @@ export default function useTimeSeriesData({ events, selectedParam, selectedStati
 
     for (const ev of evs) {
       const sName = eventStationName(ev) || '';
-      if (!selectedStations.includes(sName)) continue;
+      if (Array.isArray(selectedStations) && selectedStations.length && !selectedStations.includes(sName)) continue;
       const d = parseDate(ev.sampled_at);
       const bk = bucketKey(d, bucket);
       if (!bk) continue;

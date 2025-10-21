@@ -5,7 +5,7 @@ import { groupLabel as makeGroupLabel, monthNames } from '../utils/chartUtils';
 // Build depth profile datasets for a single lake selection
 export default function useDepthProfileData({ events, selectedParam, selectedStations = [], bucket }) {
   return useMemo(() => {
-    if (!selectedParam || !selectedStations || !selectedStations.length) return { datasets: [], unit: '', maxDepth: 0, hasMultipleDepths: false, onlySurface: false };
+    if (!selectedParam) return { datasets: [], unit: '', maxDepth: 0, hasMultipleDepths: false, onlySurface: false };
     const parseDate = parseIsoDate;
     const groupLabel = (d) => makeGroupLabel(d, bucket);
     const depthKey = (raw) => { const n = Number(raw); if (!Number.isFinite(n)) return null; return (Math.round(n * 2) / 2).toFixed(1); };
@@ -14,7 +14,7 @@ export default function useDepthProfileData({ events, selectedParam, selectedSta
     const groups = new Map(); // label -> Map(depthKey -> {sum,cnt})
     for (const ev of events) {
       const sName = eventStationName(ev) || '';
-      if (!selectedStations.includes(sName)) continue;
+      if (Array.isArray(selectedStations) && selectedStations.length && !selectedStations.includes(sName)) continue;
       const d = parseDate(ev.sampled_at); const gLabel = groupLabel(d); if (!gLabel) continue;
       const results = Array.isArray(ev?.results) ? ev.results : [];
       for (const r of results) {

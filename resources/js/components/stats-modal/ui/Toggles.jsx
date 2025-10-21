@@ -1,11 +1,20 @@
 import React from 'react';
 
-export function SeriesModeToggle({ mode, onChange }) {
+export function SeriesModeToggle({ mode, onChange, disabled = false }) {
   return (
-    <div style={{ display:'inline-flex', gap:6 }} role="tablist" aria-label="Series mode">
-      <button type="button" aria-pressed={mode==='avg'} title="Show aggregated average series" className={`pill-btn ${mode==='avg' ? 'active liquid' : ''}`} onClick={() => onChange('avg')} style={{ padding:'6px 8px' }}>Average</button>
-      <button type="button" aria-pressed={mode==='per-station'} title="Show one line per selected station" className={`pill-btn ${mode==='per-station' ? 'active liquid' : ''}`} onClick={() => onChange('per-station')} style={{ padding:'6px 8px' }}>Per-station</button>
-    </div>
+    <label style={{ display: 'block', width: '100%' }}>
+      <select
+        className="pill-btn"
+        aria-label="Series mode"
+        value={mode}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        style={{ padding: '6px 8px', width: '100%', boxSizing: 'border-box' }}
+      >
+        <option value="avg">Average</option>
+        <option value="per-station">Per-station</option>
+      </select>
+    </label>
   );
 }
 
