@@ -1,29 +1,17 @@
 import { useMemo } from 'react';
 import { eventStationName, parseIsoDate } from '../utils/dataUtils';
 
-// Build correlation scatter dataset for a single station in a single lake
-// Inputs:
-// - events: array of events
-// - station: station name (string) - required
-// - paramX: parameter id/code for X axis
-// - paramY: parameter id/code for Y axis
-// - depthMode: 'surface' | 'avg' (surface prefers ~0m values; avg allows any depth)
-// - paramOptions: optional list for labels/units
-// Output: { datasets, unitX, unitY, meta }
 export default function useCorrelationData({ events, station = '', paramX, paramY, depthMode = 'surface', paramOptions = [] }) {
   return useMemo(() => {
     if (!station || !paramX || !paramY || String(paramX) === String(paramY)) return { datasets: [], unitX: '', unitY: '', meta: {} };
 
     const isSurface = (d) => {
-      // Treat missing depth as surface; accept any depth when depthMode === 'avg'
       if (d == null) return true;
       const n = Number(d);
       if (!Number.isFinite(n)) return depthMode !== 'surface';
       return depthMode === 'surface' ? Math.abs(n) <= 0.25 : true;
     };
 
-    // Build a map for each event date -> {x,y}
-    // Some events may not have both params; we pair values within the same event occurrence
     const points = [];
     let unitX = ''; let unitY = '';
     for (const ev of Array.isArray(events) ? events : []) {

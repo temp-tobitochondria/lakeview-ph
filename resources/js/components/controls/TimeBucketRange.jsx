@@ -127,7 +127,7 @@ export default function TimeBucketRange({
           </button>
           <Popover anchorRef={yearBtnRef} open={showYearPopover} onClose={() => setShowYearPopover(false)} minWidth={220}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, color: '#fff' }}>
-              <div style={{ fontSize: 12, opacity: 0.9 }}>Choose up to 6 years</div>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>Choose up to 3 years</div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {(Array.isArray(availableYears) ? availableYears : []).map((y) => {
                   const selected = (selectedYears || []).includes(String(y));
@@ -139,7 +139,7 @@ export default function TimeBucketRange({
                         onChange={(e) => {
                           const next = new Set(selectedYears || []);
                           if (e.target.checked) {
-                            if ((next.size || 0) >= 6) return; // guard to 6
+                            if ((next.size || 0) >= 3) return; // guard to 3
                             next.add(String(y));
                           } else next.delete(String(y));
                           setSelectedYears(Array.from(next).sort((a,b)=>b-a));

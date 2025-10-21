@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import TimeBucketRange from "../controls/TimeBucketRange";
 import StatsSidebar from "./StatsSidebar";
 import { FiMenu, FiX } from 'react-icons/fi';
-import { Line, Scatter } from "react-chartjs-2";
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
+import { Line, Scatter, Bar } from "react-chartjs-2";
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement } from "chart.js";
 import InfoModal from "../common/InfoModal";
 import { buildGraphExplanation } from "../utils/graphExplain";
 import { eventStationName } from "./utils/dataUtils";
@@ -14,11 +14,12 @@ import useSummaryStats from "./hooks/useSummaryStats";
 import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
 import useCorrelationData from "./hooks/useCorrelationData";
+import useSingleBarData from "./hooks/useSingleBarData";
 import GraphInfoButton from "./ui/GraphInfoButton";
 import StationPicker from "./ui/StationPicker";
 import { SeriesModeToggle } from "./ui/Toggles";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement);
 
 export default function SingleLake({
   lakeOptions,
@@ -48,11 +49,13 @@ export default function SingleLake({
   const sidebarWidth = 320;
   const stationBtnRef = useRef(null);
   const [applied, setApplied] = useState(false);
-  // 'time' | 'depth' | 'correlation'
+  // 'time' | 'depth' | 'correlation' | 'bar'
   const [chartType, setChartType] = useState('time');
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
+  const [selectedYears, setSelectedYears] = useState([]);
+  const [depthSelection, setDepthSelection] = useState('0');
   // Correlation options
   const [paramX, setParamX] = useState('');
   const [paramY, setParamY] = useState('');
@@ -89,6 +92,39 @@ export default function SingleLake({
   const chartData = useTimeSeriesData({ events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake });
   const depthProfile = useDepthProfileData({ events, selectedParam, selectedStations, bucket });
   const correlation = useCorrelationData({ events, station: (selectedStations && selectedStations.length === 1) ? selectedStations[0] : '', paramX, paramY, depthMode: 'surface', paramOptions });
+  // derive depth options for selectedParam from events
+  const depthOptions = useMemo(() => {
+    const depths = new Set();
+    (Array.isArray(events) ? events : []).forEach((ev) => {
+      (ev.results || []).forEach((r) => {
+        if (!selectedParam) return;
+        const sel = String(selectedParam || '');
+        const p = r?.parameter;
+        let match = false;
+        if (p) {
+          if (typeof p === 'string' && sel === String(p)) match = true;
+          else if (typeof p === 'object') {
+            if (p.code && sel === String(p.code)) match = true;
+            if (p.id && sel === String(p.id)) match = true;
+            if (p.key && sel === String(p.key)) match = true;
+          }
+        }
+        if (!match) {
+          if (r.parameter_code && sel === String(r.parameter_code)) match = true;
+          if (r.parameter_id && sel === String(r.parameter_id)) match = true;
+          if (r.parameter_key && sel === String(r.parameter_key)) match = true;
+        }
+        if (!match) return;
+        const d = r.depth_m == null ? '0' : String(r.depth_m);
+        depths.add(d);
+      });
+    });
+    const arr = Array.from(depths).sort((a,b)=>Number(a)-Number(b));
+    if (!arr.includes('0')) arr.unshift('0');
+    return arr;
+  }, [events, selectedParam]);
+
+  const barData = useSingleBarData({ events, bucket, selectedYears, depth: depthSelection, selectedParam, lake: selectedLake, lakeOptions, seriesMode, selectedStations });
 
   const canShowInfo = useMemo(() => {
     if (!applied) return false;
@@ -221,7 +257,7 @@ export default function SingleLake({
   <StatsSidebar isOpen={sidebarOpen} width={sidebarWidth} usePortal top={72} side="left" zIndex={10000}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Lake</div>
-            <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+            <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); setSelectedYears([]); setDepthSelection('0'); }} style={{ width: '100%' }}>
               <option value="">Select lake</option>
               {lakeOptions.map((l) => {
                 const raw = l.class_code || l.classification || l.class || '';
@@ -278,6 +314,7 @@ export default function SingleLake({
             }} style={{ width: '100%' }}>
               <option value="time">Time series</option>
               <option value="depth">Depth profile</option>
+              <option value="bar">Bar (Stations)</option>
               <option value="correlation">Correlation</option>
             </select>
             
@@ -314,10 +351,29 @@ export default function SingleLake({
             />
           )}
 
-          {chartType === 'time' && (
+          {/* Bucket & Years controls for Bar chart */}
+          {chartType === 'bar' && (
+            <TimeBucketRange
+              bucket={bucket}
+              setBucket={setBucket}
+              timeRange={timeRange}
+              setTimeRange={setTimeRange}
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
+              allowedBuckets={['year','quarter','month']}
+              rangeMode={'year-multi'}
+              availableYears={availableYears}
+              selectedYears={selectedYears}
+              setSelectedYears={setSelectedYears}
+            />
+          )}
+
+          {(chartType === 'time' || chartType === 'bar') && (
             <div>
               <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
-              <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+              <SeriesModeToggle mode={seriesMode} onChange={(next) => { setSeriesMode(next); setApplied(false); }} />
             </div>
           )}
           {/* spatial controls removed */}
@@ -331,12 +387,23 @@ export default function SingleLake({
           {chartType !== 'correlation' ? (
             <div>
               <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
-              <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
+              <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); setDepthSelection('0'); }} disabled={!canChooseParam} style={{ width: '100%' }}>
                 <option value="">Select parameter</option>
                 {paramOptions.map((p) => (
                   <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
                 ))}
               </select>
+              {chartType === 'bar' && depthOptions && depthOptions.length >= 1 && (
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, marginBottom: 4 }}>Depth</div>
+                  <select className="pill-btn" value={depthSelection} onChange={(e) => setDepthSelection(e.target.value)} disabled={!selectedParam} style={{ width: '100%' }}>
+                    {depthOptions.map((d) => {
+                      const label = d === '0' ? 'Surface (0 m)' : `${d} m`;
+                      return (<option key={String(d)} value={String(d)}>{label}</option>);
+                    })}
+                  </select>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -368,7 +435,6 @@ export default function SingleLake({
 
   {/* Main panel */}
   <div style={{ flex: 1, minWidth: 0, transition: 'all 260ms ease' }}>
-          {/* Summary stats removed per design: Samples / Mean / Median are no longer shown here */}
           <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
           chartType === 'depth' ? (
@@ -448,8 +514,26 @@ export default function SingleLake({
                 <span style={{ opacity: 0.9 }}>No time-series data available for this selection.</span>
               </div>
             )
+          ) : chartType === 'bar' ? (
+            barData && Array.isArray(barData.datasets) && barData.datasets.length ? (
+              (() => {
+                const bd = { ...barData, datasets: barData.datasets };
+                const options = {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue}` } } },
+                  indexAxis: 'x',
+                  datasets: { bar: { categoryPercentage: 0.75, barPercentage: 0.9 } },
+                  scales: { x: { ticks: { color: '#fff' }, grid: { display: false } }, y: { ticks: { color: '#fff' }, title: { display: true, text: 'Value', color: '#fff' }, grid: { color: 'rgba(255,255,255,0.08)' } } },
+                };
+                return <Bar key={`bar-${selectedParam}-${selectedLake}-${seriesMode}`} ref={chartRef} data={bd} options={options} />;
+              })()
+            ) : (
+              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ opacity: 0.9 }}>No bar data available for this selection.</span>
+              </div>
             )
-          : chartType === 'correlation' ? (
+          ) : chartType === 'correlation' ? (
             correlation && correlation.datasets && correlation.datasets.length ? (
               <Scatter
                 key={`corr-${paramX}-${paramY}-${selectedLake}-${selectedStations?.[0] || ''}`}

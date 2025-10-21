@@ -115,20 +115,26 @@ export default function useCompareBarData({ eventsA = [], eventsB = [], bucket =
     const stdB = collectStd(eventsB);
 
     // If both lakes share identical min/max/stdKey, emit unified lines, else per-lake similar to timeseries
-    const makeLine = (label, value, color) => ({
-      label,
-      data: lakeLabels.map(() => value),
-      type: 'line',
-      borderColor: color,
-      backgroundColor: `${color}33`,
-      borderDash: [4,4],
-      pointRadius: 0,
-      tension: 0,
-      fill: false,
-      spanGaps: true,
-      borderWidth: 2,
-      order: 100,
-    });
+    const makeLine = (label, value, color) => {
+      // span full width by emitting two points across the category axis and disabling parsing
+      const left = -0.5;
+      const right = Math.max(0, lakeLabels.length - 0.5);
+      return {
+        label,
+        data: [{ x: left, y: value }, { x: right, y: value }],
+        parsing: false,
+        type: 'line',
+        borderColor: color,
+        backgroundColor: `${color}33`,
+        borderDash: [4,4],
+        pointRadius: 0,
+        tension: 0,
+        fill: false,
+        spanGaps: true,
+        borderWidth: 2,
+        order: 100,
+      };
+    };
 
     const combinedStandards = new Map();
     const addStdEntry = (stdInfo, lakeKey) => {
