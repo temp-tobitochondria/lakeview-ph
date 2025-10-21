@@ -13,8 +13,6 @@ import StationModal from "../../components/modals/StationModal";
 import { GeoJSON, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 
-/* Config */
-
 const fmtDateLocal = (d = new Date()) => {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -51,7 +49,6 @@ const INITIAL_DATA = {
   status: "draft",
 };
 
-/* Small UI helpers */
 const Tag = ({ children }) => (
   <span style={{
     display: "inline-flex", alignItems: "center", gap: 6,
@@ -67,7 +64,6 @@ const FG = ({ label, children, style }) => (
   </div>
 );
 
-/* Wizard step labels used by the local Wizard component */
 const STEP_LABELS = [
   { key: 'location', title: 'Location' },
   { key: 'details',  title: 'Details'  },
@@ -76,7 +72,6 @@ const STEP_LABELS = [
   { key: 'review',    title: 'Review' },
 ];
 
-/* Component */
 export default function WQTestWizard({
   lakes = [],
   lakeGeoms = {},
@@ -84,13 +79,13 @@ export default function WQTestWizard({
   parameters = [],
   standards = [],
   organization = null,
-  currentUserRole = null,   // if not provided, determine from API
+  currentUserRole = null, 
   onSubmit,
 }) {
   const [resolvedUserRole, setResolvedUserRole] = useState(currentUserRole);
 
   useEffect(() => {
-    if (currentUserRole) return; // prop provided — trust it
+    if (currentUserRole) return; 
     let mounted = true;
     (async () => {
       try {
@@ -113,9 +108,6 @@ export default function WQTestWizard({
   const [localLakeGeoms, setLocalLakeGeoms] = useState(lakeGeoms || {});
   const [stationModalOpen, setStationModalOpen] = useState(false);
   const [stationEdit, setStationEdit] = useState(null);
-  // coordMode removed: always show manual inputs and allow pin-drop on the map
-
-  // Parameter & standards lists (fetch from API if not provided as props)
   const [parametersList, setParametersList] = useState(parameters || []);
   const [standardsList, setStandardsList] = useState(standards || []);
 
@@ -146,10 +138,8 @@ export default function WQTestWizard({
   const canPublish = roleToCheck === "org_admin" || roleToCheck === "superadmin";
   const stationOptions = (data) => stationsByLake?.[String(data.lake_id)] || [];
 
-  // Permissions: only org_admin or superadmin may manage stations
   const canManageStations = roleToCheck === "org_admin" || roleToCheck === "superadmin";
 
-  // API-backed station handlers (only used when canManageStations)
   const createStationApi = async (data, setData, station) => {
     try {
       const payload = {
@@ -163,11 +153,9 @@ export default function WQTestWizard({
   const res = await api(`/admin/stations`, { method: "POST", body: payload });
   const s = res?.data;
   if (!s) throw new Error("Invalid response");
-  // normalize server fields (latitude/longitude) to frontend shape (lat/lng)
   const norm = { ...s, lat: s.latitude ?? s.lat ?? null, lng: s.longitude ?? s.lng ?? null };
   const list = stationsByLake[String(data.lake_id)] || [];
   setStationsByLake({ ...stationsByLake, [String(data.lake_id)]: [...list, norm] });
-      // select the newly-created station
       setData({ ...data,
         station_id: s.id,
         station_name: s.name,
@@ -177,13 +165,11 @@ export default function WQTestWizard({
         geom_point: (s.latitude !== null && s.longitude !== null) ? { lat: Number(s.latitude), lng: Number(s.longitude) } : data.geom_point,
       });
     } catch (e) {
-      // If validation error from server, show message. Otherwise fall back to local create.
       const msg = e?.message || String(e);
       if (msg.includes('422') || msg.toLowerCase().includes('validation')) {
         alertError('Validation error', msg.replace(/^HTTP\s*422\s*/i, '').trim() || 'Please check the station fields.');
         return;
       }
-  // Non-validation error: report and abort.
   alertError('Station create failed', msg);
   return;
     }
@@ -202,7 +188,7 @@ export default function WQTestWizard({
   const res = await api(`/admin/stations/${encodeURIComponent(station.id)}`, { method: "PUT", body: payload });
   const s = res?.data;
   if (!s) throw new Error("Invalid response");
-  // normalize and merge into list
+
   const norm = { ...s, lat: s.latitude ?? s.lat ?? null, lng: s.longitude ?? s.lng ?? null };
   const list = stationsByLake[String(data.lake_id)] || [];
   const updated = list.map((x) => (String(x.id) === String(norm.id) ? norm : x));
@@ -233,23 +219,20 @@ export default function WQTestWizard({
       const target = list.find((s) => String(s.id) === String(stationId));
       const name = target?.name || String(stationId);
 
-      // Check if there are associated sample-events/tests for this station.
       let hasTests = false;
       let testsCount = null;
       try {
         const qs = `?station_id=${encodeURIComponent(stationId)}&per_page=1`;
         const res = await api(`/admin/sample-events${qs}`);
-        // API may return { data: [...] } or an array directly
         const arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         if (Array.isArray(arr) && arr.length > 0) {
           hasTests = true;
-          testsCount = null; // we only fetched one for speed; try meta if available
+          testsCount = null;
         } else if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) {
           hasTests = true;
           testsCount = res.meta.total;
         }
       } catch (e) {
-        // verification failed — proceed to regular confirm but warn user we couldn't verify
       }
 
       if (hasTests) {
@@ -281,13 +264,10 @@ export default function WQTestWizard({
   useEffect(() => {
     let mounted = true;
     let timer = null;
-    // If parent provided lakes, use them. Otherwise fetch lightweight options.
     if (Array.isArray(lakes) && lakes.length) {
       setLocalLakes(lakes);
       return () => { mounted = false; };
     }
-
-    // debounce a bit to avoid StrictMode double-invoke causing multiple back-to-back requests
     timer = setTimeout(() => {
       (async () => {
         try {
@@ -303,7 +283,6 @@ export default function WQTestWizard({
     return () => { mounted = false; if (timer) clearTimeout(timer); };
   }, [lakes]);
 
-  // merged geoms: prop `lakeGeoms` may be provided by parent; localLakeGeoms stores fetched geometries
   const mergedLakeGeoms = { ...(lakeGeoms || {}), ...(localLakeGeoms || {}) };
 
   const mapBounds = (data) => {
@@ -330,7 +309,6 @@ export default function WQTestWizard({
     organization_name: organization?.name ?? "",
   };
 
-  /* ----------------------------- handlers (ctx) ------------------------------ */
   const pickLake = (data, setData, lakeId) => {
     const id = lakeId || "";
     const lake = lakeOptions.find((l) => String(l.id) === String(id));
@@ -343,15 +321,12 @@ export default function WQTestWizard({
       station_name: "",
       station_desc: "",
     });
-    // fetch geometry for the selected lake (if not already present)
     if (id) {
       fetchLakeGeo(id).catch(() => {});
-      // fetch stations for this lake so the modal/table shows up-to-date data
       fetchStationsForLake(id).catch(() => {});
     }
   };
 
-  // Fetch lake geometry (from /api/lakes/:id -> returns geom_geojson string)
   const fetchLakeGeo = async (id) => {
     if (!id) return null;
     const key = String(id);
@@ -395,7 +370,6 @@ export default function WQTestWizard({
     setCoords(data, setData, Number(lat.toFixed(6)), Number(lng.toFixed(6)));
   };
 
-  // Parameter rows
   const addRow = (data, setData) =>
     setData({
       ...data,
@@ -428,8 +402,6 @@ export default function WQTestWizard({
     setData({ ...data, results: next });
   };
 
-  // Station CRUD is API-backed (createStationApi/updateStationApi/deleteStationApi).
-
   const submit = (data) => {
     const payload = {
       organization_id: data.organization_id ?? null,
@@ -453,12 +425,8 @@ export default function WQTestWizard({
       })),
     };
 
-    // If parent supplied an onSubmit handler, delegate to it (useful for tests or overrides)
     if (onSubmit) return onSubmit(payload);
 
-    // Log payload only in dev consoles if needed (removed for cleanliness)
-
-    // Return the promise so callers can await and observe errors
     return (async () => {
       try {
         const token = getToken();
@@ -475,7 +443,6 @@ export default function WQTestWizard({
         const text = await resp.text();
         let json = null;
         try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-  // response handled below; no debug log here
 
         if (!resp.ok) {
           const msg = (json && (json.message || json.errors)) ? (json.message || JSON.stringify(json.errors)) : text || `HTTP ${resp.status}`;
@@ -496,7 +463,6 @@ export default function WQTestWizard({
     })();
   };
 
-  // Fetch stations for a lake from the server and cache them in `stationsByLake`.
   const fetchStationsForLake = async (lakeId) => {
     if (!lakeId) return [];
     if (stationsByLake && stationsByLake[String(lakeId)] && stationsByLake[String(lakeId)].length) return stationsByLake[String(lakeId)];
@@ -726,7 +692,6 @@ export default function WQTestWizard({
       ),
     },
 
-    // Step 2: Sampling Details
     {
       key: STEP_LABELS[1].key,
       title: STEP_LABELS[1].title,
@@ -742,10 +707,14 @@ export default function WQTestWizard({
               />
             </FG>
             <FG label="Method">
-              <input
+              <select
                 value={data.method}
                 onChange={(e) => setData({ ...data, method: e.target.value })}
-              />
+              >
+                <option value="">Select method…</option>
+                <option value="manual">Manual Grab Sampling</option>
+                <option value="automatic">Automatic Sampling</option>
+              </select>
             </FG>
             <FG label="Sampler Name">
               <input
@@ -1002,5 +971,3 @@ export default function WQTestWizard({
     </div>
   );
 }
-
-// MiniPickMap removed — the wizard now uses the existing AppMap below for pin-drop coordinate selection.

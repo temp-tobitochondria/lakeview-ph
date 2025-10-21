@@ -5,14 +5,9 @@ import WQTestWizard from "../../components/water-quality-test/WQTestWizard";
 import { api } from "../../lib/api";
 import { alertError, alertSuccess } from "../../lib/alerts";
 
-/**
- * IMPORTANT: Route-level layout (DashboardLayout) should wrap this page.
- * Do NOT wrap this component with DashboardLayout here to avoid double chrome.
- */
-
 export default function OrgAddWQTest() {
   const [organization, setOrganization] = useState(null);
-  const lakeGeoms = useMemo(() => ({}), []); // plug real GeoJSON per lake later
+  const lakeGeoms = useMemo(() => ({}), []);
 
   useEffect(() => {
     let mounted = true;
@@ -20,7 +15,6 @@ export default function OrgAddWQTest() {
       try {
         const me = await api('/auth/me');
         if (!mounted) return;
-        // If backend provides tenant/organization info, use it; otherwise leave null
         if (me && (me.organization || me.tenant || me.tenant_id || me.organization_id)) {
           const org = me.organization || (me.tenant ? { id: me.tenant.id, name: me.tenant.name } : null);
           // fallback shapes
@@ -31,7 +25,6 @@ export default function OrgAddWQTest() {
           }
         }
       } catch (e) {
-        // ignore — allow organization to remain null
       }
     })();
     return () => { mounted = false; };

@@ -5,10 +5,6 @@ import DashboardHeader from '../../components/DashboardHeader';
 import { api } from "../../lib/api";
 import { alertError, alertSuccess } from "../../lib/alerts";
 
-/**
- * Contributor-facing WQ Test creation page.
- * Contributors cannot publish events and cannot create/update/delete stations.
- */
 export default function ContribAddWQTest() {
   const [organization, setOrganization] = useState(null);
   const lakeGeoms = useMemo(() => ({}), []);
@@ -28,7 +24,6 @@ export default function ContribAddWQTest() {
           }
         }
       } catch (e) {
-        // ignore
       }
     })();
     return () => { mounted = false; };
