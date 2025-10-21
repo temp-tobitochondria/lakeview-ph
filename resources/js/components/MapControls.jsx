@@ -3,6 +3,9 @@ import React, { useState } from "react";
 import { useMap, Marker, Tooltip } from "react-leaflet"; // use Tooltip instead of Popup
 import { FiBarChart2, FiCrosshair, FiPlus, FiMinus } from "react-icons/fi";
 import { FaLocationDot } from "react-icons/fa6"; // filled location dot
+import { FaTable } from "react-icons/fa";
+import DataSummaryTable from "./stats-modal/DataSummaryTable";
+import Modal from "./Modal";
 import L from "leaflet";
 import { alertError, alertSuccess } from "../lib/alerts";
 import ReactDOMServer from "react-dom/server";
@@ -25,6 +28,7 @@ function MapControls({ defaultCenter = [12.8797, 121.7740], defaultZoom = 6, def
   const [geolocated, setGeolocated] = useState(false);
   const [position, setPosition] = useState(null);
   const [statsOpen, setStatsOpen] = useState(false);
+    const [tableOpen, setTableOpen] = useState(false);
 
   const handleZoomIn = () => map.zoomIn();
   const handleZoomOut = () => map.zoomOut();
@@ -56,8 +60,11 @@ function MapControls({ defaultCenter = [12.8797, 121.7740], defaultZoom = 6, def
     <>
       {/* Floating Controls */}
       <div className="map-controls">
-        <button className="btn-floating" onClick={() => setStatsOpen(true)}>
+        <button className="btn-floating" onClick={() => setStatsOpen(true)} title="Open stats">
           <FiBarChart2 className="icon-layer" />
+        </button>
+        <button className="btn-floating" onClick={() => setTableOpen(true)} title="Open table">
+          <FaTable className="icon-layer" />
         </button>
         <button
           className="btn-floating"
@@ -95,6 +102,7 @@ function MapControls({ defaultCenter = [12.8797, 121.7740], defaultZoom = 6, def
 
       {/* Stats Modal */}
       <StatsModal open={statsOpen} onClose={() => setStatsOpen(false)} />
+      <DataSummaryTable open={tableOpen} onClose={() => setTableOpen(false)} initialLake="" initialOrg="" />
     </>
   );
 }

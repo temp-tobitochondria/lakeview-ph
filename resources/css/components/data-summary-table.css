@@ -1,0 +1,79 @@
+/* resources/css/components/data-summary-table.css */
+/* ====================================================================== */
+/* 📊 DATA SUMMARY TABLE (Modal content)                                   */
+/* Matches visual language of LakeInfoPanel and Modal components.         */
+/* ====================================================================== */
+
+.ds-summary { 
+  /* Keep content width comfortable and align with modal spacing */
+  width: 100%;
+  max-width: min(1200px, 95vw);
+}
+
+.ds-controls-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.ds-field { display: flex; flex-direction: column; gap: 6px; }
+.ds-field > .ds-label { font-size: 12px; opacity: 0.8; }
+.ds-field .pill-btn { width: 100%; }
+
+/* Make common widths similar to inline styles used in component */
+.ds-field.lake   { flex: 0 0 300px; }
+.ds-field.org    { flex: 0 0 240px; }
+.ds-field.year   { flex: 0 0 160px; }
+.ds-field.station{ flex: 0 0 220px; }
+
+/* Scroller matches LakeInfoPanel's modern scrollbar behavior */
+.ds-table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+  border-radius: 10px;
+}
+
+/* Reuse table system defaults; when present, lv-table styles take over */
+.ds-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
+.ds-table thead th { padding: 6px 8px; font-weight: 700; font-size: 12px; text-align: left; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.ds-table tbody td { padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,0.03); vertical-align: top; }
+
+/* Parameter column layout aligns with LakeInfoPanel typography */
+.ds-param-col { padding: 6px 8px; vertical-align: top; }
+.ds-param-meta { display: flex; flex-direction: column; gap: 4px; }
+.ds-param-main { display: flex; gap: 8px; align-items: baseline; }
+.ds-param-name { font-weight: 600; color: #111827; }
+.ds-param-unit { font-size: 12px; opacity: 0.8; color: #374151; }
+.ds-threshold { font-size: 12px; opacity: 0.85; }
+.ds-threshold .ds-threshold-chip { display: inline-block; white-space: normal; word-break: break-word; background: transparent; padding: 2px 0; }
+.ds-depth-line { font-size: 12px; opacity: 0.85; }
+
+/* Cell states: green for meets, red for fails. No class => no shade. */
+.ds-cell-ok { background: rgba(16,185,129,0.12); color: #10b981; font-weight: 600; }
+.ds-cell-exceed { background: rgba(239,68,68,0.12); color: #ef4444; font-weight: 600; }
+
+/* Ensure specificity over .lv-table tbody td color defaults */
+.ds-table td.ds-cell-ok { background: rgba(16,185,129,0.12); color: #10b981; font-weight: 600; }
+.ds-table td.ds-cell-exceed { background: rgba(239,68,68,0.12); color: #ef4444; font-weight: 600; }
+
+/* Footer mirrors modal footer spacing but remains inside body */
+.ds-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+.ds-footer .actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* Empty states and helper text */
+.ds-empty { padding: 20px; opacity: 0.85; text-align: left; }
+.ds-center-loading { display: flex; align-items: center; justify-content: center; height: 120px; }
+
+/* When lv-table class is also present, rely on that system's visuals */
+.ds-summary .lv-table thead th { text-transform: none; }
+
+/* Popover tweaks: ensure it renders above modal chrome and doesn't add page scroll */
+.lv-popover { position: fixed; z-index: 40000; }
