@@ -1,6 +1,6 @@
 export function buildGraphExplanation(ctx) {
   const {
-    chartType = 'time', // 'time' | 'depth' | 'spatial' | 'correlation'
+  chartType = 'time', // 'time' | 'depth' | 'correlation'
     param = {},         // { code, name, unit }
     seriesMode = 'avg', // 'avg' | 'per-station'
     bucket = 'month',   // 'month' | 'quarter' | 'year'
@@ -25,15 +25,7 @@ export function buildGraphExplanation(ctx) {
         'Use this to see stratification or vertical gradients in the water column.'
       ]
     });
-  } else if (chartType === 'spatial') {
-    sections.push({
-      heading: 'What this chart shows',
-      bullets: [
-        'This is a spatial trend across selected stations.',
-        'The x‑axis lists stations in the order you selected them; the y‑axis shows the parameter value.',
-        'Use this to compare locations at a snapshot (latest) or averaged within the selected range.'
-      ]
-    });
+  // spatial trend removed
   } else if (chartType === 'correlation') {
     sections.push({
       heading: 'What this chart shows',

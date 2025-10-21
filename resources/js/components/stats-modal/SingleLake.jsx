@@ -1,18 +1,15 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Line, Scatter } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
 import InfoModal from "../common/InfoModal";
 import { buildGraphExplanation } from "../utils/graphExplain";
-import { eventStationName, parseIsoDate, depthBandKeyInt, depthKeyHalfM } from "./utils/dataUtils";
-import { bucketKey as makeBucketKey, bucketSortKey as sortBucketKey, monthNames, groupLabel as makeGroupLabel } from "./utils/chartUtils";
-import { lakeName, lakeClass, baseLineChartOptions, parseThresholdStandardsFromDatasets, normalizeDepthDatasets } from "./utils/shared";
+import { eventStationName } from "./utils/dataUtils";
+import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets } from "./utils/shared";
 import useSampleEvents from "./hooks/useSampleEvents";
 import useStationsCache from "./hooks/useStationsCache";
 import useSummaryStats from "./hooks/useSummaryStats";
 import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
-import useSpatialTrendData from "./hooks/useSpatialTrendData";
 import useCorrelationData from "./hooks/useCorrelationData";
 import GraphInfoButton from "./ui/GraphInfoButton";
 import StationPicker from "./ui/StationPicker";
@@ -46,14 +43,11 @@ export default function SingleLake({
   const [stationsOpen, setStationsOpen] = useState(false);
   const stationBtnRef = useRef(null);
   const [applied, setApplied] = useState(false);
-  // 'time' | 'depth' | 'spatial' | 'correlation'
+  // 'time' | 'depth' | 'correlation'
   const [chartType, setChartType] = useState('time');
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
-  // Spatial Trend options
-  const [spatialSnapshot, setSpatialSnapshot] = useState('latest'); // 'latest' | 'mean'
-  const [spatialDepth, setSpatialDepth] = useState('surface'); // 'surface' | 'avg'
   // Correlation options
   const [paramX, setParamX] = useState('');
   const [paramY, setParamY] = useState('');
@@ -64,7 +58,7 @@ export default function SingleLake({
   const stationsList = useMemo(() => (!selectedOrg ? (allStations || []) : (stationsByOrg?.[String(selectedOrg)] || [])), [selectedOrg, allStations, stationsByOrg]);
   useEffect(() => {
     setApplied(false);
-  }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType, paramX, paramY, spatialSnapshot, spatialDepth]);
+  }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType, paramX, paramY]);
 
   // per-station mode available when stations are present
 
@@ -73,10 +67,7 @@ export default function SingleLake({
   const nameForSelectedLake = useMemo(() => lakeName(lakeOptions, selectedLake) || String(selectedLake || '') || '', [lakeOptions, selectedLake]);
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
   const chartData = useTimeSeriesData({ events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake });
-
   const depthProfile = useDepthProfileData({ events, selectedParam, selectedStations, bucket });
-
-  const spatialTrend = useSpatialTrendData({ events, selectedStations, selectedParam, snapshot: spatialSnapshot, depthMode: spatialDepth, paramOptions });
   const correlation = useCorrelationData({ events, station: (selectedStations && selectedStations.length === 1) ? selectedStations[0] : '', paramX, paramY, depthMode: 'surface', paramOptions });
 
   const canShowInfo = useMemo(() => {
@@ -84,11 +75,10 @@ export default function SingleLake({
     try {
       if (chartType === 'time') return Boolean(chartData?.datasets?.length);
       if (chartType === 'depth') return Boolean(depthProfile?.datasets?.length);
-      if (chartType === 'spatial') return Boolean(spatialTrend?.datasets?.length);
       if (chartType === 'correlation') return Boolean(correlation?.datasets?.length);
       return false;
     } catch { return false; }
-  }, [applied, chartType, chartData, depthProfile, spatialTrend, correlation]);
+  }, [applied, chartType, chartData, depthProfile, correlation]);
 
   const canChooseParam = useMemo(() => {
     if (!selectedLake || !selectedOrg) return false;
@@ -200,9 +190,12 @@ export default function SingleLake({
               <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Lake</div>
               <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
                 <option value="">Select lake</option>
-                {lakeOptions.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
+                {lakeOptions.map((l) => {
+                  const raw = l.class_code || l.classification || l.class || '';
+                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                  const suffix = code ? ` (Class ${code})` : '';
+                  return (<option key={l.id} value={l.id}>{l.name}{suffix}</option>);
+                })}
               </select>
             </div>
             <div>
@@ -251,36 +244,18 @@ export default function SingleLake({
               }} style={{ width: '100%' }}>
                 <option value="time">Time series</option>
                 <option value="depth">Depth profile</option>
-                <option value="spatial">Spatial trend</option>
                 <option value="correlation">Correlation</option>
               </select>
               
             </div>
 
-            {(chartType === 'time' || chartType === 'depth') && (
+            {chartType === 'time' && (
               <div>
                 <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
                 <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
               </div>
             )}
-            {chartType === 'spatial' && (
-              <>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Snapshot</div>
-                  <select className="pill-btn" value={spatialSnapshot} onChange={(e) => { setSpatialSnapshot(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                    <option value="latest">Latest per station</option>
-                    <option value="mean">Mean within range</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Depth</div>
-                  <select className="pill-btn" value={spatialDepth} onChange={(e) => { setSpatialDepth(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                    <option value="surface">Surface only (0 m)</option>
-                    <option value="avg">All depths (avg)</option>
-                  </select>
-                </div>
-              </>
-            )}
+            {/* spatial controls removed */}
             {chartType === 'correlation' && (
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Station requirement: select exactly one location.
@@ -409,28 +384,8 @@ export default function SingleLake({
                 <span style={{ opacity: 0.9 }}>No time-series data available for this selection.</span>
               </div>
             )
-          ) : chartType === 'spatial' ? (
-            spatialTrend && spatialTrend.datasets && spatialTrend.datasets.length ? (
-              <Line
-                key={`spatial-${selectedParam}-${selectedLake}-${spatialSnapshot}-${spatialDepth}`}
-                ref={chartRef}
-                data={{ labels: spatialTrend.labels, datasets: spatialTrend.datasets }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } } },
-                  scales: {
-                    x: { type: 'category', title: { display: true, text: 'Stations (order selected)', color: '#fff' }, ticks: { color: '#fff', font: { size: 10 }, autoSkip: false }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                    y: { type: 'linear', title: { display: true, text: `Value${spatialTrend.unit ? ` (${spatialTrend.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                  },
-                }}
-              />
-            ) : (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ opacity: 0.9 }}>No spatial-trend data available for this selection.</span>
-              </div>
             )
-          ) : chartType === 'correlation' ? (
+          : chartType === 'correlation' ? (
             correlation && correlation.datasets && correlation.datasets.length ? (
               <Scatter
                 key={`corr-${paramX}-${paramY}-${selectedLake}-${selectedStations?.[0] || ''}`}

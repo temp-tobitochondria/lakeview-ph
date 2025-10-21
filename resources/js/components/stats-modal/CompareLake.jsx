@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef, useImperativeHandle } from "react";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
-import { FiActivity, FiBarChart2 } from "react-icons/fi";
-
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 import { fetchParameters } from "./data/fetchers";
 import InfoModal from "../common/InfoModal";
@@ -12,7 +10,7 @@ import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets } fro
 import useAnchoredTimeRange from "./hooks/useAnchoredTimeRange";
 import useStationsCache from "./hooks/useStationsCache";
 import StationPicker from "./ui/StationPicker";
-import { SeriesModeToggle, SummaryPanel } from "./ui/Toggles";
+import { SeriesModeToggle } from "./ui/Toggles";
 import GraphInfoButton from "./ui/GraphInfoButton";
 import useSummaryStats from "./hooks/useSummaryStats";
 import useSampleEvents from "./hooks/useSampleEvents";
@@ -59,6 +57,27 @@ function CompareLake({
 
   const nameForLake = (lk) => lakeName(lakeOptions, lk);
   const classForLake = (lk) => lakeClass(lakeOptions, lk);
+
+  // Color palettes for Lake A and Lake B to ensure they are visually distinct
+  const paletteA = ['#0369a1', '#0284c7', '#60a5fa', '#7dd3fc']; // blues
+  const paletteB = ['#b91c1c', '#ef4444', '#f97316', '#fb923c']; // reds/oranges
+
+  const colorizeDatasets = (datasets) => {
+    if (!Array.isArray(datasets)) return datasets;
+    const lakeNameA = nameForLake(lakeA) || String(lakeA || '');
+    const lakeNameB = nameForLake(lakeB) || String(lakeB || '');
+    const counters = { a: 0, b: 0, other: 0 };
+    return datasets.map((d) => {
+      const label = String(d?.label || '');
+      let set = 'other';
+      if (lakeNameA && label.includes(lakeNameA)) set = 'a';
+      else if (lakeNameB && label.includes(lakeNameB)) set = 'b';
+      const idx = counters[set]++;
+      const color = set === 'a' ? paletteA[idx % paletteA.length] : set === 'b' ? paletteB[idx % paletteB.length] : (d.borderColor || '#9ca3af');
+      const bg = d.backgroundColor || (color + '33');
+      return { ...d, borderColor: color, backgroundColor: bg };
+    });
+  };
 
   useEffect(() => {
     let aborted = false;
@@ -280,7 +299,12 @@ function CompareLake({
             <div style={{ display: 'grid', gap: 6 }}>
               <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ width: '100%' }}>
                 <option value="">Lake A</option>
-                {lakeOptionsForA.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
+                {lakeOptionsForA.map((l) => {
+                  const raw = l.class_code || l.classification || l.class || '';
+                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                  const suffix = code ? ` (Class ${code})` : '';
+                  return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
+                })}
               </select>
               <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ width: '100%' }}>
                 <option value="">All dataset sources</option>
@@ -302,7 +326,12 @@ function CompareLake({
             <div style={{ display: 'grid', gap: 6 }}>
               <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ width: '100%' }}>
                 <option value="">Lake B</option>
-                {lakeOptionsForB.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
+                {lakeOptionsForB.map((l) => {
+                  const raw = l.class_code || l.classification || l.class || '';
+                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                  const suffix = code ? ` (Class ${code})` : '';
+                  return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
+                })}
               </select>
               <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ width: '100%' }}>
                 <option value="">All dataset sources</option>
@@ -321,6 +350,15 @@ function CompareLake({
             <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
 
             <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
+              <select className="pill-btn" value={chartType} onChange={(e) => { setChartType(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+                <option value="time">Time series</option>
+                <option value="depth">Depth profile</option>
+                <option value="bar">Bar (Stations)</option>
+              </select>
+            </div>
+
+            <div>
               <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
               <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ width: '100%' }}>
                 <option value="">Select parameter</option>
@@ -328,18 +366,12 @@ function CompareLake({
               </select>
             </div>
 
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
-              <select className="pill-btn" value={chartType} onChange={(e) => { setChartType(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                <option value="time">Time series</option>
-                <option value="depth">Depth profile</option>
-              </select>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
-              <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
-            </div>
+            {chartType === 'time' && (
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
+                <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+              </div>
+            )}
 
             <div>
               <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
@@ -456,6 +488,8 @@ function CompareLake({
                 });
 
                 const depthData = { datasets: normalizeDepthDatasets(depthDatasets) };
+                // Apply lake-specific palettes
+                depthData.datasets = colorizeDatasets(depthData.datasets);
                 return (
                   <Line
                     key={`depth-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`}
@@ -499,9 +533,12 @@ function CompareLake({
                 );
               })()
             )
-          ) : (
+            ) : (
             chartData && chartData.datasets && chartData.datasets.length ? (
-              <Line key={`time-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`} ref={chartRef} data={chartData} options={compareChartOptions} />
+              (() => {
+                const cd = { ...chartData, datasets: colorizeDatasets(chartData.datasets) };
+                return <Line key={`time-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`} ref={chartRef} data={cd} options={compareChartOptions} />;
+              })()
             ) : (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : 'Fill all fields and click Apply to generate the chart.'}</span>

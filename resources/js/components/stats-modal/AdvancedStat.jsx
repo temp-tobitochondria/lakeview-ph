@@ -706,7 +706,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
         <select className="pill-btn" value={lakeId} onChange={e=>{setLakeId(e.target.value); setResult(null);}} style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }}>
           <option value="">Primary Lake</option>
-          {lakes.map(l => <option key={l.id} value={l.id}>{l.name || `Lake ${l.id}`}</option>)}
+          {lakes.map(l => {
+            const raw = l.class_code || l.classification || l.class || '';
+            const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+            const suffix = code ? ` (Class ${code})` : '';
+            return <option key={l.id} value={l.id}>{(l.name || `Lake ${l.id}`) + suffix}</option>;
+          })}
         </select>
       </div>
       <div style={{ gridColumn: '2 / span 1', minWidth:0 }}>
@@ -722,7 +727,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
           <option value="">Compare (Class or Lake)</option>
           {classes.map(c => <option key={`class-${c.code}`} value={`class:${c.code}`}>{`Class ${c.code}`}</option>)}
           <optgroup label="Lakes">
-            {lakes.filter(l => String(l.id) !== String(lakeId)).map(l => <option key={`lake-${l.id}`} value={`lake:${l.id}`}>{l.name || `Lake ${l.id}`}</option>)}
+            {lakes.filter(l => String(l.id) !== String(lakeId)).map(l => {
+              const raw = l.class_code || l.classification || l.class || '';
+              const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+              const suffix = code ? ` (Class ${code})` : '';
+              return <option key={`lake-${l.id}`} value={`lake:${l.id}`}>{(l.name || `Lake ${l.id}`) + suffix}</option>;
+            })}
           </optgroup>
         </select>
       </div>
