@@ -169,6 +169,12 @@ export default function useSingleBarData({ events = [], bucket = 'year', selecte
       }
     } catch (e) { /* ignore */ }
 
-    return { labels: labels.map(humanLabelFor), datasets, meta: { years } };
+    // expose detected standard info in meta for callers to use (code, min, max)
+    const standards = [];
+    if (std.stdLabel || std.stdKey) {
+      standards.push({ code: std.stdLabel || std.stdKey, min: std.min != null ? std.min : null, max: std.max != null ? std.max : null });
+    }
+
+    return { labels: labels.map(humanLabelFor), datasets, meta: { years, standards } };
   }, [events, bucket, selectedYears, depth, selectedParam, lake, lakeOptions, seriesMode, selectedStations]);
 }

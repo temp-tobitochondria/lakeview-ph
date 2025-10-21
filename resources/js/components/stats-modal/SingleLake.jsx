@@ -10,7 +10,7 @@ import { eventStationName } from "./utils/dataUtils";
 import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets } from "./utils/shared";
 import useSampleEvents from "./hooks/useSampleEvents";
 import useStationsCache from "./hooks/useStationsCache";
-import useSummaryStats from "./hooks/useSummaryStats";
+// useSummaryStats removed
 import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
 import useCorrelationData from "./hooks/useCorrelationData";
@@ -86,7 +86,8 @@ export default function SingleLake({
   }, [eventsAll]);
 
 
-  const summaryStats = useSummaryStats({ applied, events, selectedStations, selectedParam });
+  // summaryStats hook removed; summary will not be provided
+  const summaryStats = null;
   const nameForSelectedLake = useMemo(() => lakeName(lakeOptions, selectedLake) || String(selectedLake || '') || '', [lakeOptions, selectedLake]);
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
   const chartData = useTimeSeriesData({ events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake });
@@ -132,6 +133,7 @@ export default function SingleLake({
       if (chartType === 'time') return Boolean(chartData?.datasets?.length);
       if (chartType === 'depth') return Boolean(depthProfile?.datasets?.length);
       if (chartType === 'correlation') return Boolean(correlation?.datasets?.length);
+      if (chartType === 'bar') return Boolean(barData?.datasets?.length);
       return false;
     } catch { return false; }
   }, [applied, chartType, chartData, depthProfile, correlation]);
@@ -209,21 +211,29 @@ export default function SingleLake({
           onClick={() => {
             if (!canShowInfo) return;
             // Extract standards from current datasets (threshold lines are labeled "<std> – Min/Max")
+            // Prefer standards metadata produced by barData/chartData hooks when present
             const standards = (() => {
-              const ds = chartData?.datasets || [];
+              const meta = (chartType === 'bar' ? (barData?.meta || {}) : (chartData?.meta || {}));
+              if (Array.isArray(meta.standards) && meta.standards.length) return meta.standards.map(s => ({ code: s.code, min: s.min, max: s.max }));
+              // fallback: parse labels heuristically
+              const ds = (chartType === 'bar' ? (barData?.datasets || []) : (chartData?.datasets || []));
               const map = new Map();
               ds.forEach((d) => {
-                const label = d?.label || '';
-                const parts = String(label).split(' – ');
-                if (parts.length === 2) {
-                  const std = parts[0];
-                  const kind = parts[1];
-                  if (/^Min$/i.test(kind) || /^Max$/i.test(kind)) {
-                    const rec = map.get(std) || { code: std, min: null, max: null };
-                    if (/^Min$/i.test(kind)) rec.min = 1;
-                    if (/^Max$/i.test(kind)) rec.max = 1;
-                    map.set(std, rec);
-                  }
+                const label = String(d?.label || '');
+                const parts = label.split(' – ').map(p => p.trim());
+                let std = null;
+                if (parts.length >= 3 && /\b(min|max)\b/i.test(parts[parts.length - 1]) && !/\b(min|max)\b/i.test(parts[1])) {
+                  std = parts[1];
+                } else if (parts.length >= 1) {
+                  std = parts[0];
+                }
+                const kindMatch = /\b(min|max)\b/i.exec(label);
+                if (std && kindMatch) {
+                  const kind = kindMatch[1].toLowerCase();
+                  const rec = map.get(std) || { code: std, min: null, max: null };
+                  if (kind === 'min') rec.min = 1;
+                  if (kind === 'max') rec.max = 1;
+                  map.set(std, rec);
                 }
               });
               return Array.from(map.values());
@@ -243,7 +253,7 @@ export default function SingleLake({
               bucket,
               standards,
               compareMode: false,
-              summary: summaryStats,
+              summary: null,
               inferredType: inferred,
             };
             const content = buildGraphExplanation(ctx);

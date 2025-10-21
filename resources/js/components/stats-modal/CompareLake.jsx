@@ -15,7 +15,6 @@ import useStationsCache from "./hooks/useStationsCache";
 import StationPicker from "./ui/StationPicker";
 import { SeriesModeToggle } from "./ui/Toggles";
 import GraphInfoButton from "./ui/GraphInfoButton";
-import useSummaryStats from "./hooks/useSummaryStats";
 import useSampleEvents from "./hooks/useSampleEvents";
 import useCompareTimeSeriesData from "./hooks/useCompareTimeSeriesData";
 import useCompareBarData from "./hooks/useCompareBarData";
@@ -58,8 +57,9 @@ function CompareLake({
   const hasStationIdsB = true;
   const [localParams, setLocalParams] = useState([]);
   const [applied, setApplied] = useState(false);
-  const summaryA = useSummaryStats({ applied, events: eventsA, selectedStations: selectedStationsA, selectedParam });
-  const summaryB = useSummaryStats({ applied, events: eventsB, selectedStations: selectedStationsB, selectedParam });
+  // useSummaryStats removed
+  const summaryA = null;
+  const summaryB = null;
   const [chartType, setChartType] = useState('time'); // 'time'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [selectedYears, setSelectedYears] = useState([]);
@@ -344,23 +344,34 @@ function CompareLake({
         <GraphInfoButton
           disabled={!canShowInfo}
           onClick={() => {
-            const ds = chartData?.datasets || [];
-            const stdMap = new Map();
-            ds.forEach((d) => {
-              const label = d?.label || '';
-              const parts = String(label).split(' – ');
-              if (parts.length === 3) {
-                const std = parts[1];
-                const kind = parts[2];
-                if (/^Min$/i.test(kind) || /^Max$/i.test(kind)) {
+            // Prefer standards from barData.meta or chartData.meta when available
+            const meta = (chartType === 'bar' ? (barData?.meta || {}) : (chartData?.meta || {}));
+            let standards = [];
+            if (Array.isArray(meta.standards) && meta.standards.length) {
+              standards = meta.standards.map(s => ({ code: s.code, min: s.min, max: s.max }));
+            } else {
+              const ds = (chartType === 'bar' ? (barData?.datasets || []) : (chartData?.datasets || []));
+              const stdMap = new Map();
+              ds.forEach((d) => {
+                const label = String(d?.label || '');
+                const parts = label.split(' – ').map(p => p.trim());
+                let std = null;
+                if (parts.length >= 3 && /\b(min|max)\b/i.test(parts[parts.length - 1]) && !/\b(min|max)\b/i.test(parts[1])) {
+                  std = parts[1];
+                } else if (parts.length >= 1) {
+                  std = parts[0];
+                }
+                const kindMatch = /\b(min|max)\b/i.exec(label);
+                if (std && kindMatch) {
+                  const kind = kindMatch[1].toLowerCase();
                   const rec = stdMap.get(std) || { code: std, min: null, max: null };
-                  if (/^Min$/i.test(kind)) rec.min = 1;
-                  if (/^Max$/i.test(kind)) rec.max = 1;
+                  if (kind === 'min') rec.min = 1;
+                  if (kind === 'max') rec.max = 1;
                   stdMap.set(std, rec);
                 }
-              }
-            });
-            const standards = Array.from(stdMap.values());
+              });
+              standards = Array.from(stdMap.values());
+            }
             const hasMin = standards.some(s => s.min != null);
             const hasMax = standards.some(s => s.max != null);
             const inferred = hasMin && hasMax ? 'range' : hasMin ? 'min' : hasMax ? 'max' : null;
@@ -371,22 +382,19 @@ function CompareLake({
             })();
             const nameForLake = (lk) => lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk || '') || '';
             const ctx = {
-              chartType: chartType === 'depth' ? 'depth' : 'time',
+              chartType: chartType === 'depth' ? 'depth' : (chartType === 'bar' ? 'bar' : 'time'),
               param: pMeta,
               seriesMode,
               bucket,
               standards,
               compareMode: true,
               lakeLabels: { a: nameForLake(lakeA) || 'Lake A', b: nameForLake(lakeB) || 'Lake B' },
-              summary: { n: (summaryA.n || 0) + (summaryB.n || 0), mean: NaN, median: NaN },
+              summary: null,
               inferredType: inferred,
             };
             const content = buildGraphExplanation(ctx);
             const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : 'N/A');
-            const bullets = [];
-            if (lakeA) bullets.push(`${(nameForLake(lakeA) || 'Lake A')}: Samples ${summaryA.n || 0} · Mean ${fmt(summaryA.mean)} · Median ${fmt(summaryA.median)}`);
-            if (lakeB) bullets.push(`${(nameForLake(lakeB) || 'Lake B')}: Samples ${summaryB.n || 0} · Mean ${fmt(summaryB.mean)} · Median ${fmt(summaryB.median)}`);
-            if (bullets.length) content.sections.push({ heading: 'Per-lake summary', bullets });
+            // per-lake summaries removed (useSummaryStats hook deleted). If you want per-lake stats here, reintroduce a summary collector.
             setInfoContent(content);
             setInfoOpen(true);
           }}

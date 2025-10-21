@@ -161,6 +161,8 @@ export default function useCompareBarData({ eventsA = [], eventsB = [], bucket =
       }
     });
 
-    return { labels: lakeLabels, datasets, meta: { years } };
+    // expose detected standard info for callers (map of combined standards)
+    const standards = Array.from(combinedStandards.values()).map((entry) => ({ code: entry.stdLabel, min: entry.min != null ? entry.min : null, max: entry.max != null ? entry.max : null, lakes: Array.from(entry.lakes) }));
+    return { labels: lakeLabels, datasets, meta: { years, standards } };
   }, [eventsA, eventsB, bucket, selectedYears, depth, selectedParam, lakeA, lakeB, lakeOptions]);
 }
