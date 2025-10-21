@@ -202,33 +202,6 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     return () => { mounted = false; };
   }, [selectedLake, selectedOrg, dateFrom, dateTo, timeRange]);
 
-  // Compare: no prefetch across all lakes (avoids 429). CompareLake fetches on-demand.
-
-  // Compare tab: CompareLake manages its own selectors. No extra helpers needed here.
-
-  // Thresholds (static fallback by class)
-  const thresholds = {
-    BOD: { AA: 1, A: 3, B: 5, C: 7, D: 15, SA: null, SB: null, SC: null, SD: null, type: "max" },
-    DO: { AA: 5, A: 5, B: 5, C: 5, D: 2, SA: 6, SB: 6, SC: 5, SD: 2, type: "min" },
-    TSS: { AA: 25, A: 50, B: 65, C: 80, D: 110, SA: 25, SB: 50, SC: 80, SD: 110, type: "max" },
-    TP:  { AA: 0.003, A: 0.5, B: 0.5, C: 0.5, D: 5, SA: 0.1, SB: 0.5, SC: 0.5, SD: 5, type: "max" },
-    NH3: { AA: 0.05, A: 0.05, B: 0.05, C: 0.05, D: 0.75, SA: 0.04, SB: 0.05, SC: 0.05, SD: 0.75, type: "max" },
-    pH: {
-      range: {
-        AA: [6.5, 8.5],
-        A:  [6.5, 8.5],
-        B:  [6.5, 8.5],
-        C:  [6.5, 9.0],
-        D:  [6.5, 9.0],
-        SA: [7.0, 8.5],
-        SB: [7.0, 8.5],
-        SC: [6.5, 8.5],
-        SD: [6.0, 9.0],
-      },
-      type: "range",
-    },
-  };
-
   // Single tab: filter records to current lake and date range
   const currentRecords = useMemo(
     () => {
@@ -280,6 +253,8 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
       title={<span style={{ color: '#fff' }}>{title}</span>}
       ariaLabel="Lake statistics modal"
       width={1100}
+      // ensure the page-level sidebar (StatsSidebar) can render above the modal overlay
+      overlayZIndex={9990}
       style={modalStyle}
       footerStyle={{
         background: 'transparent',
@@ -310,134 +285,79 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
         </div>
       }
     >
-      {/* Header controls: Bucket & Range + Tabs */}
-      <div style={{ display: "flex", gap: 8, alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'nowrap' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, opacity: 0.9 }}>Bucket</span>
-          <select
-            className="pill-btn"
-            value={bucket}
-            onChange={(e) => setBucket(e.target.value)}
-            disabled={activeTab === 'advanced'}
-            aria-disabled={activeTab === 'advanced'}
-            title={activeTab === 'advanced' ? 'Disabled while Advanced tab is active' : undefined}
-            style={activeTab === 'advanced' ? { opacity: 0.55, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-          >
-            <option value="year">Year</option>
-            <option value="quarter">Quarter</option>
-            <option value="month">Month</option>
-          </select>
 
-          <span style={{ fontSize: 12, opacity: 0.9, marginLeft: 8 }}>Range</span>
-          <select
-            className="pill-btn"
-            value={timeRange}
-            onChange={(e) => applyRange(e.target.value)}
-            disabled={activeTab === 'advanced'}
-            aria-disabled={activeTab === 'advanced'}
-            title={activeTab === 'advanced' ? 'Disabled while Advanced tab is active' : undefined}
-            style={activeTab === 'advanced' ? { opacity: 0.55, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-          >
-            <option value="all">All Time</option>
-            <option value="5y">5 Yr</option>
-            <option value="3y">3 Yr</option>
-            <option value="1y">1 Yr</option>
-            <option value="6mo">6 Mo</option>
-            <option value="custom">Custom</option>
-          </select>
-
-          {timeRange === 'custom' && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', opacity: activeTab === 'advanced' ? 0.65 : 1 }}>
-              <input
-                type="date"
-                className="pill-btn"
-                value={dateFrom}
-                onChange={(e) => { setDateFrom(e.target.value); setTimeRange('custom'); }}
-                disabled={activeTab === 'advanced'}
-                aria-disabled={activeTab === 'advanced'}
-                title={activeTab === 'advanced' ? 'Disabled while Advanced tab is active' : undefined}
-                style={activeTab === 'advanced' ? { cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-              />
-              <span>to</span>
-              <input
-                type="date"
-                className="pill-btn"
-                value={dateTo}
-                onChange={(e) => { setDateTo(e.target.value); setTimeRange('custom'); }}
-                disabled={activeTab === 'advanced'}
-                aria-disabled={activeTab === 'advanced'}
-                title={activeTab === 'advanced' ? 'Disabled while Advanced tab is active' : undefined}
-                style={activeTab === 'advanced' ? { cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-              />
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {tabBtn('single', 'Single')}
-          {tabBtn('compare', 'Compare')}
-          {tabBtn('advanced', 'Advanced')}
-        </div>
+      {/* Tabs on top */}
+      <div style={{ display: 'flex', justifyContent: 'left', gap: 6, marginBottom: 12 }}>
+        {tabBtn('single', 'Single')}
+        {tabBtn('compare', 'Compare')}
+        {tabBtn('advanced', 'Advanced')}
       </div>
 
-      {/* Body */}
-      {activeTab === 'single' && (
-        <SingleLake
-          lakeOptions={lakeOptions}
-          selectedLake={selectedLake}
-          onLakeChange={(v) => {
-            setSelectedLake(v);
-            setSelectedOrg("");
-            setSelectedStations([]);
-            setSelectedParam("");
-            setStations([]);
-            setEffectiveAllRecords([]);
-            const cls = lakeClassMap.get(String(v));
-            if (cls) setSelectedClass(cls);
-          }}
-          orgOptions={orgOptions}
-          selectedOrg={selectedOrg}
-          onOrgChange={(v) => {
-            setSelectedOrg(v);
-            setSelectedStations([]);
-            setSelectedParam("");
-            setEffectiveAllRecords([]);
-          }}
-          stations={stations}
-          selectedStations={selectedStations}
-          onStationsChange={setSelectedStations}
-          paramOptions={paramOptions}
-          selectedParam={selectedParam}
-          onParamChange={setSelectedParam}
-          thresholds={thresholds}
+      <div>
+        {activeTab === 'single' && (
+          <SingleLake
+            lakeOptions={lakeOptions}
+            selectedLake={selectedLake}
+            onLakeChange={(v) => {
+              setSelectedLake(v);
+              setSelectedOrg("");
+              setSelectedStations([]);
+              setSelectedParam("");
+              setStations([]);
+              setEffectiveAllRecords([]);
+              const cls = lakeClassMap.get(String(v));
+              if (cls) setSelectedClass(cls);
+            }}
+            orgOptions={orgOptions}
+            selectedOrg={selectedOrg}
+            onOrgChange={(v) => {
+              setSelectedOrg(v);
+              setSelectedStations([]);
+              setSelectedParam("");
+              setEffectiveAllRecords([]);
+            }}
+            stations={stations}
+            selectedStations={selectedStations}
+            onStationsChange={setSelectedStations}
+            paramOptions={paramOptions}
+            selectedParam={selectedParam}
+            onParamChange={setSelectedParam}
             currentRecords={currentRecords}
-          selectedClass={selectedClass}
-          bucket={bucket}
-          chartOptions={chartOptions}
-          chartRef={singleChartRef}
+            selectedClass={selectedClass}
+            bucket={bucket}
+            setBucket={setBucket}
+            chartOptions={chartOptions}
+            chartRef={singleChartRef}
             timeRange={timeRange}
             dateFrom={dateFrom}
             dateTo={dateTo}
-        />
-      )}
+            setTimeRange={setTimeRange}
+            setDateFrom={setDateFrom}
+            setDateTo={setDateTo}
+          />
+        )}
 
-      {activeTab === 'compare' && (
-        <CompareLake
-          ref={compareRef}
-          lakeOptions={lakeOptions}
-          params={paramOptions}
-          thresholds={thresholds}
-          chartOptions={chartOptions}
-          bucket={bucket}
-          chartRef={compareChartRef}
-          timeRange={timeRange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onParamChange={setCompareSelectedParam}
-        />
-      )}
+        {activeTab === 'compare' && (
+          <CompareLake
+            ref={compareRef}
+            lakeOptions={lakeOptions}
+            params={paramOptions}
+            chartOptions={chartOptions}
+            bucket={bucket}
+            setBucket={setBucket}
+            chartRef={compareChartRef}
+            timeRange={timeRange}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            setTimeRange={setTimeRange}
+            setDateFrom={setDateFrom}
+            setDateTo={setDateTo}
+            onParamChange={setCompareSelectedParam}
+          />
+        )}
 
-  {activeTab === 'advanced' && <AdvancedStat ref={advancedRef} lakes={lakeOptions} params={paramOptions} staticThresholds={thresholds} />}
+        {activeTab === 'advanced' && <AdvancedStat ref={advancedRef} lakes={lakeOptions} params={paramOptions} />}
+      </div>
 
     </Modal>
   );

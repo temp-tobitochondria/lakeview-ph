@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState, useRef, useImperativeHandle } from
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+import TimeBucketRange from "../controls/TimeBucketRange";
+import StatsSidebar from "./StatsSidebar";
+import { FiMenu, FiX } from 'react-icons/fi';
 import { fetchParameters } from "./data/fetchers";
 import InfoModal from "../common/InfoModal";
 import { buildGraphExplanation } from "../utils/graphExplain";
@@ -20,15 +23,22 @@ import useCompareDepthProfileData from "./hooks/useCompareDepthProfileData";
 function CompareLake({
   lakeOptions = [],
   params = [],
-  thresholds = {},
-  chartOptions = {},
   bucket = "month",
+  setBucket = () => {},
   chartRef,
   timeRange = "all",
   dateFrom = "",
   dateTo = "",
+  setTimeRange = () => {},
+  setDateFrom = () => {},
+  setDateTo = () => {},
   onParamChange = () => {},
 }, ref) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarWidth = 340;
+  const toggleSidebar = () => {
+    setSidebarOpen((v) => !v);
+  };
   const [lakeA, setLakeA] = useState("");
   const [lakeB, setLakeB] = useState("");
   const [selectedOrgA, setSelectedOrgA] = useState("");
@@ -50,7 +60,7 @@ function CompareLake({
   const [applied, setApplied] = useState(false);
   const summaryA = useSummaryStats({ applied, events: eventsA, selectedStations: selectedStationsA, selectedParam });
   const summaryB = useSummaryStats({ applied, events: eventsB, selectedStations: selectedStationsB, selectedParam });
-  const [chartType, setChartType] = useState('time'); // 'time' | 'depth'
+  const [chartType, setChartType] = useState('time'); // 'time'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
@@ -94,6 +104,29 @@ function CompareLake({
   const { orgOptions: orgOptionsB, stationsByOrg: stationsByOrgB, allStations: allStationsB } = useStationsCache(lakeB);
   const stationsA = useMemo(() => (!selectedOrgA ? (allStationsA || []) : (stationsByOrgA?.[String(selectedOrgA)] || [])), [selectedOrgA, allStationsA, stationsByOrgA]);
   const stationsB = useMemo(() => (!selectedOrgB ? (allStationsB || []) : (stationsByOrgB?.[String(selectedOrgB)] || [])), [selectedOrgB, allStationsB, stationsByOrgB]);
+
+  // Fallback: if useStationsCache hasn't returned orgOptions yet, derive org options from the fetched events
+  const derivedOrgOptionsA = useMemo(() => {
+    if (Array.isArray(orgOptionsA) && orgOptionsA.length) return orgOptionsA;
+    const map = new Map();
+    (Array.isArray(eventsA) ? eventsA : []).forEach((ev) => {
+      const oid = ev.organization_id ?? ev.organization?.id ?? null;
+      const oname = ev.organization_name ?? ev.organization?.name ?? null;
+      if (oid && oname && !map.has(String(oid))) map.set(String(oid), { id: oid, name: oname });
+    });
+    return Array.from(map.values());
+  }, [orgOptionsA, eventsA]);
+
+  const derivedOrgOptionsB = useMemo(() => {
+    if (Array.isArray(orgOptionsB) && orgOptionsB.length) return orgOptionsB;
+    const map = new Map();
+    (Array.isArray(eventsB) ? eventsB : []).forEach((ev) => {
+      const oid = ev.organization_id ?? ev.organization?.id ?? null;
+      const oname = ev.organization_name ?? ev.organization?.name ?? null;
+      if (oid && oname && !map.has(String(oid))) map.set(String(oid), { id: oid, name: oname });
+    });
+    return Array.from(map.values());
+  }, [orgOptionsB, eventsB]);
 
   // Prevent same-lake vs same-lake by filtering the opposite dropdown
   const lakeOptionsForA = useMemo(() => lakeOptions.filter(l => String(l.id) !== String(lakeB)), [lakeOptions, lakeB]);
@@ -184,6 +217,24 @@ function CompareLake({
   const eventsAFiltered = useAnchoredTimeRange(eventsA, timeRange, dateFrom, dateTo);
   const eventsBFiltered = useAnchoredTimeRange(eventsB, timeRange, dateFrom, dateTo);
 
+  // Available years across selected datasets (union) for depth profile year selection
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    const pushYears = (arr) => {
+      (Array.isArray(arr) ? arr : []).forEach((ev) => {
+        const iso = ev?.sampled_at;
+        if (!iso) return;
+        try {
+          const y = new Date(iso).getFullYear();
+          if (Number.isFinite(y)) years.add(y);
+        } catch {}
+      });
+    };
+    pushYears(eventsA);
+    pushYears(eventsB);
+    return Array.from(years).sort((a, b) => b - a);
+  }, [eventsA, eventsB]);
+
   const chartData = useCompareTimeSeriesData({
     eventsA: eventsAFiltered,
     eventsB: eventsBFiltered,
@@ -239,7 +290,12 @@ function CompareLake({
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h4 style={{ margin: 0 }}>Compare Lakes</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" onClick={toggleSidebar} style={{ background: 'transparent', border: 'none', color: 'white', padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            {sidebarOpen ? <FiX size={18} /> : <FiMenu size={18} />}
+          </button>
+          <h4 style={{ margin: 0 }}>Compare Lakes</h4>
+        </div>
         <GraphInfoButton
           disabled={!canShowInfo}
           onClick={() => {
@@ -291,260 +347,112 @@ function CompareLake({
           }}
         />
       </div>
-      <div style={{ display: 'flex', gap: 16 }}>
-        {/* Sidebar */}
-        <aside style={{ width: 340, flex: '0 0 auto', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 12 }}>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>Lake A</div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ width: '100%' }}>
-                <option value="">Lake A</option>
-                {lakeOptionsForA.map((l) => {
-                  const raw = l.class_code || l.classification || l.class || '';
-                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
-                  const suffix = code ? ` (Class ${code})` : '';
-                  return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
-                })}
-              </select>
-              <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ width: '100%' }}>
-                <option value="">All dataset sources</option>
-                {orgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
-              </select>
-              {true ? (
-                <div style={{ position: 'relative' }}>
-                  <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ width: '100%' }}>
-                    {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
-                  </button>
-                  <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
-
-            <div style={{ fontSize: 12, opacity: 0.85 }}>Lake B</div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ width: '100%' }}>
-                <option value="">Lake B</option>
-                {lakeOptionsForB.map((l) => {
-                  const raw = l.class_code || l.classification || l.class || '';
-                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
-                  const suffix = code ? ` (Class ${code})` : '';
-                  return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
-                })}
-              </select>
-              <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ width: '100%' }}>
-                <option value="">All dataset sources</option>
-                {orgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
-              </select>
-              {true ? (
-                <div style={{ position: 'relative' }}>
-                  <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ width: '100%' }}>
-                    {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
-                  </button>
-                  <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
-
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
-              <select className="pill-btn" value={chartType} onChange={(e) => { setChartType(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                <option value="time">Time series</option>
-                <option value="depth">Depth profile</option>
-                <option value="bar">Bar (Stations)</option>
-              </select>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
-              <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ width: '100%' }}>
-                <option value="">Select parameter</option>
-                {paramList.map((p) => (<option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>))}
-              </select>
-            </div>
-
-            {chartType === 'time' && (
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
-                <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+  <div style={{ display: 'flex', gap: 16 }}>
+        {/* Sidebar (extracted) */}
+  <StatsSidebar isOpen={sidebarOpen} width={sidebarWidth} usePortal top={72} side="left" zIndex={10000}>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Lake A</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ width: '100%' }}>
+              <option value="">Lake A</option>
+              {lakeOptionsForA.map((l) => {
+                const raw = l.class_code || l.classification || l.class || '';
+                const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                const suffix = code ? ` (Class ${code})` : '';
+                return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
+              })}
+            </select>
+            <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ width: '100%' }}>
+              <option value="">All dataset sources</option>
+              {derivedOrgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
+            </select>
+            {true ? (
+              <div style={{ position: 'relative' }}>
+                <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ width: '100%' }}>
+                  {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
+                </button>
+                <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
               </div>
-            )}
-
-            <div>
-              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
-            </div>
+            ) : null}
           </div>
-        </aside>
+
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Lake B</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ width: '100%' }}>
+              <option value="">Lake B</option>
+              {lakeOptionsForB.map((l) => {
+                const raw = l.class_code || l.classification || l.class || '';
+                const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                const suffix = code ? ` (Class ${code})` : '';
+                return (<option key={l.id} value={String(l.id)}>{l.name}{suffix}</option>);
+              })}
+            </select>
+            <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ width: '100%' }}>
+              <option value="">All dataset sources</option>
+              {derivedOrgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
+            </select>
+            {true ? (
+              <div style={{ position: 'relative' }}>
+                <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ width: '100%' }}>
+                  {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
+                </button>
+                <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
+            <select className="pill-btn" value={chartType} onChange={(e) => { setChartType(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+              <option value="time">Time series</option>
+              <option value="bar">Bar (Stations)</option>
+            </select>
+            {chartType === 'time' && (
+              <TimeBucketRange
+                bucket={bucket}
+                setBucket={setBucket}
+                timeRange={timeRange}
+                setTimeRange={setTimeRange}
+                dateFrom={dateFrom}
+                setDateFrom={setDateFrom}
+                dateTo={dateTo}
+                setDateTo={setDateTo}
+              />
+            )}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
+            <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ width: '100%' }}>
+              <option value="">Select parameter</option>
+              {paramList.map((p) => (<option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>))}
+            </select>
+          </div>
+
+          {chartType === 'time' && (
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
+              <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+            </div>
+          )}
+
+          <div>
+            <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
+          </div>
+  </StatsSidebar>
         {/* Main panel */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Summary panels removed per design: Samples / Mean / Median are not shown in CompareLake */}
 
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
-        {applied ? (
-          chartType === 'depth' ? (
-            depthProfile && depthProfile.hasDepthA && depthProfile.hasDepthB && depthProfile.datasets && depthProfile.datasets.length ? (
-              (() => {
-                const depthDatasets = (depthProfile.datasets || []).slice();
-                const maxDepth = depthProfile.maxDepth || 0;
-                const thByLakeAndStandard = new Map(); 
-                const ensureStdEntry = (lkKey, stdKey, stdLabel) => {
-                  if (!thByLakeAndStandard.has(lkKey)) thByLakeAndStandard.set(lkKey, new Map());
-                  const inner = thByLakeAndStandard.get(lkKey);
-                  if (!inner.has(stdKey)) inner.set(stdKey, { stdLabel: stdLabel || `Standard ${stdKey}`, min: null, max: null });
-                  return inner.get(stdKey);
-                };
-                try {
-                  for (const ev of eventsA || []) {
-                    const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
-                    if (selectedOrgA && oidEv && String(oidEv) !== String(selectedOrgA)) continue;
-                    const sName = eventStationName(ev) || '';
-                    if (selectedStationsA && selectedStationsA.length && !selectedStationsA.includes(sName)) continue;
-                    const results = Array.isArray(ev?.results) ? ev.results : [];
-                    for (const r of results) {
-                      const p = r?.parameter; if (!p) continue;
-                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
-                      if (!match) continue;
-                      const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
-                      const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
-                      const stdLabel = stdKey;
-                      if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
-                        const entry = ensureStdEntry(String(lakeA), String(stdKey), stdLabel);
-                        if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
-                        if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
-                      }
-                    }
-                  }
-                  for (const ev of eventsB || []) {
-                    const oidEv = ev.organization_id ?? ev.organization?.id ?? null;
-                    if (selectedOrgB && oidEv && String(oidEv) !== String(selectedOrgB)) continue;
-                    const sName = eventStationName(ev) || '';
-                    if (selectedStationsB && selectedStationsB.length && !selectedStationsB.includes(sName)) continue;
-                    const results = Array.isArray(ev?.results) ? ev.results : [];
-                    for (const r of results) {
-                      const p = r?.parameter; if (!p) continue;
-                      const match = (String(p.code) === String(selectedParam)) || (String(p.id) === String(selectedParam)) || (String(r.parameter_id) === String(selectedParam));
-                      if (!match) continue;
-                      const stdId = r?.threshold?.standard_id ?? ev?.applied_standard_id ?? null;
-                      const stdKey = r?.threshold?.standard?.code || r?.threshold?.standard?.name || (stdId != null ? String(stdId) : null);
-                      const stdLabel = stdKey;
-                      if (stdKey != null && (r?.threshold?.min_value != null || r?.threshold?.max_value != null)) {
-                        const entry = ensureStdEntry(String(lakeB), String(stdKey), stdLabel);
-                        if (r?.threshold?.min_value != null) entry.min = Number(r.threshold.min_value);
-                        if (r?.threshold?.max_value != null) entry.max = Number(r.threshold.max_value);
-                      }
-                    }
-                  }
-                } catch (e) { /* ignore */ }
-
-                const combinedStandards = new Map(); 
-                [lakeA, lakeB].filter(Boolean).forEach((lk) => {
-                  const lkKey = String(lk);
-                  const inner = thByLakeAndStandard.get(lkKey);
-                  if (!inner) return;
-                  inner.forEach((entry, stdKey) => {
-                    const minVal = entry.min != null ? Number(entry.min) : null;
-                    const maxVal = entry.max != null ? Number(entry.max) : null;
-                    const uniqueKey = `${stdKey}::${minVal ?? 'null'}::${maxVal ?? 'null'}`;
-                    if (!combinedStandards.has(uniqueKey)) combinedStandards.set(uniqueKey, { stdLabel: entry.stdLabel, min: minVal, max: maxVal, lakes: new Set([lkKey]) });
-                    else combinedStandards.get(uniqueKey).lakes.add(lkKey);
-                  });
-                });
-
-                const minColorUnified = '#16a34a';
-                const maxColorUnified = '#ef4444';
-                const lakeMinColors = ['#16a34a', '#f59e0b'];
-                const lakeMaxColors = ['#ef4444', '#f97316'];
-
-                combinedStandards.forEach((entry) => {
-                  if (entry.lakes.size > 1) {
-                    const lakesMeta = Array.from(entry.lakes).map((lkKey) => {
-                      const nm = nameForLake(lkKey);
-                      const cls = classForLake(lkKey);
-                      return `${nm}${cls ? `: Class ${cls}` : ''}`;
-                    }).join(', ');
-                    if (entry.min != null) {
-                      depthDatasets.push({ label: `${entry.stdLabel} – Min (${lakesMeta})`, data: [{ x: entry.min, y: 0 }, { x: entry.min, y: Math.max(1, maxDepth) }], borderColor: minColorUnified, backgroundColor: `${minColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
-                    }
-                    if (entry.max != null) {
-                      depthDatasets.push({ label: `${entry.stdLabel} – Max (${lakesMeta})`, data: [{ x: entry.max, y: 0 }, { x: entry.max, y: Math.max(1, maxDepth) }], borderColor: maxColorUnified, backgroundColor: `${maxColorUnified}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
-                    }
-                  } else {
-                    const onlyLakeKey = Array.from(entry.lakes)[0];
-                    const li = [lakeA, lakeB].findIndex((lk) => String(lk) === onlyLakeKey);
-                    const minColor = lakeMinColors[li % lakeMinColors.length];
-                    const maxColor = lakeMaxColors[li % lakeMaxColors.length];
-                    const lakeLabel = lakeOptions.find((x)=>String(x.id)===onlyLakeKey)?.name || onlyLakeKey;
-                    const cls = classForLake(onlyLakeKey);
-                    if (entry.min != null) {
-                      depthDatasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Min`, data: [{ x: entry.min, y: 0 }, { x: entry.min, y: Math.max(1, maxDepth) }], borderColor: minColor, backgroundColor: `${minColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
-                    }
-                    if (entry.max != null) {
-                      depthDatasets.push({ label: `${lakeLabel}${cls ? ` – Class ${cls}` : ''} – ${entry.stdLabel} – Max`, data: [{ x: entry.max, y: 0 }, { x: entry.max, y: Math.max(1, maxDepth) }], borderColor: maxColor, backgroundColor: `${maxColor}33`, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: true, showLine: true, parsing: false });
-                    }
-                  }
-                });
-
-                const depthData = { datasets: normalizeDepthDatasets(depthDatasets) };
-                // Apply lake-specific palettes
-                depthData.datasets = colorizeDatasets(depthData.datasets);
-                return (
-                  <Line
-                    key={`depth-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`}
-                    ref={chartRef}
-                    data={depthData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
-                        tooltip: { callbacks: { label: (ctx) => {
-                          const v = ctx.parsed?.x ?? ctx.raw?.x; const d = ctx.parsed?.y ?? ctx.raw?.y;
-                          return `${ctx.dataset.label}: ${Number(v).toFixed(2)}${depthProfile.unit ? ` ${depthProfile.unit}` : ''} at ${d} m`;
-                        } } },
-                      },
-                      scales: {
-                        x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                        y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                      },
-                    }}
-                  />
-                );
-              })()
-            ) : (
-              (() => {
-                const labelA = nameForLake(lakeA) || 'Lake A';
-                const labelB = nameForLake(lakeB) || 'Lake B';
-                const hasA = depthProfile?.hasDepthA; const hasB = depthProfile?.hasDepthB;
-                let msg = 'Depth profile requires multiple depths; only surface (0 m) measurements were found for this selection.';
-                if (hasA === false && hasB === false) {
-                  msg = `Only surface (0 m) measurements are available for ${labelA} and ${labelB} for this parameter. A depth profile requires multiple depths.`;
-                } else if (hasA === false) {
-                  msg = `${labelA} only has surface (0 m) measurements for this parameter. A depth profile requires multiple depths.`;
-                } else if (hasB === false) {
-                  msg = `${labelB} only has surface (0 m) measurements for this parameter. A depth profile requires multiple depths.`;
-                }
-                return (
-                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ opacity: 0.9 }}>{msg}</span>
-                  </div>
-                );
-              })()
-            )
-            ) : (
-            chartData && chartData.datasets && chartData.datasets.length ? (
-              (() => {
-                const cd = { ...chartData, datasets: colorizeDatasets(chartData.datasets) };
-                return <Line key={`time-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`} ref={chartRef} data={cd} options={compareChartOptions} />;
-              })()
-            ) : (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : 'Fill all fields and click Apply to generate the chart.'}</span>
-              </div>
-            )
-          )
+        {applied && chartData && Array.isArray(chartData.datasets) && chartData.datasets.length ? (
+          (() => {
+            const cd = { ...chartData, datasets: colorizeDatasets(chartData.datasets) };
+            return <Line key={`time-${selectedParam}-${lakeA}-${lakeB}-${seriesMode}`} ref={chartRef} data={cd} options={compareChartOptions} />;
+          })()
         ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : 'Fill all fields and click Apply to generate the chart.'}</span>

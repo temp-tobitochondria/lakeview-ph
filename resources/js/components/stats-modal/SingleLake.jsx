@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import TimeBucketRange from "../controls/TimeBucketRange";
+import StatsSidebar from "./StatsSidebar";
+import { FiMenu, FiX } from 'react-icons/fi';
 import { Line, Scatter } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
 import InfoModal from "../common/InfoModal";
@@ -24,23 +27,25 @@ export default function SingleLake({
   orgOptions,
   selectedOrg,
   onOrgChange,
-  stations,
   selectedStations,
   onStationsChange,
   paramOptions,
   selectedParam,
   onParamChange,
-  thresholds,
-  currentRecords,
   selectedClass,
   bucket,
-  chartOptions,
   chartRef,
   timeRange = 'all',
   dateFrom = '',
   dateTo = '',
+  setTimeRange = () => {},
+  setDateFrom = () => {},
+  setDateTo = () => {},
+  setBucket = () => {},
 }) {
   const [stationsOpen, setStationsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarWidth = 320;
   const stationBtnRef = useRef(null);
   const [applied, setApplied] = useState(false);
   // 'time' | 'depth' | 'correlation'
@@ -52,7 +57,10 @@ export default function SingleLake({
   const [paramX, setParamX] = useState('');
   const [paramY, setParamY] = useState('');
   const { events, loading } = useSampleEvents(selectedLake, selectedOrg, timeRange, dateFrom, dateTo);
-  // All datasets are expected to have station identifiers
+  // Also fetch unfiltered events (all time) to derive available years without being affected
+  // by the currently selected timeRange/dateFrom/dateTo. This prevents the year list from
+  // narrowing to the chosen year when the user picks a year filter.
+  const { events: eventsAll } = useSampleEvents(selectedLake, selectedOrg, 'all', '', '');
   const hasStationIds = true;
   const { orgOptions: orgOptionsLocal, stationsByOrg, allStations } = useStationsCache(selectedLake);
   const stationsList = useMemo(() => (!selectedOrg ? (allStations || []) : (stationsByOrg?.[String(selectedOrg)] || [])), [selectedOrg, allStations, stationsByOrg]);
@@ -60,9 +68,21 @@ export default function SingleLake({
     setApplied(false);
   }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType, paramX, paramY]);
 
-  // per-station mode available when stations are present
+  // Available years for the selected lake/org based on events
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    (Array.isArray(eventsAll) ? eventsAll : []).forEach((ev) => {
+      const iso = ev?.sampled_at;
+      if (!iso) return;
+      try {
+        const y = new Date(iso).getFullYear();
+        if (Number.isFinite(y)) years.add(y);
+      } catch {}
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [eventsAll]);
 
-  // All chart types available as stations are required
+
   const summaryStats = useSummaryStats({ applied, events, selectedStations, selectedParam });
   const nameForSelectedLake = useMemo(() => lakeName(lakeOptions, selectedLake) || String(selectedLake || '') || '', [lakeOptions, selectedLake]);
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
@@ -122,6 +142,10 @@ export default function SingleLake({
     setApplied(true);
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen((v) => !v);
+  };
+
   const singleChartOptions = useMemo(() => baseLineChartOptions(), []);
 
   const isComplete = useMemo(() => {
@@ -133,7 +157,17 @@ export default function SingleLake({
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h4 style={{ margin: 0 }}>Single Lake</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            onClick={toggleSidebar}
+            style={{ background: 'transparent', border: 'none', color: 'white', padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            {sidebarOpen ? <FiX size={18} /> : <FiMenu size={18} />}
+          </button>
+          <h4 style={{ margin: 0 }}>Single Lake</h4>
+        </div>
         <GraphInfoButton
           disabled={!canShowInfo}
           onClick={() => {
@@ -182,128 +216,158 @@ export default function SingleLake({
           }}
         />
       </div>
-      <div style={{ display: 'flex', gap: 16 }}>
-        {/* Sidebar */}
-        <aside style={{ width: 320, flex: '0 0 auto', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 12 }}>
-          <div style={{ display: 'grid', gap: 8 }}>
+  <div style={{ display: 'flex', gap: 16 }}>
+        {/* Sidebar (extracted) */}
+  <StatsSidebar isOpen={sidebarOpen} width={sidebarWidth} usePortal top={72} side="left" zIndex={10000}>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Lake</div>
+            <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+              <option value="">Select lake</option>
+              {lakeOptions.map((l) => {
+                const raw = l.class_code || l.classification || l.class || '';
+                const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
+                const suffix = code ? ` (Class ${code})` : '';
+                return (<option key={l.id} value={l.id}>{l.name}{suffix}</option>);
+              })}
+            </select>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Dataset source</div>
+            <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); onStationsChange([]); setApplied(false); }} disabled={!selectedLake} style={{ width: '100%' }}>
+              <option value="">All dataset sources</option>
+              {orgOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {true ? (
             <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Lake</div>
-              <select className="pill-btn" value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
-                <option value="">Select lake</option>
-                {lakeOptions.map((l) => {
-                  const raw = l.class_code || l.classification || l.class || '';
-                  const code = raw ? String(raw).replace(/^class\s*/i, '') : '';
-                  const suffix = code ? ` (Class ${code})` : '';
-                  return (<option key={l.id} value={l.id}>{l.name}{suffix}</option>);
-                })}
-              </select>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Locations</div>
+              <div style={{ position: 'relative' }}>
+                <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stationsList?.length} title={!selectedOrg ? 'Choose a dataset source first' : (!stationsList?.length ? 'No stations available' : undefined)} onClick={() => setStationsOpen((v) => !v)} style={{ width: '100%' }}>
+                  {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
+                </button>
+                <StationPicker
+                  anchorRef={stationBtnRef}
+                  open={stationsOpen}
+                  onClose={() => setStationsOpen(false)}
+                  stations={stationsList}
+                  value={selectedStations}
+                  onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
+                />
+              </div>
             </div>
+          ) : null}
+
+          {/* Chart Type */}
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
+            <select className="pill-btn" value={chartType} onChange={(e) => {
+              const next = e.target.value;
+              setChartType(next);
+              if (next === 'correlation') {
+                if (!paramX && selectedParam) setParamX(selectedParam);
+                if (!paramY) {
+                  const alt = (paramOptions || []).find(p => String(p.key || p.id || p.code) !== String(paramX || selectedParam));
+                  if (alt) setParamY(alt.key || alt.id || alt.code);
+                }
+              }
+              setApplied(false);
+            }} style={{ width: '100%' }}>
+              <option value="time">Time series</option>
+              <option value="depth">Depth profile</option>
+              <option value="correlation">Correlation</option>
+            </select>
+            
+          </div>
+
+          {/* Bucket & Range controls (only for Time Series), positioned below Chart Type */}
+          {chartType === 'time' && (
+            <TimeBucketRange
+              bucket={bucket}
+              setBucket={setBucket}
+              timeRange={timeRange}
+              setTimeRange={setTimeRange}
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
+            />
+          )}
+
+          {/* Bucket & Year controls for Depth Profile */}
+          {chartType === 'depth' && (
+            <TimeBucketRange
+              bucket={bucket}
+              setBucket={setBucket}
+              timeRange={timeRange}
+              setTimeRange={setTimeRange}
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
+              allowedBuckets={['month', 'quarter']}
+              rangeMode="year-list"
+              availableYears={availableYears}
+            />
+          )}
+
+          {chartType === 'time' && (
             <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Dataset source</div>
-              <select className="pill-btn" value={selectedOrg} onChange={(e) => { onOrgChange(e.target.value); onStationsChange([]); setApplied(false); }} disabled={!selectedLake} style={{ width: '100%' }}>
-                <option value="">All dataset sources</option>
-                {orgOptions.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
+              <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
+            </div>
+          )}
+          {/* spatial controls removed */}
+          {chartType === 'correlation' && (
+            <div style={{ fontSize: 12, opacity: 0.8 }}>
+              Station requirement: select exactly one location.
+            </div>
+          )}
+
+          {/* Parameters */}
+          {chartType !== 'correlation' ? (
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
+              <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
+                <option value="">Select parameter</option>
+                {paramOptions.map((p) => (
+                  <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
                 ))}
               </select>
             </div>
-            {true ? (
+          ) : (
+            <>
               <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Locations</div>
-                <div style={{ position: 'relative' }}>
-                  <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stationsList?.length} title={!selectedOrg ? 'Choose a dataset source first' : (!stationsList?.length ? 'No stations available' : undefined)} onClick={() => setStationsOpen((v) => !v)} style={{ width: '100%' }}>
-                    {selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}
-                  </button>
-                  <StationPicker
-                    anchorRef={stationBtnRef}
-                    open={stationsOpen}
-                    onClose={() => setStationsOpen(false)}
-                    stations={stationsList}
-                    value={selectedStations}
-                    onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {/* Chart Type */}
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
-              <select className="pill-btn" value={chartType} onChange={(e) => {
-                const next = e.target.value;
-                setChartType(next);
-                if (next === 'correlation') {
-                  // Seed X/Y if empty to help users see something quickly
-                  if (!paramX && selectedParam) setParamX(selectedParam);
-                  if (!paramY) {
-                    const alt = (paramOptions || []).find(p => String(p.key || p.id || p.code) !== String(paramX || selectedParam));
-                    if (alt) setParamY(alt.key || alt.id || alt.code);
-                  }
-                }
-                setApplied(false);
-              }} style={{ width: '100%' }}>
-                <option value="time">Time series</option>
-                <option value="depth">Depth profile</option>
-                <option value="correlation">Correlation</option>
-              </select>
-              
-            </div>
-
-            {chartType === 'time' && (
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
-                <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
-              </div>
-            )}
-            {/* spatial controls removed */}
-            {chartType === 'correlation' && (
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                Station requirement: select exactly one location.
-              </div>
-            )}
-
-            {/* Parameters */}
-            {chartType !== 'correlation' ? (
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
-                <select className="pill-btn" value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
-                  <option value="">Select parameter</option>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter X</div>
+                <select className="pill-btn" value={paramX} onChange={(e) => { setParamX(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
+                  <option value="">Select parameter X</option>
                   {paramOptions.map((p) => (
                     <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
                   ))}
                 </select>
               </div>
-            ) : (
-              <>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter X</div>
-                  <select className="pill-btn" value={paramX} onChange={(e) => { setParamX(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
-                    <option value="">Select parameter X</option>
-                    {paramOptions.map((p) => (
-                      <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter Y</div>
-                  <select className="pill-btn" value={paramY} onChange={(e) => { setParamY(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
-                    <option value="">Select parameter Y</option>
-                    {paramOptions.map((p) => (
-                      <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter Y</div>
+                <select className="pill-btn" value={paramY} onChange={(e) => { setParamY(e.target.value); setApplied(false); }} disabled={!canChooseParam} style={{ width: '100%' }}>
+                  <option value="">Select parameter Y</option>
+                  {paramOptions.map((p) => (
+                    <option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
-            <div>
-              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
-            </div>
+          <div>
+            <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
           </div>
-        </aside>
+  </StatsSidebar>
 
-        {/* Main panel */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+  {/* Main panel */}
+  <div style={{ flex: 1, minWidth: 0, transition: 'all 260ms ease' }}>
           {/* Summary stats removed per design: Samples / Mean / Median are no longer shown here */}
           <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
@@ -415,7 +479,6 @@ export default function SingleLake({
       </div>
       </div>
       </div>
-      {/* Bottom toggle removed; chart type is now selected in the sidebar */}
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>
   );

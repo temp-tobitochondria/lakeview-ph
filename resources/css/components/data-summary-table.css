@@ -69,7 +69,7 @@
 .ds-footer .actions { margin-left: auto; display: flex; gap: 8px; }
 
 /* Empty states and helper text */
-.ds-empty { padding: 20px; opacity: 0.85; text-align: left; }
+.ds-empty { padding: 20px; opacity: 0.85; text-align: center; }
 .ds-center-loading { display: flex; align-items: center; justify-content: center; height: 120px; }
 
 /* When lv-table class is also present, rely on that system's visuals */

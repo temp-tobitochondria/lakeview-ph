@@ -1,0 +1,145 @@
+import React from 'react';
+
+export default function TimeBucketRange({
+  bucket = 'month',
+  setBucket = () => {},
+  timeRange = 'all',
+  setTimeRange = () => {},
+  dateFrom = '',
+  setDateFrom = () => {},
+  dateTo = '',
+  setDateTo = () => {},
+  referenceDate = null, // optional Date used for presets (e.g., latestTestDate)
+  // New: restrict bucket options (e.g., ['month','quarter'])
+  allowedBuckets = null,
+  // New: switch range UI to a specific year dropdown fed by availableYears
+  rangeMode = 'presets', // 'presets' | 'year-list'
+  availableYears = [], // e.g., [2024, 2023, 2022]
+}) {
+  const fmtIso = (d) => {
+    if (!d) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
+  const today = referenceDate ? new Date(referenceDate) : new Date();
+
+  const handleRangeChange = (key) => {
+    let from = '';
+    let to = fmtIso(today);
+    if (key === 'all') {
+      from = '';
+      to = '';
+    } else if (key === 'custom') {
+      from = dateFrom || '';
+      to = dateTo || '';
+    } else if (key === '5y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 5); from = fmtIso(d);
+    } else if (key === '3y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 3); from = fmtIso(d);
+    } else if (key === '1y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); from = fmtIso(d);
+    } else if (key === '6mo') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 6); from = fmtIso(d);
+    }
+    setDateFrom(from);
+    setDateTo(to === '' ? '' : to);
+    setTimeRange(key);
+  };
+
+  // For custom, we show year-only inputs but we surface full ISO start/end-of-year
+  const yearFrom = dateFrom ? String(dateFrom).slice(0,4) : '';
+  const yearTo = dateTo ? String(dateTo).slice(0,4) : '';
+
+  const handleCustomYearFrom = (y) => {
+    const yf = String(y).padStart(4, '0');
+    setDateFrom(`${yf}-01-01`);
+    // if to not set, set to end of same year
+    if (!dateTo) setDateTo(`${yf}-12-31`);
+    setTimeRange('custom');
+  };
+  const handleCustomYearTo = (y) => {
+    const yt = String(y).padStart(4, '0');
+    setDateTo(`${yt}-12-31`);
+    if (!dateFrom) setDateFrom(`${yt}-01-01`);
+    setTimeRange('custom');
+  };
+
+  const currentYear = (referenceDate ? new Date(referenceDate) : new Date()).getFullYear();
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Bucket</div>
+      <select className="pill-btn" value={bucket} onChange={(e) => setBucket(e.target.value)} style={{ width: '100%' }}>
+        {(() => {
+          const opts = Array.isArray(allowedBuckets) && allowedBuckets.length
+            ? allowedBuckets
+            : ['year', 'quarter', 'month'];
+          // Preserve original order preference: year, quarter, month
+          const order = ['year', 'quarter', 'month'];
+          const final = order.filter((k) => opts.includes(k));
+          return final.map((k) => (
+            <option key={k} value={k}>
+              {k === 'year' ? 'Year' : (k === 'quarter' ? 'Quarter' : 'Month')}
+            </option>
+          ));
+        })()}
+      </select>
+
+      <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, marginBottom: 4 }}>{rangeMode === 'year-list' ? 'Year' : 'Range'}</div>
+      {rangeMode === 'year-list' ? (
+        <select
+          className="pill-btn"
+          value={(() => {
+            // Derive current value from dateFrom/dateTo if custom, else empty for All Time
+            if (timeRange === 'custom' && dateFrom && dateTo && String(dateFrom).length >= 4) {
+              return String(dateFrom).slice(0, 4);
+            }
+            return '';
+          })()}
+          onChange={(e) => {
+            const y = e.target.value;
+            if (!y) {
+              // All Years
+              setTimeRange('all');
+              setDateFrom('');
+              setDateTo('');
+            } else {
+              const yf = String(y).padStart(4, '0');
+              setDateFrom(`${yf}-01-01`);
+              setDateTo(`${yf}-12-31`);
+              setTimeRange('custom');
+            }
+          }}
+          style={{ width: '100%', marginBottom: 6 }}
+        >
+          <option value="">All Years</option>
+          {Array.isArray(availableYears) && availableYears.length
+            ? availableYears.map((y) => (
+                <option key={String(y)} value={String(y)}>{String(y)}</option>
+              ))
+            : null}
+        </select>
+      ) : (
+        <select className="pill-btn" value={timeRange} onChange={(e) => handleRangeChange(e.target.value)} style={{ width: '100%', marginBottom: 6 }}>
+          <option value="all">All Time</option>
+          <option value="5y">5 Yr</option>
+          <option value="3y">3 Yr</option>
+          <option value="1y">1 Yr</option>
+          <option value="6mo">6 Mo</option>
+          <option value="custom">Custom (year)</option>
+        </select>
+      )}
+
+      {rangeMode !== 'year-list' && timeRange === 'custom' && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="number" min={1900} max={currentYear} className="pill-btn" value={yearFrom} onChange={(e) => handleCustomYearFrom(e.target.value)} style={{ flex: '1 1 auto' }} />
+          <span>to</span>
+          <input type="number" min={1900} max={currentYear} className="pill-btn" value={yearTo} onChange={(e) => handleCustomYearTo(e.target.value)} style={{ flex: '1 1 auto' }} />
+        </div>
+      )}
+    </div>
+  );
+}

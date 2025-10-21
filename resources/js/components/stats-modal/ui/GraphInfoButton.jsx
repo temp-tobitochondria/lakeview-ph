@@ -5,13 +5,24 @@ export default function GraphInfoButton({ disabled, titleWhenDisabled='Generate 
   return (
     <button
       type="button"
-      className="pill-btn liquid"
       title={disabled ? titleWhenDisabled : 'Explain this graph'}
       disabled={disabled}
       onClick={onClick}
-      style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+      aria-label={disabled ? titleWhenDisabled : 'Explain this graph'}
+      style={{
+        width: 34,
+        height: 34,
+        padding: 6,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: disabled ? 'rgba(255,255,255,0.03)' : 'transparent',
+        cursor: disabled ? 'not-allowed' : 'pointer'
+      }}
     >
-      <FiInfo size={14} />
+  <FiInfo size={16} color="#fff" />
     </button>
   );
 }
