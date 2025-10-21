@@ -148,6 +148,35 @@ SQL;
                 return $this->mapper->mapRows($rows, 'lake_flows', null, $place);
             }
 
+            // New: organizations (tenants)
+            if ($entity === 'organizations') {
+                $qtrim = trim((string)$q);
+                $isGeneric = ($qtrim === '' || preg_match('/^org(anization)?s?$/i', $qtrim));
+                if ($isGeneric) {
+                    $sql = <<<SQL
+SELECT t.id, t.name, t.slug, t.contact_email
+FROM tenants t
+WHERE t.active = true
+ORDER BY t.name ASC
+LIMIT :limit
+SQL;
+                    $params = ['limit' => $limit];
+                } else {
+                    $sql = <<<SQL
+SELECT t.id, t.name, t.slug, t.contact_email
+FROM tenants t
+WHERE t.active = true AND (
+    t.name ILIKE :kw OR COALESCE(t.slug,'') ILIKE :kw OR COALESCE(t.contact_email,'') ILIKE :kw
+)
+ORDER BY t.name ASC
+LIMIT :limit
+SQL;
+                    $params = ['kw' => $kw, 'limit' => $limit];
+                }
+                $rows = DB::select($sql, $params);
+                return $this->mapper->mapRows($rows, 'organizations', null, null);
+            }
+
             return [];
         });
     }
