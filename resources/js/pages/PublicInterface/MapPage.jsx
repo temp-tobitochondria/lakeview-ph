@@ -116,7 +116,9 @@ function MapPage() {
     try {
       const body = entity ? { query, entity } : { query };
       const res = await api.post('/search', body);
-      const rows = (res && (res.data || res.rows || res.results)) || [];
+      // Backend returns an envelope { data: [...], intent, diagnostics }
+      const payload = (res && res.data) || {};
+      const rows = payload.data || payload.results || payload.rows || [];
       setSearchResults(Array.isArray(rows) ? rows : []);
     } catch (e) {
       setSearchError(e?.message || 'Search failed');
