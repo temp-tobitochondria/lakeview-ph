@@ -49,7 +49,7 @@ function CompareLake({
   const [applied, setApplied] = useState(false);
   const summaryA = useSummaryStats({ applied, events: eventsA, selectedStations: selectedStationsA, selectedParam });
   const summaryB = useSummaryStats({ applied, events: eventsB, selectedStations: selectedStationsB, selectedParam });
-  const [viewMode, setViewMode] = useState('time'); // 'time' | 'depth'
+  const [chartType, setChartType] = useState('time'); // 'time' | 'depth'
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
@@ -208,11 +208,11 @@ function CompareLake({
 
   const canShowInfo = useMemo(() => {
     if (!applied) return false;
-    if (viewMode === 'time') {
+    if (chartType === 'time') {
       try { return Boolean(chartData && Array.isArray(chartData.datasets) && chartData.datasets.length); } catch { return false; }
     }
     try { return Boolean(depthProfile && Array.isArray(depthProfile.datasets) && depthProfile.datasets.length); } catch { return false; }
-  }, [applied, viewMode, chartData, depthProfile]);
+  }, [applied, chartType, chartData, depthProfile]);
 
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
@@ -248,7 +248,7 @@ function CompareLake({
             })();
             const nameForLake = (lk) => lakeOptions.find((x)=>String(x.id)===String(lk))?.name || String(lk || '') || '';
             const ctx = {
-              chartType: viewMode === 'depth' ? 'depth' : 'time',
+              chartType: chartType === 'depth' ? 'depth' : 'time',
               param: pMeta,
               seriesMode,
               bucket,
@@ -269,60 +269,83 @@ function CompareLake({
           }}
         />
       </div>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
-          <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">Lake A</option>
-            {lakeOptionsForA.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
-          </select>
-          <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam("" ); }} disabled={!lakeA} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">All dataset sources</option>
-            {orgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
-          </select>
-          <div style={{ position: 'relative', flex: '0 0 auto' }}>
-            <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ minWidth: 140 }}>
-              {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
-            </button>
-            <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
-          </div>
-        </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        {/* Sidebar */}
+        <aside style={{ width: 340, flex: '0 0 auto', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 12 }}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>Lake A</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <select className="pill-btn" value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedStationsA([]); setSelectedParam(""); }} style={{ width: '100%' }}>
+                <option value="">Lake A</option>
+                {lakeOptionsForA.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
+              </select>
+              <select className="pill-btn" value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedStationsA([]); setSelectedParam(""); }} disabled={!lakeA} style={{ width: '100%' }}>
+                <option value="">All dataset sources</option>
+                {orgOptionsA.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
+              </select>
+              <div style={{ position: 'relative' }}>
+                <button ref={stationBtnARef} type="button" className="pill-btn" disabled={!lakeA || !selectedOrgA} onClick={() => setStationsOpenA((v) => !v)} aria-label="Select locations for Lake A" title="Select locations" style={{ width: '100%' }}>
+                  {selectedStationsA.length ? `${selectedStationsA.length} selected` : 'Select locations'}
+                </button>
+                <StationPicker anchorRef={stationBtnARef} open={stationsOpenA} onClose={() => setStationsOpenA(false)} stations={stationsA} value={selectedStationsA} onChange={(next) => { setSelectedStationsA(next); setSelectedParam(""); }} />
+              </div>
+            </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', minWidth: 0, marginTop: 6 }}>
-          <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">Lake B</option>
-            {lakeOptionsForB.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
-          </select>
-          <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">All dataset sources</option>
-            {orgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
-          </select>
-          <div style={{ position: 'relative', flex: '0 0 auto' }}>
-            <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ minWidth: 140 }}>
-              {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
-            </button>
-            <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
-          </div>
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
 
-          <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ minWidth: 160, flex: '0 0 auto' }}>
-            <option value="">Select parameter</option>
-            {paramList.map((p) => (<option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>))}
-          </select>
-          <div style={{ marginLeft: 'auto', flex: '0 0 auto' }}>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>Lake B</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <select className="pill-btn" value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedStationsB([]); setSelectedParam(""); }} style={{ width: '100%' }}>
+                <option value="">Lake B</option>
+                {lakeOptionsForB.map((l) => (<option key={l.id} value={String(l.id)}>{l.name}</option>))}
+              </select>
+              <select className="pill-btn" value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedStationsB([]); setSelectedParam(""); }} disabled={!lakeB} style={{ width: '100%' }}>
+                <option value="">All dataset sources</option>
+                {orgOptionsB.map((o) => (<option key={o.id} value={o.id}>{o.name}</option>))}
+              </select>
+              <div style={{ position: 'relative' }}>
+                <button ref={stationBtnBRef} type="button" className="pill-btn" disabled={!lakeB || !selectedOrgB} onClick={() => setStationsOpenB((v) => !v)} aria-label="Select locations for Lake B" title="Select locations" style={{ width: '100%' }}>
+                  {selectedStationsB.length ? `${selectedStationsB.length} selected` : 'Select locations'}
+                </button>
+                <StationPicker anchorRef={stationBtnBRef} open={stationsOpenB} onClose={() => setStationsOpenB(false)} stations={stationsB} value={selectedStationsB} onChange={(next) => { setSelectedStationsB(next); setSelectedParam(""); }} />
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
+              <select className="pill-btn" value={selectedParam} onChange={(e) => { setSelectedParam(e.target.value); onParamChange?.(e.target.value); }} disabled={!paramList?.length || !canChooseParam} style={{ width: '100%' }}>
+                <option value="">Select parameter</option>
+                {paramList.map((p) => (<option key={p.key || p.id || p.code} value={p.key || p.id || p.code}>{p.label || p.name || p.code}</option>))}
+              </select>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Chart Type</div>
+              <select className="pill-btn" value={chartType} onChange={(e) => { setChartType(e.target.value); setApplied(false); }} style={{ width: '100%' }}>
+                <option value="time">Time series</option>
+                <option value="depth">Depth profile</option>
+              </select>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Series Mode</div>
               <SeriesModeToggle mode={seriesMode} onChange={setSeriesMode} />
-              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ minWidth: 96 }}>Apply</button>
+            </div>
+
+            <div>
+              <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
             </div>
           </div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
-        <SummaryPanel title={lakeOptions.find((x)=>String(x.id)===String(lakeA))?.name || (lakeA ? String(lakeA) : 'Lake A')} n={summaryA.n} mean={summaryA.mean} median={summaryA.median} />
-        <SummaryPanel title={lakeOptions.find((x)=>String(x.id)===String(lakeB))?.name || (lakeB ? String(lakeB) : 'Lake B')} n={summaryB.n} mean={summaryB.mean} median={summaryB.median} />
-      </div>
+        </aside>
+        {/* Main panel */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Summary panels removed per design: Samples / Mean / Median are not shown in CompareLake */}
 
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
         {applied ? (
-          viewMode === 'depth' ? (
+          chartType === 'depth' ? (
             depthProfile && depthProfile.hasDepthA && depthProfile.hasDepthB && depthProfile.datasets && depthProfile.datasets.length ? (
               (() => {
                 const depthDatasets = (depthProfile.datasets || []).slice();
@@ -484,18 +507,7 @@ function CompareLake({
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={!applied}
-          onClick={() => setViewMode((m) => (m === 'time' ? 'depth' : 'time'))}
-          title={viewMode === 'time' ? 'Show depth profile' : 'Show time series'}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-        >
-          {viewMode === 'time' ? <FiActivity size={14} /> : <FiBarChart2 size={14} />}
-          {viewMode === 'time' ? 'Depth profile' : 'Time series'}
-        </button>
+        </div>
       </div>
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>

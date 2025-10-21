@@ -1,6 +1,6 @@
 export function buildGraphExplanation(ctx) {
   const {
-    chartType = 'time', // 'time' | 'depth'
+    chartType = 'time', // 'time' | 'depth' | 'spatial' | 'correlation'
     param = {},         // { code, name, unit }
     seriesMode = 'avg', // 'avg' | 'per-station'
     bucket = 'month',   // 'month' | 'quarter' | 'year'
@@ -23,6 +23,24 @@ export function buildGraphExplanation(ctx) {
         'This is a depth profile: the horizontal axis is the parameter value; the vertical axis is depth in meters (increasing downward).',
         'Each colored line represents a group (month/quarter/year) over the selected time window, showing how values change with depth.',
         'Use this to see stratification or vertical gradients in the water column.'
+      ]
+    });
+  } else if (chartType === 'spatial') {
+    sections.push({
+      heading: 'What this chart shows',
+      bullets: [
+        'This is a spatial trend across selected stations.',
+        'The x‑axis lists stations in the order you selected them; the y‑axis shows the parameter value.',
+        'Use this to compare locations at a snapshot (latest) or averaged within the selected range.'
+      ]
+    });
+  } else if (chartType === 'correlation') {
+    sections.push({
+      heading: 'What this chart shows',
+      bullets: [
+        'This is a correlation scatter plot for a single station.',
+        'Points pair Parameter X and Parameter Y measured in the same sampling event (typically at surface depth).',
+        'An optional trend line uses simple least squares; R² indicates how well the line explains variance (closer to 1 is stronger).'
       ]
     });
   } else {
