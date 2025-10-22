@@ -107,6 +107,24 @@ export async function fetchPublicLayerGeo(id, { includeBounds = true } = {}) {
   }
 }
 /** ---- Layers CRUD (auth) ---- */
+/**
+ * Fetch all layers (auth) with optional scoping to a specific body.
+ * The backend enforces role-based visibility. Set includeGeom/includeBounds to
+ * include heavy columns when previews are needed.
+ */
+export const fetchAllLayers = async ({ bodyType, bodyId, includeGeom = false, includeBounds = false } = {}) => {
+  const include = [];
+  if (includeGeom) include.push('geom');
+  if (includeBounds) include.push('bounds');
+  const qs = buildQuery({
+    body_type: bodyType || '',
+    body_id: bodyId || '',
+    include: include.join(',')
+  });
+  const res = await api(`/layers${qs}`);
+  return pluck(res);
+};
+
 export const fetchLayersForBody = async (bodyType, bodyId) => {
   if (!bodyType || !bodyId) return [];
   const res = await api(

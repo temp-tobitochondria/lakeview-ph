@@ -52,8 +52,9 @@ class LayerController extends Controller
     public function index(Request $request)
     {
         $request->validate([
-            'body_type' => 'required|string|in:lake,watershed',
-            'body_id'   => 'required|integer|min:1',
+            // Allow global listing; filters are optional
+            'body_type' => 'nullable|string|in:lake,watershed',
+            'body_id'   => 'nullable|integer|min:1',
             'include'   => 'nullable|string'
         ]);
 
@@ -64,12 +65,18 @@ class LayerController extends Controller
             ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
             ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
             ->leftJoin('tenants', 'tenants.id', '=', 'users.tenant_id')
-            ->where([
-                'body_type' => $request->query('body_type'),
-                'body_id'   => (int) $request->query('body_id'),
-            ])
             ->orderByDesc('is_active')
             ->orderByDesc('layers.created_at');
+
+        // Optional scoping by body
+        $bt = $request->query('body_type');
+        $bid = $request->query('body_id');
+        if ($bt !== null && $bt !== '') {
+            $query->where('layers.body_type', $bt);
+        }
+        if ($bid !== null && $bid !== '') {
+            $query->where('layers.body_id', (int) $bid);
+        }
 
         $role = $this->resolveRole($request->user());
         if ($role === Role::ORG_ADMIN) {
@@ -182,8 +189,6 @@ class LayerController extends Controller
                                 'body_type'   => $data['body_type'],
                                 'body_id'     => (int)$data['body_id'],
                                 'name'        => $data['name'],
-                                'type'        => $data['type']        ?? 'base',
-                                'category'    => $data['category']    ?? null,
                                 'srid'        => (int)($data['srid']  ?? 4326),
                                 'visibility'  => $data['visibility']  ?? 'public',
                                 'is_active'   => (bool)($data['is_active'] ?? false),
@@ -262,7 +267,7 @@ class LayerController extends Controller
         $super = ($role === Role::SUPERADMIN);
         if (!$super) {
             // Org admin can only modify a subset of fields
-            $allowed = collect($data)->only(['name','type','category','srid','notes','source_type','is_downloadable'])->toArray();
+            $allowed = collect($data)->only(['name','srid','notes','source_type','is_downloadable'])->toArray();
             $data = $allowed;
 
             // Also restrict scope: org_admin can only edit layers uploaded by their tenant or themselves
@@ -417,7 +422,6 @@ class LayerController extends Controller
                 'properties' => [
                     'id' => $row->id,
                     'name' => $row->name,
-                    'category' => $row->category,
                     'notes' => $row->notes,
                     'body_type' => $row->body_type,
                     'body_id' => $row->body_id,

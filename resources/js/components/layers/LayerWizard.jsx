@@ -21,7 +21,6 @@ import { parseSpatialFile, ACCEPTED_EXT_REGEX } from "../../utils/parsers";
 import PolygonChooser from '../../components/PolygonChooser';
 import FileDropzone from './FileDropzone';
 import PreviewMap from './PreviewMap';
-import CRSSelector from './CRSSelector';
 import BodySelector from './BodySelector';
 import MetadataForm from './MetadataForm';
 import PublishControls from './PublishControls';
@@ -69,7 +68,6 @@ export default function LayerWizard({
     bodyType: allowedBodyTypes.includes(defaultBodyType) ? defaultBodyType : (allowedBodyTypes[0] || "lake"),
     bodyId: initialBodyId ? String(initialBodyId) : "",
     name: "",
-    category: "",
     notes: "",
     visibility: resolvedDefaultVisibility,
     isActive: false,
@@ -325,11 +323,10 @@ export default function LayerWizard({
         ...d,
         sourceSrid: 4326,
         name: d.name && d.name.trim() ? d.name : (suggestedName || d.name),
-        category: d.category && d.category.trim() ? d.category : 'Profile',
         notes: d.notes && d.notes.trim() ? d.notes : suggestedNotes,
       };
       // Keep wizard internal state in sync so step validation reflects updates
-      try { wizardSetRef.current?.({ name: next.name, category: next.category, notes: next.notes, sourceSrid: next.sourceSrid }); } catch (e) { /* ignore */ }
+      try { wizardSetRef.current?.({ name: next.name, notes: next.notes, sourceSrid: next.sourceSrid }); } catch (e) { /* ignore */ }
       return next;
     });
     setGeocodeResults([]);
@@ -390,18 +387,7 @@ export default function LayerWizard({
   };
 
   // -------- manual SRID change (recompute preview from original) ----------
-  const updateSourceSrid = (srid) => {
-    const s = Number(srid) || 4326;
-    if (!data.uploadGeom) {
-      setData((d) => ({ ...d, sourceSrid: s }));
-      try { wizardSetRef.current?.({ sourceSrid: s }); } catch (e) { /* ignore */ }
-      return;
-    }
-    const preview =
-      s === 4326 ? data.uploadGeom : reprojectMultiPolygonTo4326(data.uploadGeom, s);
-    setData((d) => ({ ...d, sourceSrid: s, previewGeom: preview }));
-    try { wizardSetRef.current?.({ sourceSrid: s, previewGeom: preview }); } catch (e) { /* ignore */ }
-  };
+  // Removed: updateSourceSrid function
 
   // -------- publish ----------
   const onPublish = async (wizardData) => {
@@ -425,8 +411,6 @@ export default function LayerWizard({
         body_type: form.bodyType,
         body_id: Number(form.bodyId),
         name: form.name,
-        type: "base",
-        category: form.category,
         srid: Number(form.sourceSrid) || 4326,
   visibility: form.visibility,          // e.g. public, organization
         is_active: allowSetActive ? !!form.isActive : false,
@@ -558,21 +542,21 @@ export default function LayerWizard({
       ),
     },
 
-    // Step 2: Preview & CRS
+    // Step 2: Preview
     {
       key: "preview",
-      title: "Preview & CRS",
+      title: "Preview",
     render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">
             <div className="dashboard-card-title">
               <FiCheckCircle />
-              <span>Preview & Coordinate System</span>
+              <span>Preview</span>
             </div>
           </div>
           <div className="dashboard-card-body">
             <div className="info-row" style={{ marginBottom: 8 }}>
-              <FiInfo /> The map shows a <strong>WGS84 (EPSG:4326)</strong> preview. Your original geometry will be saved with the detected/selected SRID.
+              <FiInfo /> The map shows a <strong>WGS84 (EPSG:4326)</strong> preview. Your original geometry will be saved with the detected SRID.
             </div>
             <PreviewMap
               geometry={wdata.previewGeom}
@@ -582,7 +566,6 @@ export default function LayerWizard({
               whenCreated={(m) => { if (m && !mapRef.current) mapRef.current = m; }}
             />
 
-            <CRSSelector srid={wdata.sourceSrid} onChange={updateSourceSrid} />
           </div>
         </div>
       ),
@@ -632,7 +615,6 @@ export default function LayerWizard({
           <div className="dashboard-card-body">
             <MetadataForm
               name={wdata.name}
-              category={wdata.category}
               notes={wdata.notes}
               onChange={(patch) => wSetData((d) => ({ ...d, ...patch }))}
             />

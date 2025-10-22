@@ -18,7 +18,7 @@ class Layer extends Model
 
     protected $fillable = [
         'body_type','body_id','uploaded_by',
-        'name','type','category','srid',
+        'name','srid',
         'visibility','is_active','is_downloadable','notes',
         'source_type',
         // 'geom','bbox','area_km2' are managed via PostGIS/trigger; leave out of mass-assign by default

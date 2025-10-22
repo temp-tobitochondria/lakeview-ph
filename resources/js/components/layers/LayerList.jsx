@@ -1,24 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FiLayers, FiLoader, FiEye, FiTrash2, FiEdit2,
-} from "react-icons/fi";
+import { FiLayers, FiLoader, FiEye, FiTrash2, FiEdit2 } from "react-icons/fi";
 
 import Modal from "../Modal";
 import { confirm, alertError, alertSuccess, alertWarning } from "../../lib/alerts";
-import {
-  fetchLayersForBody,
-  toggleLayerVisibility,
-  deleteLayer,
-  fetchBodyName,
-  updateLayer,
-  fetchLakeOptions,
-  fetchWatershedOptions,
-  computeNextVisibility,
-} from "../../lib/layers";
-import AppMap from "../../components/AppMap";
-import MapViewport from "../../components/MapViewport";
-import { GeoJSON } from "react-leaflet";
-import L from "leaflet";
+import { fetchAllLayers, toggleLayerVisibility, deleteLayer, updateLayer, computeNextVisibility } from "../../lib/layers";
+import TableLayout from "../../layouts/TableLayout";
+import TableToolbar from "../table/TableToolbar";
+import FilterPanel from "../table/FilterPanel";
+import LayerPreviewModal from "./LayerPreviewModal";
+import LayerEditModal from "./LayerEditModal";
 
 const VISIBILITY_LABELS = {
   public: "Public",
@@ -35,28 +25,42 @@ const DEFAULT_VISIBILITY_OPTIONS = [
 const getVisibilityLabel = (value) => VISIBILITY_LABELS[value] || value || "Unknown";
 
 function LayerList({
-  initialBodyType = "lake",
-  initialBodyId = "",
   allowActivate = true,
   allowToggleVisibility = true,
   allowDelete = true,
-  showPreview = false,
-  onPreview,
   visibilityOptions = DEFAULT_VISIBILITY_OPTIONS,
   currentUserRole = null,
+  initialSearch = "",
 }) {
-  const [bodyType, setBodyType] = useState(initialBodyType);
-  const [bodyId, setBodyId] = useState(initialBodyId);
   const [layers, setLayers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [bodyName, setBodyName] = useState("");
-  const [lakeOptions, setLakeOptions] = useState([]);
-  const [watershedOptions, setWatershedOptions] = useState([]);
+  const [resetSignal, setResetSignal] = useState(0);
+  const [search, setSearch] = useState(() => {
+    // Prefer prop; fallback to URL query ?search=
+    if (initialSearch) return initialSearch;
+    try {
+      const usp = new URLSearchParams(window.location.search);
+      return usp.get("search") || usp.get("q") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  // Filters (advanced panel)
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [fBodyType, setFBodyType] = useState(""); // '', 'lake', 'watershed'
+  const [fVisibility, setFVisibility] = useState(""); // '', 'public','admin'
+  const [fDownloadableOnly, setFDownloadableOnly] = useState(""); // '', 'yes', 'no'
+  const [fDefaultOnly, setFDefaultOnly] = useState(""); // '', 'yes', 'no'
+  const [fCreatedBy, setFCreatedBy] = useState(""); // '' or specific creator
+
+  // Column visibility management
+  const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, default: true, creator: true, area: false, updated: false }), []);
+  const [visibleMap, setVisibleMap] = useState(defaultVisible);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", category: "", notes: "", visibility: "public", is_downloadable: false });
   const normalizedVisibilityOptions = useMemo(() => {
     const base = Array.isArray(visibilityOptions) && visibilityOptions.length
       ? visibilityOptions
@@ -85,6 +89,15 @@ function LayerList({
     if (row?.uploaded_by_org) return row.uploaded_by_org;
     return 'System Administrator';
   };
+
+  const uniqueCreators = useMemo(() => {
+    const creators = new Set();
+    layers.forEach(row => {
+      const creator = formatCreator(row);
+      creators.add(creator);
+    });
+    return Array.from(creators).sort();
+  }, [layers]);
 
   const [previewLayer, setPreviewLayer] = useState(null);
   const viewMapRef = React.useRef(null);
@@ -154,14 +167,11 @@ function LayerList({
   }, []);
 
   const refresh = async () => {
-    if (!bodyType || !bodyId) {
-      setLayers([]);
-      return;
-    }
     setLoading(true);
     setErr("");
     try {
-      const rows = await fetchLayersForBody(bodyType, bodyId);
+      // Include geom,bounds for preview support
+      const rows = await fetchAllLayers({ includeGeom: true, includeBounds: true });
       setLayers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       console.error('[LayerList] Failed to fetch layers', e);
@@ -175,14 +185,7 @@ function LayerList({
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bodyType, bodyId]);
-
-  useEffect(() => {
-    (async () => {
-      const n = await fetchBodyName(bodyType, bodyId);
-      setBodyName(n || "");
-    })();
-  }, [bodyType, bodyId]);
+  }, []);
 
   useEffect(() => {
     if (!previewLayer?.geom_geojson) {
@@ -221,35 +224,7 @@ function LayerList({
     }
   }, [previewLayer, updateViewport, resetViewport]);
 
-  // Load lake options (names only)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (bodyType !== "lake") return;
-      try {
-        const rows = await fetchLakeOptions("");
-        if (!cancelled) setLakeOptions(Array.isArray(rows) ? rows : []);
-      } catch {
-        if (!cancelled) setLakeOptions([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [bodyType]);
-
-  // Load watershed options (names only)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (bodyType !== "watershed") return;
-      try {
-        const rows = await fetchWatershedOptions("");
-        if (!cancelled) setWatershedOptions(Array.isArray(rows) ? rows : []);
-      } catch {
-        if (!cancelled) setWatershedOptions([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [bodyType]);
+  // No body options needed; table shows all layers by default
 
   const doToggleVisibility = async (row) => {
     if (allowedVisibilityValues.length < 2) return; // read-only context
@@ -300,108 +275,132 @@ function LayerList({
     }
   };
 
+  // Derived filtered rows
+  const filtered = useMemo(() => {
+    const q = (search || "").toLowerCase();
+    return (layers || []).filter((row) => {
+      if (fBodyType && String(row.body_type) !== fBodyType) return false;
+      if (fVisibility && String(row.visibility) !== fVisibility) return false;
+      if (fDownloadableOnly === 'yes' && !row.is_downloadable) return false;
+      if (fDownloadableOnly === 'no' && row.is_downloadable) return false;
+      if (fDefaultOnly === 'yes' && !row.is_active) return false;
+      if (fDefaultOnly === 'no' && row.is_active) return false;
+      if (fCreatedBy && formatCreator(row) !== fCreatedBy) return false;
+      if (q) {
+        const hay = [row.name, row.notes, row.uploaded_by_org, row.body_type, row.visibility].map((v) => (v || "").toString().toLowerCase()).join(" ");
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [layers, search, fBodyType, fVisibility, fDownloadableOnly, fDefaultOnly, fCreatedBy]);
+
+  const filtersBadgeCount = (fBodyType ? 1 : 0) + (fVisibility ? 1 : 0) + (fDownloadableOnly ? 1 : 0) + (fDefaultOnly ? 1 : 0) + (fCreatedBy ? 1 : 0);
+
+  const columns = useMemo(() => {
+    const arr = [];
+    if (visibleMap.name) arr.push({ id: 'name', header: 'Name', accessor: 'name' });
+    if (visibleMap.body) arr.push({ id: 'body', header: 'Body', render: (r) => (r.body_type === 'watershed' ? 'Watershed' : 'Lake'), sortValue: (r) => (r.body_type || '') });
+    if (visibleMap.visibility) arr.push({ id: 'visibility', header: 'Visibility', render: (r) => getVisibilityLabel(r.visibility), sortValue: (r) => r.visibility });
+    if (visibleMap.downloadable) arr.push({ id: 'downloadable', header: 'Downloadable', render: (r) => (r.is_downloadable ? 'Yes' : 'No'), sortValue: (r) => (r.is_downloadable ? 1 : 0), width: 120 });
+    if (visibleMap.default) arr.push({ id: 'default', header: 'Default Layer', render: (r) => (r.is_active ? 'Yes' : 'No'), sortValue: (r) => (r.is_active ? 1 : 0), width: 120 });
+    if (visibleMap.creator) arr.push({ id: 'creator', header: 'Created by', render: (r) => formatCreator(r) });
+    if (visibleMap.area) arr.push({ id: 'area', header: 'Area (km2)', render: (r) => (r.area_km2 ?? '-'), sortValue: (r) => (typeof r.area_km2 === 'number' ? r.area_km2 : -1), width: 120 });
+    if (visibleMap.updated) arr.push({ id: 'updated', header: 'Updated', render: (r) => (r.updated_at ? new Date(r.updated_at).toLocaleString() : '-'), sortValue: (r) => (r.updated_at || ''), width: 200 });
+    return arr;
+  }, [visibleMap]);
+
+  const actions = useMemo(() => [
+    {
+      label: 'View', title: 'View on map', icon: <FiEye />, onClick: (row) => handlePreviewClick(row),
+    },
+    {
+      label: 'Edit', title: 'Edit metadata', icon: <FiEdit2 />, onClick: (row) => {
+        const initialEditVisibility = (() => {
+          const current = ['organization', 'organization_admin'].includes(row.visibility) ? 'admin' : row.visibility;
+          if (allowedVisibilityValues.includes(current)) return current;
+          return normalizedVisibilityOptions[0]?.value || 'public';
+        })();
+        setEditRow(row);
+        setEditOpen(true);
+      }, visible: () => ['superadmin','org_admin'].includes(currentUserRole)
+    },
+    {
+      label: 'Delete', title: 'Delete', icon: <FiTrash2 />, type: 'delete', onClick: (row) => doDelete(row.id), visible: () => allowDelete && ['superadmin','org_admin'].includes(currentUserRole)
+    }
+  ], [allowedVisibilityValues, normalizedVisibilityOptions, currentUserRole, allowDelete]);
+
+  const columnPickerAdapter = { columns: [
+    { id: 'name', header: 'Name' },
+    { id: 'body', header: 'Body' },
+    { id: 'visibility', header: 'Visibility' },
+    { id: 'downloadable', header: 'Downloadable' },
+    { id: 'default', header: 'Default Layer' },
+    { id: 'creator', header: 'Created by' },
+    { id: 'area', header: 'Area (km2)' },
+    { id: 'updated', header: 'Updated' },
+  ], visibleMap, onVisibleChange: (m) => setVisibleMap(m) };
+
+  const toolbarTop = (
+    <TableToolbar
+      tableId="layers-table"
+      search={{ value: search, onChange: setSearch, placeholder: 'Search layers…' }}
+      onResetWidths={() => setResetSignal((v) => v + 1)}
+      onRefresh={refresh}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      filtersBadgeCount={filtersBadgeCount}
+      columnPicker={columnPickerAdapter}
+    />
+  );
+
+  const filterFields = [
+    { id: 'body_type', label: 'Body Type', type: 'select', value: fBodyType, onChange: setFBodyType, options: [
+      { value: '', label: 'All' },
+      { value: 'lake', label: 'Lake' },
+      { value: 'watershed', label: 'Watershed' },
+    ]},
+    { id: 'visibility', label: 'Visibility', type: 'select', value: fVisibility, onChange: setFVisibility, options: [
+      { value: '', label: 'All' },
+      ...normalizedVisibilityOptions
+    ]},
+    { id: 'downloadable', label: 'Downloadable', type: 'select', value: fDownloadableOnly, onChange: setFDownloadableOnly, options: [
+      { value: '', label: 'All' },
+      { value: 'yes', label: 'Yes' },
+      { value: 'no', label: 'No' },
+    ]},
+    { id: 'default', label: 'Default Layer', type: 'select', value: fDefaultOnly, onChange: setFDefaultOnly, options: [
+      { value: '', label: 'All' },
+      { value: 'yes', label: 'Yes' },
+      { value: 'no', label: 'No' },
+    ]},
+    { id: 'created_by', label: 'Created by', type: 'select', value: fCreatedBy, onChange: setFCreatedBy, options: [
+      { value: '', label: 'All' },
+      ...uniqueCreators.map(c => ({ value: c, label: c }))
+    ]},
+  ];
+
   return (
     <>
       <div className="dashboard-card" style={{ marginTop: 16 }}>
         <div className="dashboard-card-header">
           <div className="dashboard-card-title">
             <FiLayers />
-            <span>Layers for {bodyName || (bodyId ? "..." : "-")}</span>
-          </div>
-          <div className="org-actions-right">
-            <button
-              className="pill-btn ghost"
-              onClick={refresh}
-              title="Refresh"
-              aria-label="Refresh"
-            >
-              {loading ? <FiLoader className="spin" /> : "Refresh"}
-            </button>
+            <span>Layers</span>
           </div>
         </div>
 
-        {/* Body selector row */}
         <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
-          <div className="org-form" style={{ marginBottom: 12 }}>
-            <div className="form-group">
-              <label>Body Type</label>
-              <select
-                value={bodyType}
-                onChange={(e) => {
-                  setBodyType(e.target.value);
-                  setBodyId("");
-                }}
-              >
-                <option value="lake">Lake</option>
-                <option value="watershed">Watershed</option>
-              </select>
-            </div>
-
-            {bodyType === "lake" ? (
-              <div className="form-group" style={{ minWidth: 260 }}>
-                <label>Select Lake</label>
-                <select
-                  value={bodyId}
-                  onChange={(e) => setBodyId(e.target.value)}
-                  required
-                >
-                  <option value="" disabled>Choose a lake</option>
-                  {lakeOptions.map((o) => (
-                    <option key={`lake-${o.id}`} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="form-group" style={{ minWidth: 260 }}>
-                <label>Select Watershed</label>
-                <select
-                  value={bodyId}
-                  onChange={(e) => setBodyId(e.target.value)}
-                  required
-                >
-                  <option value="" disabled>Choose a watershed</option>
-                  {watershedOptions.map((o) => (
-                    <option key={`ws-${o.id}`} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Preview modal (replaces inline preview) */}
-          <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title={previewLayer?.name ? `Layer: ${previewLayer.name}` : 'Layer Preview'} width={900} ariaLabel="Layer Preview">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '80vh' }}>
-              {previewGeometry ? (
-                <div style={{ height: '55vh', minHeight: 260, borderRadius: 8, overflow: 'hidden' }}>
-                  <AppMap view="osm" whenCreated={(map) => (viewMapRef.current = map)}>
-                    <GeoJSON
-                      key={`preview-${previewLayer?.id ?? 'layer'}-${previewLayer?._previewToken ?? previewLayer?.geom_geojson?.length ?? 0}`}
-                      data={previewGeometry}
-                      style={{ weight: 2, fillOpacity: 0.1, color: (previewLayer?.body_type === 'watershed' ? '#16a34a' : '#2563eb') }}
-                    />
-
-                    {mapViewport.bounds ? (
-                      <MapViewport
-                        bounds={mapViewport.bounds}
-                        maxZoom={mapViewport.maxZoom}
-                        padding={mapViewport.padding}
-                        pad={mapViewport.pad}
-                        version={mapViewport.token}
-                      />
-                    ) : null}
-                  </AppMap>
-                </div>
-              ) : (
-                <div style={{ height: '55vh', minHeight: 260, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', color: '#6b7280' }}>
-                  <div style={{ padding: 20, textAlign: 'center' }}>No geometry available for this layer.</div>
-                </div>
-              )}
-
-              <div style={{ marginTop: 0 }}>
-                {previewLayer && previewLayer.name && <div style={{ fontSize: 12, color: '#6b7280' }}>Previewing {previewLayer.name}</div>}
-              </div>
-            </div>
-          </Modal>
+          {toolbarTop}
+          <FilterPanel
+            open={filtersOpen}
+            fields={filterFields}
+            onClearAll={() => {
+              setFBodyType("");
+              setFVisibility("");
+              setFDownloadableOnly("");
+              setFDefaultOnly("");
+              setFCreatedBy("");
+            }}
+          />
 
           {err && (
             <div className="alert-note" style={{ marginBottom: 8 }}>
@@ -409,100 +408,27 @@ function LayerList({
             </div>
           )}
 
-          {!layers.length ? (
-            <div className="no-data">
-              {bodyId ? "No layers found for this body." : "Select a lake or watershed to view layers."}
-            </div>
-          ) : (
-            <div className="table-wrapper">
-              <table className="lv-table">
-                <thead>
-                  <tr>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Name</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Category</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Visibility</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Downloadable</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Default Layer</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Created by</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Area (km2)</span></div></th>
-                    <th className="lv-th"><div className="lv-th-inner"><span className="lv-th-label">Updated</span></div></th>
-                    <th className="lv-th lv-th-actions sticky-right"><div className="lv-th-inner"><span className="lv-th-label">Actions</span></div></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {layers.map((row) => {
-                    const nextVisibility = computeNextVisibility(row.visibility, allowedVisibilityValues);
-                    const canToggleVisibility = allowToggleVisibility && allowedVisibilityValues.length >= 2 && nextVisibility !== row.visibility;
-                    const initialEditVisibility = (() => {
-                      const current = ['organization', 'organization_admin'].includes(row.visibility) ? 'admin' : row.visibility;
-                      if (allowedVisibilityValues.includes(current)) return current;
-                      return normalizedVisibilityOptions[0]?.value || 'public';
-                    })();
+          <TableLayout
+            tableId="layers-table"
+            columns={columns}
+            data={filtered}
+            pageSize={15}
+            actions={actions}
+            resetSignal={resetSignal}
+            columnPicker={false}
+            loading={loading}
+            loadingLabel={loading ? 'Loading layers…' : null}
+          />
 
-                    return (
-                      <tr key={row.id}>
-                        <td className="lv-td">{row.name}</td>
-                        <td className="lv-td">{row.category || '-'}</td>
-                        <td className="lv-td">{getVisibilityLabel(row.visibility)}</td>
-                        <td className="lv-td">{row.is_downloadable ? 'Yes' : 'No'}</td>
-                        <td className="lv-td">{row.is_active ? 'Yes' : 'No'}</td>
-                        <td className="lv-td">{formatCreator(row)}</td>
-                        <td className="lv-td">{row.area_km2 ?? '-'}</td>
-                        <td className="lv-td">{row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}</td>
-                        <td className="lv-td sticky-right lv-td-actions">
-                          <div className="lv-actions-inline">
-                            <button
-                              className="icon-btn simple"
-                              title="View on map"
-                              aria-label="View"
-                              onClick={() => handlePreviewClick(row)}
-                            >
-                              <FiEye />
-                            </button>
-
-                            {(['superadmin','org_admin'].includes(currentUserRole)) && (
-                              <button
-                                className="icon-btn simple"
-                                title="Edit metadata"
-                                aria-label="Edit"
-                                onClick={() => {
-                                  setEditRow(row);
-                                  setEditForm({
-                                    name: row.name || '',
-                                    category: row.category || '',
-                                    notes: row.notes || '',
-                                    visibility: initialEditVisibility,
-                                    is_active: !!row.is_active,
-                                    is_downloadable: !!row.is_downloadable,
-                                  });
-                                  setEditOpen(true);
-                                }}
-                              >
-                                <FiEdit2 />
-                              </button>
-                            )}
-
-
-                            {allowDelete && ['superadmin','org_admin'].includes(currentUserRole) && (
-                              <button
-                                className="icon-btn simple danger"
-                                title="Delete"
-                                aria-label="Delete"
-                                onClick={() => doDelete(row.id)}
-                              >
-                                <FiTrash2 />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Preview modal */}
+          <LayerPreviewModal
+            open={previewOpen}
+            onClose={() => setPreviewOpen(false)}
+            layer={previewLayer}
+            geometry={previewGeometry}
+            viewport={mapViewport}
+            viewportVersion={mapViewport.token}
+          />
         </div>
 
         <style>{`
@@ -511,149 +437,18 @@ function LayerList({
         `}</style>
       </div>
 
-      {editOpen && (['superadmin','org_admin'].includes(currentUserRole)) && (
-        <Modal
-          open={editOpen}
-          onClose={() => setEditOpen(false)}
-          title="Edit Layer Metadata"
-          width={640}
-          ariaLabel="Edit Layer"
-          footer={
-            <div className="lv-modal-actions">
-              <button className="pill-btn ghost" onClick={() => setEditOpen(false)}>Cancel</button>
-              <button
-                className="pill-btn primary"
-                onClick={async () => {
-                  try {
-                    // If user is trying to enable default, ensure no other layer is default
-                    if (editForm.is_active) {
-                      const existing = layers.find((l) => l.is_active && l.id !== editRow.id);
-                      if (existing) {
-                        await alertWarning('Default Layer Exists', `"${existing.name}" is already set as the default layer.\n\nPlease unset it first or turn off default for this layer.`);
-                        return;
-                      }
-                    }
-
-                    // Only superadmin may change visibility or default flag per backend; org_admin limited to name/category/notes.
-                    const patch = {
-                      name: editForm.name,
-                      category: editForm.category || null,
-                      notes: editForm.notes || null,
-                    };
-                    if (currentUserRole === 'superadmin') {
-                      patch.visibility = editForm.visibility;
-                      patch.is_active = !!editForm.is_active;
-                      patch.is_downloadable = !!editForm.is_downloadable;
-                    } else {
-                      // org_admin path: backend allows is_downloadable modification, include if changed
-                      patch.is_downloadable = !!editForm.is_downloadable;
-                    }
-                    // Apply patch (visibility & is_active included only for superadmin)
-                    await updateLayer(editRow.id, patch);
-
-                    setEditOpen(false);
-                    await refresh();
-                    await alertSuccess('Layer updated', 'Changes saved successfully.');
-                  } catch (e) {
-                    console.error('[LayerList] Update layer failed', e);
-                    await alertError('Failed to update layer', e?.message || '');
-                  }
-                }}
-              >
-                Save Changes
-              </button>
-            </div>
-          }
-        >
-          <div className="org-form">
-            <div className="form-group">
-              <label>Name</label>
-              <input
-                type="text"
-                value={editForm.name}
-                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="form-group">
-              <label>Category</label>
-              <input
-                type="text"
-                value={editForm.category}
-                onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
-                placeholder="e.g., Hydrology"
-              />
-            </div>
-            <div className="form-group" style={{ flexBasis: '100%' }}>
-              <label>Notes</label>
-              <input
-                type="text"
-                value={editForm.notes}
-                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Short description / source credits"
-              />
-            </div>
-            {currentUserRole === 'superadmin' && (
-              <>
-                <div className="form-group">
-                  <label>Visibility</label>
-                  <select
-                    value={editForm.visibility}
-                    onChange={(e) => setEditForm((f) => ({ ...f, visibility: e.target.value }))}
-                  >
-                    {[...normalizedVisibilityOptions,
-                      ...(editRow && editRow.visibility && !normalizedVisibilityOptions.some((opt) => opt.value === editRow.visibility)
-                        ? [{ value: editRow.visibility, label: getVisibilityLabel(editRow.visibility) }]
-                        : []
-                      )].map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Default Layer</label>
-                  <div>
-                    <button
-                      type="button"
-                      className={`pill-btn ${editForm.is_active ? 'primary' : 'ghost'}`}
-                      onClick={() => setEditForm((f) => ({ ...f, is_active: !f.is_active }))}
-                    >
-                      {editForm.is_active ? 'Default Enabled' : 'Set as Default'}
-                    </button>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Downloadable</label>
-                  <div>
-                    <button
-                      type="button"
-                      className={`pill-btn ${editForm.is_downloadable ? 'primary' : 'ghost'}`}
-                      onClick={() => setEditForm((f) => ({ ...f, is_downloadable: !f.is_downloadable }))}
-                    >
-                      {editForm.is_downloadable ? 'Download Enabled' : 'Allow Download'}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-            {currentUserRole === 'org_admin' && (
-              <div className="form-group">
-                <label>Downloadable</label>
-                <div>
-                  <button
-                    type="button"
-                    className={`pill-btn ${editForm.is_downloadable ? 'primary' : 'ghost'}`}
-                    onClick={() => setEditForm((f) => ({ ...f, is_downloadable: !f.is_downloadable }))}
-                  >
-                    {editForm.is_downloadable ? 'Download Enabled' : 'Allow Download'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
+      <LayerEditModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        layer={editRow}
+        currentUserRole={currentUserRole}
+        normalizedVisibilityOptions={normalizedVisibilityOptions}
+        allLayers={layers}
+        onSave={async (id, patch) => {
+          await updateLayer(id, patch);
+          await refresh();
+        }}
+      />
     </>
   );
 }

@@ -68,12 +68,11 @@ SQL;
                 $sql = <<<SQL
 SELECT ly.id,
        ly.name AS name,
-       ly.category, ly.description, ly.source,
+       ly.description, ly.source,
        CASE WHEN ly.geom IS NOT NULL THEN ST_AsGeoJSON(ly.geom) ELSE NULL END AS geom
 FROM layers ly
 WHERE (
     ly.name ILIKE :kw OR
-    ly.category ILIKE :kw OR
     ly.description ILIKE :kw OR
     ly.source ILIKE :kw
 )

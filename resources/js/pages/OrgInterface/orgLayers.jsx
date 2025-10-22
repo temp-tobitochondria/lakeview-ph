@@ -14,8 +14,8 @@ const ORG_VISIBILITY_OPTIONS = [
 ];
 
 export default function OrgLayers({ currentUserRole = ROLES.ORG_ADMIN }) { // default assumption
-  const [lastBody, setLastBody] = useState({ type: "lake", id: "" });
   const [activeTab, setActiveTab] = useState("upload");
+  const [initialSearch, setInitialSearch] = useState("");
 
   return (
     <div className="org-layers">
@@ -52,9 +52,8 @@ export default function OrgLayers({ currentUserRole = ROLES.ORG_ADMIN }) { // de
           allowSetActive={false}
           onPublished={(res) => {
             const payload = res?.data ?? res ?? {};
-            if (payload.body_type && payload.body_id) {
-              setLastBody({ type: payload.body_type, id: payload.body_id });
-            }
+            // After upload, show list tab and prefill search with layer name
+            if (payload.name) setInitialSearch(String(payload.name));
             setActiveTab('view');
             console.log('Organization layer published', res);
           }}
@@ -63,14 +62,12 @@ export default function OrgLayers({ currentUserRole = ROLES.ORG_ADMIN }) { // de
 
       {activeTab === 'view' && (
         <LayerList
-          initialBodyType={lastBody.type || 'lake'}
-          initialBodyId={lastBody.id || ''}
           allowActivate={false}
           allowToggleVisibility
           allowDelete
-          showPreview={false}
           visibilityOptions={ORG_VISIBILITY_OPTIONS}
           currentUserRole={currentUserRole}
+          initialSearch={initialSearch}
         />
       )}
     </div>

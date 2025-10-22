@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function MetadataForm({ name, category, notes, onChange }) {
+export default function MetadataForm({ name, notes, onChange }) {
   const set = (patch) => onChange?.(patch);
   return (
     <div className="org-form">
@@ -12,18 +12,6 @@ export default function MetadataForm({ name, category, notes, onChange }) {
           onChange={(e) => set({ name: e.target.value })}
           placeholder="e.g., Official shoreline 2024"
         />
-      </div>
-
-      <div className="form-group">
-        <label>Category</label>
-        <select
-          value={category}
-          onChange={(e) => set({ category: e.target.value })}
-        >
-          <option value="" disabled>Select category…</option>
-          <option value="Profile">Profile</option>
-          <option value="Boundary">Boundary</option>
-        </select>
       </div>
 
       <div className="form-group" style={{ flexBasis: "100%" }}>
