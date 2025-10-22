@@ -310,7 +310,7 @@ function FeedbackDetailModal({ open, onClose, item, onSave }) {
               id="fb-detail-status"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 10px', background: '#fff', fontSize: 14 }}
+              style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 10px', background: '#fff', fontSize: 14, height: 32 }}
             >
               {STATUS_ORDER.map((s) => (
                 <option key={s} value={s}>{STATUS_LABEL[s]}</option>
@@ -530,11 +530,11 @@ export default function AdminFeedback() {
         {/* Dedicated search row */}
         <div className="org-filter" style={{ width:'100%', marginBottom:14, display:'flex', flexDirection:'row', gap:8, alignItems:'flex-start' }}>
           <div style={{ flex:1, display:'flex', flexDirection:'column', gap:4 }}>
-            <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} />
+            <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{ height: 32 }} />
           </div>
           <div style={{ width:200, display:'flex' }}>
             <select
-              style={{ fontSize:'inherit', padding:'6px 8px', lineHeight:1.3, width:'100%', height:34 }}
+              style={{ fontSize:'inherit', padding:'6px 8px', lineHeight:1.3, width:'100%', height:32 }}
               value={searchScope}
               onChange={e=>setSearchScope(e.target.value)}
             >
@@ -551,13 +551,13 @@ export default function AdminFeedback() {
         {/* Remaining filters grid */}
         <div className="advanced-filters-grid">
           <div className="org-filter">
-            <select value={status} onChange={e=>setStatus(e.target.value)}>
+            <select value={status} onChange={e=>setStatus(e.target.value)} style={{ height: 32 }}>
               <option value="">Status (all)</option>
               {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>
           </div>
           <div className="org-filter">
-            <select value={category} onChange={e=>setCategory(e.target.value)}>
+            <select value={category} onChange={e=>setCategory(e.target.value)} style={{ height: 32 }}>
               <option value="">Category (all)</option>
               <option value="bug">Bug</option>
               <option value="suggestion">Suggestion</option>
@@ -567,7 +567,7 @@ export default function AdminFeedback() {
             </select>
           </div>
           <div className="org-filter">
-            <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}>
+            <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{ height: 32 }}>
               <option value="">Role (all)</option>
               <option value="superadmin">Superadmin</option>
               <option value="org_admin">Org Admin</option>
@@ -584,7 +584,7 @@ export default function AdminFeedback() {
         {selectedIds.length > 0 && (
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f1f5f9', padding:'6px 10px', borderRadius:8, marginBottom:8 }}>
             <span style={{ fontSize:12 }}>{selectedIds.length} selected</span>
-            <select value={bulkStatus} onChange={e=>setBulkStatus(e.target.value)} style={{ fontSize:12 }}>
+            <select value={bulkStatus} onChange={e=>setBulkStatus(e.target.value)} style={{ fontSize:12, height: 32 }}>
               <option value="">Set status…</option>
               {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>

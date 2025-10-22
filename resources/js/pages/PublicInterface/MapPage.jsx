@@ -34,7 +34,7 @@ import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 import AboutData from "./AboutData";
-import api from "../../lib/api";
+import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
 
 // Small helper to create an SVG pin icon as a data URI for a given color
 function createPinIcon(color = '#3388ff') {
@@ -87,6 +87,11 @@ function MapPage() {
   const aboutDataMenuOpenRef = React.useRef(false);
   useEffect(() => { aboutDataMenuOpenRef.current = aboutDataMenuOpen; }, [aboutDataMenuOpen]);
   const [profileActive, setProfileActive] = useState(false);
+
+  const [dataSummaryOpen, setDataSummaryOpen] = useState(false);
+  const [dataSummaryLake, setDataSummaryLake] = useState('');
+  const [dataSummaryOrg, setDataSummaryOrg] = useState('');
+  const [dataSummaryStation, setDataSummaryStation] = useState('');
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -295,6 +300,19 @@ function MapPage() {
       setSidebarOpen(true);
     }
   }, [location.pathname]);
+
+  // Listen for open data summary event
+  useEffect(() => {
+    const handler = (e) => {
+      const { lakeId, orgId, stationId } = e.detail;
+      setDataSummaryLake(lakeId);
+      setDataSummaryOrg(orgId);
+      setDataSummaryStation(stationId);
+      setDataSummaryOpen(true);
+    };
+    window.addEventListener('lv-open-data-summary', handler);
+    return () => window.removeEventListener('lv-open-data-summary', handler);
+  }, []);
 // Data Privacy Disclaimer integration resolved
 
   // ---------------- Fetch public lake geometries ----------------
@@ -612,6 +630,15 @@ function MapPage() {
             navigate("/", { replace: true });
           }
         }}
+      />
+
+      {/* Data Summary Modal */}
+      <DataSummaryTable
+        open={dataSummaryOpen}
+        onClose={() => setDataSummaryOpen(false)}
+        initialLake={dataSummaryLake}
+        initialOrg={dataSummaryOrg}
+        initialStation={dataSummaryStation}
       />
 
       {/* Auth Modal */}

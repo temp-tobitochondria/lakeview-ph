@@ -22,7 +22,13 @@ export function useWaterQualityMarkers(mapRef) {
         markers.forEach(m => {
           if (m && Number.isFinite(m.lat) && Number.isFinite(m.lon)) {
             const cm = L.circleMarker([m.lat, m.lon], { radius: 6, color: '#ff6b6b', weight: 2, fillColor: '#ffffff', fillOpacity: 0.9 });
-            if (m.label) cm.bindPopup(m.label);
+            const popupContent = `
+              <div style="font-size: 14px; color: #000;">
+                <strong>${m.label || 'Station'}</strong><br>
+                <button onclick="window.dispatchEvent(new CustomEvent('lv-open-data-summary', { detail: { lakeId: '${m.lakeId}', orgId: '${m.orgId}', stationId: '${m.stationId}' } }))" style="margin-top: 5px; padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">View Station Data</button>
+              </div>
+            `;
+            cm.bindPopup(popupContent);
             cm.addTo(wqLayerRef.current);
           }
         });
@@ -43,7 +49,13 @@ export function useWaterQualityMarkers(mapRef) {
         queuedWqMarkersRef.current.forEach(m => {
           if (m && Number.isFinite(m.lat) && Number.isFinite(m.lon)) {
             const cm = L.circleMarker([m.lat, m.lon], { radius: 6, color: '#ff6b6b', weight: 2, fillColor: '#ffffff', fillOpacity: 0.9 });
-            if (m.label) cm.bindPopup(m.label);
+            const popupContent = `
+              <div style="font-size: 14px; color: #000;">
+                <strong>${m.label || 'Station'}</strong><br>
+                <button onclick="window.dispatchEvent(new CustomEvent('lv-open-data-summary', { detail: { lakeId: '${m.lakeId}', orgId: '${m.orgId}', stationId: '${m.stationId}' } }))" style="margin-top: 5px; padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">View Station Data</button>
+              </div>
+            `;
+            cm.bindPopup(popupContent);
             cm.addTo(wqLayerRef.current);
           }
         });

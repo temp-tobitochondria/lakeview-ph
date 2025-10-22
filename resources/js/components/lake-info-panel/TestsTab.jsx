@@ -89,7 +89,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
             const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
             const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
             if (lat == null || lon == null) return null;
-            return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
+            return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null), stationId: r.station?.id, orgId: r.organization_id || r.organization?.id, lakeId: lakeId };
           })
           .filter(Boolean);
         try {
@@ -113,7 +113,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
               const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
               const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
               if (lat == null || lon == null) return null;
-              return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null) };
+              return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null), stationId: r.station?.id, orgId: r.organization_id || r.organization?.id, lakeId: lakeId };
             })
             .filter(Boolean);
           try {

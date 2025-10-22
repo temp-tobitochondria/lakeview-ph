@@ -25,7 +25,7 @@ function ValueCell({ value, unit, threshold }) {
   );
 }
 
-export default function DataSummaryTable({ open, onClose, initialLake = '', initialOrg = '' }) {
+export default function DataSummaryTable({ open, onClose, initialLake = '', initialOrg = '', initialStation = '' }) {
   const modalStyle = {
     background: "rgba(30, 60, 120, 0.65)",
     color: "#fff",
@@ -50,6 +50,15 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
   const effectiveLake = shouldLoadEvents ? lakeId : '';
   const effectiveOrg = shouldLoadEvents ? orgId : '';
   const { events, loading } = useSampleEvents(effectiveLake, effectiveOrg, 'all');
+
+  // Sync state with initial props
+  useEffect(() => {
+    setLakeId(initialLake);
+  }, [initialLake]);
+
+  useEffect(() => {
+    setOrgId(initialOrg);
+  }, [initialOrg]);
 
   // derive station options from events so we can prefer station id matching
   const stationOptions = useMemo(() => {
@@ -83,9 +92,40 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
 
   useEffect(() => {
     // Clear selected station when lake or org changes to avoid stale selection
-    setSelectedStation('');
-    setSelectedYear('');
-  }, [lakeId, orgId]);
+    // But not when opening with initialStation
+    if (!(open && initialStation)) {
+      setSelectedStation('');
+      setSelectedYear('');
+    }
+  }, [lakeId, orgId, open, initialStation]);
+
+  useEffect(() => {
+    if (open && initialStation) {
+      setSelectedStation(initialStation);
+    }
+  }, [open, initialStation]);
+
+  useEffect(() => {
+    if (open && initialStation && Array.isArray(events) && events.length > 0) {
+      // Find the most recent year for this station
+      let maxYear = null;
+      for (const ev of events) {
+        const stationName = ev.station?.name || ev.station_name || '';
+        const stationId = ev.station?.id != null ? String(ev.station.id) : null;
+        if (stationId === initialStation || stationName === initialStation) {
+          if (ev.sampled_at) {
+            const y = new Date(ev.sampled_at).getFullYear();
+            if (!Number.isNaN(y) && (maxYear === null || y > maxYear)) {
+              maxYear = y;
+            }
+          }
+        }
+      }
+      if (maxYear !== null) {
+        setSelectedYear(String(maxYear));
+      }
+    }
+  }, [open, initialStation, events]);
 
   async function isSignedIn() {
     // quick check for global, fallback to API
