@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Modal from "./Modal";
+import { api } from "../lib/api";
 
 const EMPTY = {
   id: null,
@@ -29,6 +30,39 @@ export default function LakeForm({
   onCancel,
 }) {
   const [form, setForm] = useState(EMPTY);
+  const [regions, setRegions] = useState([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [filteredRegions, setFilteredRegions] = useState([]);
+  const [provinces, setProvinces] = useState([]);
+  const [provinceDropdownOpen, setProvinceDropdownOpen] = useState(false);
+  const [provinceFiltered, setProvinceFiltered] = useState([]);
+  const [municipalities, setMunicipalities] = useState([]);
+  const [municipalityDropdownOpen, setMunicipalityDropdownOpen] = useState(false);
+  const [municipalityFiltered, setMunicipalityFiltered] = useState([]);
+
+  useEffect(() => {
+    // Fetch existing regions, provinces, municipalities from lakes
+    api('/lakes').then(res => {
+      const lakes = res.data || res || [];
+      const allRegions = new Set();
+      const allProvinces = new Set();
+      const allMunicipalities = new Set();
+      lakes.forEach(lake => {
+        if (lake.region) {
+          lake.region.split(',').forEach(r => allRegions.add(r.trim()));
+        }
+        if (lake.province) {
+          lake.province.split(',').forEach(p => allProvinces.add(p.trim()));
+        }
+        if (lake.municipality) {
+          lake.municipality.split(',').forEach(m => allMunicipalities.add(m.trim()));
+        }
+      });
+      setRegions(Array.from(allRegions).sort());
+      setProvinces(Array.from(allProvinces).sort());
+      setMunicipalities(Array.from(allMunicipalities).sort());
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Normalize any legacy 'present' value to 'unknown' so the "Exists" option
@@ -63,6 +97,51 @@ export default function LakeForm({
   };
 
   const denrOptions = Array.isArray(classOptions) ? classOptions : [];
+
+  const selectRegion = (selected) => {
+    const parts = form.region.split(',');
+    parts[parts.length - 1] = selected;
+    setForm({ ...form, region: parts.join(', ') });
+    setDropdownOpen(false);
+  };
+
+  const handleRegionChange = (e) => {
+    const value = e.target.value;
+    setForm({ ...form, region: value });
+    const lastPart = value.split(',').pop().trim();
+    setFilteredRegions(regions.filter(r => r.toLowerCase().includes(lastPart.toLowerCase())));
+    setDropdownOpen(true);
+  };
+
+  const selectProvince = (selected) => {
+    const parts = form.province.split(',');
+    parts[parts.length - 1] = selected;
+    setForm({ ...form, province: parts.join(', ') });
+    setProvinceDropdownOpen(false);
+  };
+
+  const handleProvinceChange = (e) => {
+    const value = e.target.value;
+    setForm({ ...form, province: value });
+    const lastPart = value.split(',').pop().trim();
+    setProvinceFiltered(provinces.filter(p => p.toLowerCase().includes(lastPart.toLowerCase())));
+    setProvinceDropdownOpen(true);
+  };
+
+  const selectMunicipality = (selected) => {
+    const parts = form.municipality.split(',');
+    parts[parts.length - 1] = selected;
+    setForm({ ...form, municipality: parts.join(', ') });
+    setMunicipalityDropdownOpen(false);
+  };
+
+  const handleMunicipalityChange = (e) => {
+    const value = e.target.value;
+    setForm({ ...form, municipality: value });
+    const lastPart = value.split(',').pop().trim();
+    setMunicipalityFiltered(municipalities.filter(m => m.toLowerCase().includes(lastPart.toLowerCase())));
+    setMunicipalityDropdownOpen(true);
+  };
 
   return (
     <Modal
@@ -114,34 +193,115 @@ export default function LakeForm({
           />
         </label>
 
-        <label className="lv-field">
+        <label className="lv-field" style={{ position: 'relative' }}>
           <span>Region * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
             required
             placeholder="e.g. Region IV-A, Region V"
             value={form.region}
-            onChange={(e) => setForm({ ...form, region: e.target.value })}
+            onChange={handleRegionChange}
+            onFocus={() => setDropdownOpen(true)}
+            onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
           />
+          {dropdownOpen && filteredRegions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              background: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              maxHeight: 200,
+              overflowY: 'auto',
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              {filteredRegions.map(r => (
+                <div
+                  key={r}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                  onMouseDown={() => selectRegion(r)}
+                >
+                  {r}
+                </div>
+              ))}
+            </div>
+          )}
         </label>
 
-        <label className="lv-field">
+        <label className="lv-field" style={{ position: 'relative' }}>
           <span>Province * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
             required
             placeholder="Laguna, Batangas"
             value={form.province}
-            onChange={(e) => setForm({ ...form, province: e.target.value })}
+            onChange={handleProvinceChange}
+            onFocus={() => setProvinceDropdownOpen(true)}
+            onBlur={() => setTimeout(() => setProvinceDropdownOpen(false), 200)}
           />
+          {provinceDropdownOpen && provinceFiltered.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              background: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              maxHeight: 200,
+              overflowY: 'auto',
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              {provinceFiltered.map(p => (
+                <div
+                  key={p}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                  onMouseDown={() => selectProvince(p)}
+                >
+                  {p}
+                </div>
+              ))}
+            </div>
+          )}
         </label>
 
-        <label className="lv-field">
+        <label className="lv-field" style={{ position: 'relative' }}>
           <span>Municipality/City * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
             required
             placeholder="Los Baños, Calamba"
             value={form.municipality}
-            onChange={(e) => setForm({ ...form, municipality: e.target.value })}
+            onChange={handleMunicipalityChange}
+            onFocus={() => setMunicipalityDropdownOpen(true)}
+            onBlur={() => setTimeout(() => setMunicipalityDropdownOpen(false), 200)}
           />
+          {municipalityDropdownOpen && municipalityFiltered.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              background: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              maxHeight: 200,
+              overflowY: 'auto',
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              {municipalityFiltered.map(m => (
+                <div
+                  key={m}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                  onMouseDown={() => selectMunicipality(m)}
+                >
+                  {m}
+                </div>
+              ))}
+            </div>
+          )}
         </label>
 
         <label className="lv-field">
