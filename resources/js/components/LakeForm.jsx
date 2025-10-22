@@ -115,8 +115,9 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Region <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Region * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
+            required
             placeholder="e.g. Region IV-A, Region V"
             value={form.region}
             onChange={(e) => setForm({ ...form, region: e.target.value })}
@@ -124,8 +125,9 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Province <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Province * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
+            required
             placeholder="Laguna, Batangas"
             value={form.province}
             onChange={(e) => setForm({ ...form, province: e.target.value })}
@@ -133,8 +135,9 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Municipality/City <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Municipality/City * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
           <input
+            required
             placeholder="Los Baños, Calamba"
             value={form.municipality}
             onChange={(e) => setForm({ ...form, municipality: e.target.value })}

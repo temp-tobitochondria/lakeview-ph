@@ -17,7 +17,7 @@ class LakeController extends Controller
     {
         $rows = Lake::select(
             'id','watershed_id','name','alt_name','region','province','municipality',
-            'surface_area_km2','elevation_m','mean_depth_m','class_code','created_at','updated_at',
+            'surface_area_km2','elevation_m','mean_depth_m','class_code','coordinates','created_at','updated_at',
             'flows_status'
         )->with(['watershed:id,name','waterQualityClass:code,name'])->orderBy('name')->get();
 
@@ -36,6 +36,15 @@ class LakeController extends Controller
             if (is_array($arr['municipality'])) {
                 $arr['municipality_list'] = $arr['municipality'];
                 $arr['municipality'] = count($arr['municipality']) ? implode(', ', $arr['municipality']) : null;
+            }
+            // Extract lat/lon from coordinates geom
+            $latLon = $lake->lat_lon;
+            if ($latLon) {
+                $arr['lat'] = $latLon[0];
+                $arr['lon'] = $latLon[1];
+            } else {
+                $arr['lat'] = null;
+                $arr['lon'] = null;
             }
             return $arr;
         });

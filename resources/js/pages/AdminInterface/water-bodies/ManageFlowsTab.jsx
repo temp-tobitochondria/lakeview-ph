@@ -7,9 +7,9 @@ import MapViewport from '../../../components/MapViewport';
 import { GeoJSON, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { api } from '../../../lib/api';
+import { confirm, alertError, alertSuccess } from '../../../lib/alerts';
 import TableToolbar from '../../../components/table/TableToolbar';
 import TableLayout from '../../../layouts/TableLayout';
-import LoadingSpinner from '../../../components/LoadingSpinner';
 
 const TABLE_ID = 'admin-watercat-flows';
 const VIS_KEY = `${TABLE_ID}::visible`;
@@ -93,8 +93,16 @@ export default function ManageFlowsTab() {
   const openCreate = () => { setFormMode('create'); setFormInitial({}); setFormOpen(true); };
   const openEdit = (row) => { const src = row?._raw ?? row; setFormMode('edit'); setFormInitial(src); setFormOpen(true); };
   const openDelete = async (row) => {
-    const src = row?._raw ?? row; if (!src) return; if (!window.confirm('Delete flow point?')) return;
-    try { await api(`/lake-flows/${src.id}`, { method: 'DELETE' }); fetchRows(); } catch (e) { alert(e.message || 'Delete failed'); }
+    const src = row?._raw ?? row; if (!src) return;
+    const ok = await confirm({ title: 'Delete flow point?', text: `Delete "${src.name || 'this flow point'}"?`, confirmButtonText: 'Delete' });
+    if (!ok) return;
+    try { 
+      await api(`/lake-flows/${src.id}`, { method: 'DELETE' }); 
+      await alertSuccess('Deleted', `"${src.name || 'Flow point'}" has been deleted successfully.`);
+      fetchRows(); 
+    } catch (e) { 
+      await alertError('Delete failed', e.message || 'Failed to delete flow point'); 
+    }
   };
 
   // View flow: show lake geometry and the flow point on a modal map
@@ -127,6 +135,23 @@ export default function ManageFlowsTab() {
   }, []);
 
   const submit = async (payload) => {
+    // Validate required fields
+    const missing = [];
+    if (!payload.lake_id) missing.push('Lake selection');
+    if (!payload.flow_type) missing.push('Type');
+    if (!payload.name?.trim()) missing.push('Name');
+    if (!payload.source?.trim()) missing.push('Source');
+    if (payload.lat == null || payload.lon == null) missing.push('Latitude/Longitude');
+
+    if (missing.length > 0) {
+      await alertError('Required Fields Missing', `Please fill in the following required fields: ${missing.join(', ')}`);
+      return;
+    }
+
+    // Find lake name for success message
+    const selectedLake = lakes.find(l => String(l.id) === String(payload.lake_id));
+    const lakeName = selectedLake?.name || `Lake ${payload.lake_id}`;
+
     const body = { ...payload };
     if (!body.lat) body.lat = payload.latitude ?? undefined;
     if (!body.lon) body.lon = payload.longitude ?? undefined;
@@ -139,8 +164,9 @@ export default function ManageFlowsTab() {
       const path = formMode === 'create' ? '/lake-flows' : `/lake-flows/${formInitial.id}`;
       // Pass plain object; api wrapper will JSON.stringify once. Previously we double-stringified causing 422.
       await api(path, { method, body });
+      await alertSuccess('Success', formMode === 'create' ? `Flow point "${payload.name}" created successfully in ${lakeName}!` : 'Flow point updated successfully!');
     } catch (e) {
-      alert(e.message || 'Save failed');
+      await alertError('Save failed', e.message || 'Failed to save flow point');
       return;
     }
     setFormOpen(false); fetchRows();

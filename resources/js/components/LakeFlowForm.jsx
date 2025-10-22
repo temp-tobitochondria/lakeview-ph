@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Modal from './Modal';
+import { api } from '../lib/api';
 
 const EMPTY = { id:null, lake_id:'', flow_type:'inflow', name:'', alt_name:'', source:'', is_primary:false, notes:'', lat:'', lon:'' };
 
@@ -7,7 +8,13 @@ export default function LakeFlowForm({ open, mode='create', initialValue=EMPTY, 
   const [form, setForm] = useState(EMPTY);
   const [coordMode, setCoordMode] = useState('manual');
 
-  useEffect(()=>{ setForm({ ...EMPTY, ...initialValue, flow_type: initialValue.flow_type || 'inflow' }); }, [initialValue, open]);
+  useEffect(()=>{ 
+    const mapped = { ...EMPTY, ...initialValue, flow_type: initialValue.flow_type || 'inflow' };
+    // Map latitude/longitude to lat/lon for form
+    if (initialValue.latitude != null) mapped.lat = initialValue.latitude;
+    if (initialValue.longitude != null) mapped.lon = initialValue.longitude;
+    setForm(mapped);
+  }, [initialValue, open]);
 
   const submit = (e) => {
     e?.preventDefault?.();
@@ -142,9 +149,7 @@ function MiniPickMap({ form, setForm }) {
     const load = async (lakeId) => {
       if (!lakeId || !mapRef.current) return;
       try {
-        const res = await fetch(`/api/lakes/${lakeId}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await api(`/lakes/${lakeId}`);
 
         // remove previous lake layer if any
         try { if (lakeLayerRef.current && mapRef.current) { mapRef.current.removeLayer(lakeLayerRef.current); lakeLayerRef.current = null; } } catch {}
@@ -179,20 +184,17 @@ function MiniPickMap({ form, setForm }) {
 
         // last resort: try public show for geometry
         try {
-          const r2 = await fetch(`/api/public/lakes/${lakeId}`);
-          if (r2.ok) {
-            const d2 = await r2.json();
-            const g2 = d2?.geom_geojson ?? null;
-            if (g2) {
-              let geom2 = g2;
-              if (typeof g2 === 'string') {
-                try { geom2 = JSON.parse(g2); } catch (e) { geom2 = null; }
-              }
-              if (geom2) {
-                const L = await import('leaflet');
-                lakeLayerRef.current = L.geoJSON(geom2, { style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 } }).addTo(mapRef.current);
-                try { const bounds = lakeLayerRef.current.getBounds(); if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 }); } catch (e) {}
-              }
+          const d2 = await api(`/public/lakes/${lakeId}`);
+          const g2 = d2?.geom_geojson ?? null;
+          if (g2) {
+            let geom2 = g2;
+            if (typeof g2 === 'string') {
+              try { geom2 = JSON.parse(g2); } catch (e) { geom2 = null; }
+            }
+            if (geom2) {
+              const L = await import('leaflet');
+              lakeLayerRef.current = L.geoJSON(geom2, { style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 } }).addTo(mapRef.current);
+              try { const bounds = lakeLayerRef.current.getBounds(); if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 }); } catch (e) {}
             }
           }
         } catch (e) {}

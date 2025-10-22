@@ -325,6 +325,10 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
     Route::post('/admin/kyc-profiles/{id}/decision', [KycProfileController::class, 'adminDecision'])->whereNumber('id');
     // View a user's KYC docs (for modals)
     Route::get('/admin/kyc-profiles/user/{userId}', [KycProfileController::class, 'adminShowUser'])->whereNumber('userId');
+    // Watersheds CRUD
+    Route::post('/watersheds', [WatershedController::class, 'store']);
+    Route::put('/watersheds/{watershed}', [WatershedController::class, 'update'])->whereNumber('watershed');
+    Route::delete('/watersheds/{watershed}', [WatershedController::class, 'destroy'])->whereNumber('watershed');
 });
 // Public Water Quality Sampling Events (published only)
 Route::get('/public/sample-events', [AdminSamplingEventController::class, 'publicIndex'] ?? function() {

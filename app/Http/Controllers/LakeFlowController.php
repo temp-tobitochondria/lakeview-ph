@@ -48,13 +48,13 @@ class LakeFlowController extends Controller
         $data = $req->validate([
             'lake_id' => ['required','exists:lakes,id'],
             'flow_type' => ['required','in:inflow,outflow'],
-            'name' => ['nullable','string','max:255'],
+            'name' => ['required','string','max:255'],
             'alt_name' => ['nullable','string','max:255'],
-            'source' => ['nullable','string','max:255'],
+            'source' => ['required','string','max:255'],
             'is_primary' => ['boolean'],
             'notes' => ['nullable','string'],
-            'lat' => ['nullable','numeric','between:-90,90'],
-            'lon' => ['nullable','numeric','between:-180,180'],
+            'lat' => ['required','numeric','between:-90,90'],
+            'lon' => ['required','numeric','between:-180,180'],
         ]);
         $lat = $data['lat'] ?? null; $lon = $data['lon'] ?? null; unset($data['lat'],$data['lon']);
         if ($lat !== null && $lon !== null) {
@@ -71,13 +71,13 @@ class LakeFlowController extends Controller
     {
         $data = $req->validate([
             'flow_type' => ['required','in:inflow,outflow'],
-            'name' => ['nullable','string','max:255'],
+            'name' => ['required','string','max:255'],
             'alt_name' => ['nullable','string','max:255'],
-            'source' => ['nullable','string','max:255'],
+            'source' => ['required','string','max:255'],
             'is_primary' => ['boolean'],
             'notes' => ['nullable','string'],
-            'lat' => ['nullable','numeric','between:-90,90'],
-            'lon' => ['nullable','numeric','between:-180,180'],
+            'lat' => ['required','numeric','between:-90,90'],
+            'lon' => ['required','numeric','between:-180,180'],
         ]);
         $lat = $data['lat'] ?? null; $lon = $data['lon'] ?? null; unset($data['lat'],$data['lon']);
         if ($lat !== null && $lon !== null) {
@@ -99,7 +99,7 @@ class LakeFlowController extends Controller
     {
         $arr = $flow->toArray();
         // Add lat/lon if geometry exists but lat/lon not stored (fallback extraction)
-        if ((!$arr['latitude'] || !$arr['longitude']) && $flow->coordinates) {
+        if ((!isset($arr['latitude']) || !$arr['latitude'] || !isset($arr['longitude']) || !$arr['longitude']) && $flow->coordinates) {
             try {
                 $row = DB::selectOne('SELECT ST_Y(coordinates) as lat, ST_X(coordinates) as lon FROM lake_flows WHERE id = ?', [$flow->id]);
                 if ($row) { $arr['latitude'] = $row->lat; $arr['longitude'] = $row->lon; }
