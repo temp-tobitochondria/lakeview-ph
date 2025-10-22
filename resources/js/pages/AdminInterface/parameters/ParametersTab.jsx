@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FiEdit2, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 
 import TableLayout from "../../../layouts/TableLayout";
+import TableToolbar from "../../../components/table/TableToolbar";
+import FilterPanel from "../../../components/table/FilterPanel";
 import { api, buildQuery } from "../../../lib/api";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 
@@ -25,7 +27,7 @@ const GROUP_OPTIONS = [
 
 const UNIT_OPTIONS = [
   { value: "mg/L", label: "mg/L" },
-  { value: "deg C", label: "deg C" },
+  { value: "°C", label: "°C" },
   { value: "MPN/100mL", label: "MPN/100mL" },
   { value: "TCU", label: "TCU" },
 ];
@@ -86,11 +88,33 @@ function ParametersTab() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
+  const ADV_KEY = "admin-parameters-grid::filters_advanced";
+  const persistedAdv = (() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); } catch { return {}; } })();
+  const [filterCategory, setFilterCategory] = useState(persistedAdv.category || "");
+  const [filterGroup, setFilterGroup] = useState(persistedAdv.group || "");
+  const [filterEval, setFilterEval] = useState(persistedAdv.evaluation || "");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [gridResetSignal, setGridResetSignal] = useState(0);
+
+  // Column visibility (managed via TableToolbar's ColumnPicker)
+  const GRID_TABLE_ID = "admin-parameters-grid";
+  const GRID_VISIBLE_KEY = `${GRID_TABLE_ID}::visible-cols`;
+  const [visibleMap, setVisibleMap] = useState(() => {
+    try {
+      const raw = localStorage.getItem(GRID_VISIBLE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  });
+  useEffect(() => {
+    try { localStorage.setItem(GRID_VISIBLE_KEY, JSON.stringify(visibleMap)); } catch {}
+  }, [visibleMap]);
+  useEffect(() => {
+    try { localStorage.setItem(ADV_KEY, JSON.stringify({ category: filterCategory, group: filterGroup, evaluation: filterEval })); } catch {}
+  }, [filterCategory, filterGroup, filterEval]);
   const [resetSignal, setResetSignal] = useState(0);
   const [gridEdits, setGridEdits] = useState({});
   const [newRows, setNewRows] = useState([]);
-
-  const GRID_TABLE_ID = "admin-parameters-grid";
 
   const fetchParameters = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -111,10 +135,16 @@ function ParametersTab() {
   }, [fetchParameters, query, resetSignal]);
 
   const filtered = useMemo(() => {
-    if (!query) return params;
-    const q = query.toLowerCase();
-    return params.filter((p) => (p.code || "").toLowerCase().includes(q) || (p.name || "").toLowerCase().includes(q));
-  }, [params, query]);
+    const q = (query || "").toLowerCase();
+    return params.filter((p) => {
+      const matchesQuery = !q || (p.code || "").toLowerCase().includes(q) || (p.name || "").toLowerCase().includes(q);
+      const matchesCat = !filterCategory || String(p.category || "") === filterCategory;
+      const matchesGroup = !filterGroup || String(p.group || "") === filterGroup;
+      const evalVal = (p.evaluation_type || "").toString().toLowerCase();
+      const matchesEval = !filterEval || evalVal.includes(filterEval.toLowerCase());
+      return matchesQuery && matchesCat && matchesGroup && matchesEval;
+    });
+  }, [params, query, filterCategory, filterGroup, filterEval]);
 
   const gridRows = useMemo(() => {
     const existing = filtered.map((p) => ({
@@ -270,6 +300,16 @@ function ParametersTab() {
     // 'Active' and 'Aliases' columns removed per product decision
   ], [gridEdits]);
 
+  // Columns visible via toolbar's column picker (always keep Code visible)
+  const columnsForPicker = useMemo(
+    () => gridColumns.map((c) => ({ id: c.id, header: c.header })),
+    [gridColumns]
+  );
+  const effectiveColumns = useMemo(() => {
+    const lockId = 'code';
+    return gridColumns.filter((c) => c.id === lockId || visibleMap[c.id] !== false);
+  }, [gridColumns, visibleMap]);
+
   const handleRefresh = useCallback(() => {
     fetchParameters({ search: query });
   }, [fetchParameters, query]);
@@ -325,6 +365,15 @@ function ParametersTab() {
       ...deduped.map((value) => ({ value, label: EVALUATION_LABELS[value] || value })),
     ];
   }, [params]);
+
+  // Advanced filter panel config and helpers
+  const advancedFields = useMemo(() => ([
+    { id: 'category', label: 'Category', type: 'select', value: filterCategory, onChange: (v) => setFilterCategory(v), options: categoryFilterOptions },
+    { id: 'group', label: 'Group', type: 'select', value: filterGroup, onChange: (v) => setFilterGroup(v), options: groupFilterOptions },
+    { id: 'evaluation', label: 'Evaluation', type: 'select', value: filterEval, onChange: (v) => setFilterEval(v), options: evaluationFilterOptions },
+  ]), [filterCategory, filterGroup, filterEval, categoryFilterOptions, groupFilterOptions, evaluationFilterOptions]);
+  const clearAdvanced = useCallback(() => { setFilterCategory(''); setFilterGroup(''); setFilterEval(''); }, []);
+  const activeAdvCount = useMemo(() => [filterCategory, filterGroup, filterEval].filter(Boolean).length, [filterCategory, filterGroup, filterEval]);
 
   const actions = useMemo(
     () => [
@@ -423,22 +472,36 @@ function ParametersTab() {
       <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
         <TableLayout
           tableId={GRID_TABLE_ID}
-          columns={gridColumns}
+          columns={effectiveColumns}
           data={gridRows}
           pageSize={5}
           actions={[
             { label: "Save", type: "edit", icon: <FiSave />, onClick: (row) => saveGridRow(row) },
             { label: "Delete", type: "delete", icon: <FiTrash2 />, onClick: (row) => deleteGridRow(row) },
           ]}
-          columnPicker={{ label: "Columns", locked: ["code"], defaultHidden: [] }}
-          toolbar={{
-            left: (
-              <button type="button" className="pill-btn primary" onClick={() => setNewRows((prev) => [`__new__-${Date.now()}`, ...prev])}>
-                <FiPlus />
-                <span>Add Parameter</span>
-              </button>
-            ),
-          }}
+          resetSignal={gridResetSignal}
+          columnPicker={false}
+          toolbar={
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minWidth: 0, gap: 8 }}>
+              <TableToolbar
+                tableId={GRID_TABLE_ID}
+                search={{ value: query, onChange: setQuery, placeholder: 'Search code or name…' }}
+                columnPicker={{
+                  columns: columnsForPicker,
+                  visibleMap,
+                  onVisibleChange: (map) => {
+                    const next = { ...map, code: true }; // enforce Code always visible
+                    setVisibleMap(next);
+                  },
+                }}
+                onResetWidths={() => setGridResetSignal((s) => s + 1)}
+                onRefresh={handleRefresh}
+                onToggleFilters={() => setShowAdvanced((s) => !s)}
+                filtersBadgeCount={activeAdvCount}
+              />
+              <FilterPanel open={showAdvanced} fields={advancedFields} onClearAll={clearAdvanced} />
+            </div>
+          }
           loading={loading}
           loadingLabel="Loading parameters…"
         />

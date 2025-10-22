@@ -400,7 +400,7 @@ export default function TableLayout({
     <div className="lv-table-wrap">
       {showToolbarRow && (
         <div className="lv-table-toolbar">
-          <div className="lv-toolbar-left">{toolbarSlots.left}</div>
+          <div className="lv-toolbar-left" style={{ flex: 1 }}>{toolbarSlots.left}</div>
           <div className="lv-toolbar-right">
             {toolbarSlots.right}
             {columnPickerControl}
