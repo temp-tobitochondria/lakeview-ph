@@ -42,6 +42,9 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [secondaryOrgOptions, setSecondaryOrgOptions] = useState([]);
   const [paramEvaluationType, setParamEvaluationType] = useState(null);
 
+  const [stationId, setStationId] = useState('');
+  const [stationOptions, setStationOptions] = useState([]);
+
   const containerRef = useRef(null);
   const gearBtnRef = useRef(null);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -62,14 +65,14 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     },
     {
       heading: 'Dataset Sources (required)',
-      text: 'Pick the dataset source. For two‑lake comparisons, select one dataset source per lake to avoid mixing sources.'
+      text: 'Pick the dataset source. For two‑lake comparisons, select one dataset source per lake to avoid mixing sources. For lake vs threshold, optionally select a station to focus the analysis.'
     },
     {
       heading: 'Quick start',
       bullets: [
         'Select Applied Standard and Parameter (e.g., DO, pH).',
         'Choose Primary Lake + its Dataset Source.',
-        'Optionally set Compare to a Class or another Lake (then pick its Dataset Source).',
+        'Optionally set Compare to a Class (then optionally pick a Station) or another Lake (then pick its Dataset Source).',
         'Open the gear to set years and (optionally) an exact depth.',
         'Pick a Test (disabled when not applicable) and click Run Test.',
         'Review the summary, p‑value, and advisories; use Export for PDF.'
@@ -291,6 +294,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         if (debouncedYearFrom) params.append('date_from', `${debouncedYearFrom}-01-01`);
         if (debouncedYearTo) params.append('date_to', `${debouncedYearTo}-12-31`);
         if (organizationId) params.append('organization_id', organizationId);
+        if (stationId && stationId !== "all") params.append('station_id', stationId);
         const res = await apiPublic(`/stats/depths?${params.toString()}`);
         if (abort) return;
         const depths = Array.isArray(res?.depths) ? res.depths : (Array.isArray(res?.data?.depths) ? res.data.depths : []);
@@ -305,7 +309,32 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       }
     })();
     return () => { abort = true; };
-  }, [paramCode, lakeId, compareValue, debouncedYearFrom, debouncedYearTo, organizationId, secondaryOrganizationId, inferredTest, depthMode]);
+  }, [paramCode, lakeId, compareValue, debouncedYearFrom, debouncedYearTo, organizationId, secondaryOrganizationId, inferredTest, depthMode, stationId]);
+
+  // Fetch stations when parameter, lake, debounced date range or organization changes (one-sample vs class)
+  useEffect(() => {
+    if (!paramCode || !lakeId || !organizationId || inferredTest !== 'one-sample' || !compareValue || !compareValue.startsWith('class:')) {
+      setStationOptions([]);
+      return;
+    }
+    const fetchStations = async () => {
+      try {
+        const params = new URLSearchParams({
+          parameter_code: paramCode,
+          lake_id: lakeId,
+          organization_id: organizationId,
+          date_from: debouncedYearFrom ? `${debouncedYearFrom}-01-01` : '',
+          date_to: debouncedYearTo ? `${debouncedYearTo}-12-31` : '',
+        });
+        const res = await apiPublic(`/stats/stations?${params}`);
+        setStationOptions(res.stations || []);
+      } catch (e) {
+        console.error('Failed to fetch stations', e);
+        setStationOptions([]);
+      }
+    };
+    fetchStations();
+  }, [paramCode, lakeId, organizationId, debouncedYearFrom, debouncedYearTo, inferredTest, compareValue]);
 
   // Clear TOST selection if it becomes invalid (e.g., user changed to a non-range param or switched to two-sample)
   useEffect(() => {
@@ -358,6 +387,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         body.depth_m = Number(depthValue);
       }
       if (organizationId) body.organization_id = organizationId;
+      if (stationId && stationId !== "all") body.station_id = Number(stationId);
       if (inferredTest === 'one-sample') {
         body.lake_id = Number(lakeId);
       } else {
@@ -523,6 +553,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   setShowExactP(false);
     setAdvisories([]);
     setParamEvaluationType(null);
+    setStationId('');
+    setStationOptions([]);
   };
 
   const fetchThreshold = async () => {
@@ -771,10 +803,19 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
             {secondaryOrgOptions.map(o => <option key={`org2-${o.id}`} value={o.id}>{o.name || o.id}</option>)}
           </select>
         </div>
-      ) : null}
-      <div style={{ gridColumn: '4 / span 1', display:'flex', gap:8, minWidth:0 }}>
-        <div style={{ width: '100%' }} />
-      </div>
+      ) : compareValue && String(compareValue).startsWith('class:') ? (
+        <div style={{ gridColumn: '4 / span 1', minWidth:0 }}>
+          <select className="pill-btn" value={stationId} onChange={e=>{ setStationId(e.target.value); setResult(null); }} style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px' }} disabled={!organizationId}>
+            <option value="">Select a station</option>
+            <option value="all">All Stations</option>
+            {stationOptions.map(s => <option key={`station-${s.id}`} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div style={{ gridColumn: '4 / span 1', display:'flex', gap:8, minWidth:0 }}>
+          <div style={{ width: '100%' }} />
+        </div>
+      )}
     </div>
 
       <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>

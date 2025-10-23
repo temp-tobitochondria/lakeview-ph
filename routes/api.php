@@ -356,6 +356,7 @@ Route::get('/options/lake-municipalities', [LakeOptionsController::class, 'munic
 
 // Stats & Population (public)
 Route::get('/stats/depths', [StatsController::class, 'depths']);
+Route::get('/stats/stations', [StatsController::class, 'stations']);
 Route::post('/stats/series', [StatsController::class, 'series']);
 Route::get('/population/estimate', [PopulationController::class, 'estimate']);
 Route::get('/tiles/pop/{z}/{x}/{y}', [PopulationController::class, 'tile'])

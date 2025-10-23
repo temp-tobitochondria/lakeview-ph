@@ -27,6 +27,7 @@ class StatsController extends Controller
             'lake_ids' => 'nullable|array|min:2|max:2',
             'lake_ids.*' => 'integer',
             'organization_id' => 'nullable|integer',
+            'station_id' => 'nullable|integer',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
         ]);
@@ -52,6 +53,7 @@ class StatsController extends Controller
             $q->where('se.lake_id', (int)$data['lake_id']);
         }
         if (!empty($data['organization_id'])) $q->where('se.organization_id', (int)$data['organization_id']);
+        if (!empty($data['station_id'])) $q->where('se.station_id', (int)$data['station_id']);
         if ($from) $q->where('se.sampled_at', '>=', $from->copy()->timezone('UTC'));
         if ($to) $q->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
 
@@ -74,6 +76,55 @@ class StatsController extends Controller
             ->values()
             ->all();
         return response()->json(['depths' => $depths]);
+    }
+
+    /**
+     * GET /api/stats/stations
+     * Returns distinct stations for a parameter, lake, and date range.
+     * Query params:
+     *   parameter_code (required) string
+     *   lake_id (optional) int
+     *   organization_id (optional) int
+     *   date_from/date_to (optional) YYYY-MM-DD
+     * Response: { stations: {id: int, name: string}[] }
+     */
+    public function stations(Request $request)
+    {
+        $data = $request->validate([
+            'parameter_code' => 'required|string',
+            'lake_id' => 'nullable|integer',
+            'organization_id' => 'nullable|integer',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+        ]);
+
+        $param = \DB::table('parameters')
+            ->whereRaw('LOWER(code) = ?', [strtolower($data['parameter_code'])])
+            ->first(['id']);
+        if (!$param) return response()->json(['stations' => []]);
+
+        $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
+        $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
+
+        $q = \DB::table('sample_results as sr')
+            ->join('sampling_events as se', 'sr.sampling_event_id', '=', 'se.id')
+            ->join('stations as st', 'se.station_id', '=', 'st.id')
+            ->join('parameters as p', 'sr.parameter_id', '=', 'p.id')
+            ->where('p.code', '=', $data['parameter_code'])
+            ->whereNotNull('sr.value')
+            ->select('st.id', 'st.name')
+            ->distinct();
+
+        if (!empty($data['lake_id'])) {
+            $q->where('se.lake_id', (int)$data['lake_id']);
+        }
+        if (!empty($data['organization_id'])) $q->where('se.organization_id', (int)$data['organization_id']);
+        if ($from) $q->where('se.sampled_at', '>=', $from->copy()->timezone('UTC'));
+        if ($to) $q->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
+
+        $stations = $q->orderBy('st.name')->get()->map(fn($s) => ['id' => $s->id, 'name' => $s->name]);
+
+        return response()->json(['stations' => $stations]);
     }
     /**
      * POST /api/stats/series
@@ -109,6 +160,7 @@ class StatsController extends Controller
             'date_to' => 'nullable|date',
             'applied_standard_id' => 'nullable|integer|exists:wq_standards,id',
             'depth_m' => 'nullable|numeric', // optional depth filter applied equally to all selected lakes
+            'station_id' => 'nullable|integer',
         ]);
 
         $param = \DB::table('parameters')
@@ -136,6 +188,8 @@ class StatsController extends Controller
                 $query->whereRaw('ROUND(sr.depth_m, 2) = ROUND(?, 2)', [$target]);
             }
         }
+
+        if (!empty($data['station_id'])) $query->where('se.station_id', (int)$data['station_id']);
 
         if ($from) $query->where('se.sampled_at', '>=', $from->copy()->timezone('UTC'));
         if ($to) $query->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
