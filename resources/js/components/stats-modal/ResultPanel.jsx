@@ -85,16 +85,72 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
   }
   if (result.test_used === 'tost' || result.type === 'tost') {
     if ('t1' in result) push('t1 (lower)', fmt(result.t1));
-    if ('p1' in result) push('p1 (H0: mean ≤ lower)', sci(result.p1));
+    if ('p1' in result) {
+      const pvNum = Number(result.p1);
+      if (Number.isFinite(pvNum) && pvNum < 0.001) {
+        push('p1 (H0: mean ≤ lower)', (
+          <span>
+            {showExactP ? sci(pvNum) : '<0.001'}
+            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
+              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+            </button>
+          </span>
+        ));
+      } else {
+        push('p1 (H0: mean ≤ lower)', sci(result.p1));
+      }
+    }
     if ('t2' in result) push('t2 (upper)', fmt(result.t2));
-    if ('p2' in result) push('p2 (H0: mean ≥ upper)', sci(result.p2));
+    if ('p2' in result) {
+      const pvNum = Number(result.p2);
+      if (Number.isFinite(pvNum) && pvNum < 0.001) {
+        push('p2 (H0: mean ≥ upper)', (
+          <span>
+            {showExactP ? sci(pvNum) : '<0.001'}
+            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
+              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+            </button>
+          </span>
+        ));
+      } else {
+        push('p2 (H0: mean ≥ upper)', sci(result.p2));
+      }
+    }
     if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
   }
   if (result.test_used === 'tost_wilcoxon') {
     if ('w_lower' in result) push('W (lower)', fmt(result.w_lower));
-    if ('p_lower' in result) push('p (lower > bound)', sci(result.p_lower));
+    if ('p_lower' in result) {
+      const pvNum = Number(result.p_lower);
+      if (Number.isFinite(pvNum) && pvNum < 0.001) {
+        push('p (lower > bound)', (
+          <span>
+            {showExactP ? sci(pvNum) : '<0.001'}
+            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
+              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+            </button>
+          </span>
+        ));
+      } else {
+        push('p (lower > bound)', sci(result.p_lower));
+      }
+    }
     if ('w_upper' in result) push('W (upper)', fmt(result.w_upper));
-    if ('p_upper' in result) push('p (upper < bound)', sci(result.p_upper));
+    if ('p_upper' in result) {
+      const pvNum = Number(result.p_upper);
+      if (Number.isFinite(pvNum) && pvNum < 0.001) {
+        push('p (upper < bound)', (
+          <span>
+            {showExactP ? sci(pvNum) : '<0.001'}
+            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
+              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+            </button>
+          </span>
+        ));
+      } else {
+        push('p (upper < bound)', sci(result.p_upper));
+      }
+    }
     if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
   }
   if ('p_value' in result) {

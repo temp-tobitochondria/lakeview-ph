@@ -789,13 +789,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       </div>
     </div>
 
-    {paramHasRange && inferredTest === 'one-sample' ? (
-      <div style={{ marginTop:8, fontSize:12, color:'#eee' }}>
-        <strong>Note:</strong> Authoritative range: choose an equivalence test (t or Wilcoxon). Other one-sample tests are disabled.
-        {depthMode==='single' && depthValue ? <div style={{ marginTop:4 }}>Depth filter: {depthValue} m (mean not aggregated across depths).</div> : null}
-      </div>
-    ) : null}
-
     <Popover anchorRef={gearBtnRef} open={showGearPopover} onClose={() => setShowGearPopover(false)} minWidth={320}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
         <div style={{ fontSize:13, fontWeight:600, color:'#f0f6fb' }}>Year Range & Confidence Level</div>
