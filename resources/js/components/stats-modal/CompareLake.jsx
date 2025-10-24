@@ -2,13 +2,16 @@ import React, { useEffect, useMemo, useState, useRef, useImperativeHandle } from
 import { Line, Bar } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement } from "chart.js";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement);
+// year label plugin will be registered below after importing from shared
 import TimeBucketRange from "../controls/TimeBucketRange";
 import StatsSidebar from "./StatsSidebar";
 import { fetchParameters } from "./data/fetchers";
 import InfoModal from "../common/InfoModal";
 import { buildGraphExplanation } from "../utils/graphExplain";
 import { eventStationName } from "./utils/dataUtils";
-import { lakeName, lakeClass, baseLineChartOptions } from "./utils/shared";
+import { lakeName, lakeClass, baseLineChartOptions, yearLabelPlugin } from "./utils/shared";
+// register plugin for bar charts (draws year labels under grouped bars)
+ChartJS.register(yearLabelPlugin);
 import useAnchoredTimeRange from "./hooks/useAnchoredTimeRange";
 import useStationsCache from "./hooks/useStationsCache";
 import GraphInfoButton from "./ui/GraphInfoButton";
@@ -304,7 +307,16 @@ function CompareLake({
     }
   }));
 
-  const compareChartOptions = useMemo(() => baseLineChartOptions(), []);
+  const compareChartOptions = useMemo(() => {
+    const base = baseLineChartOptions();
+    const sel = String(selectedParam || '');
+    const meta = (paramList || []).find(p => String(p.key || p.id || p.code) === sel);
+    const label = meta?.label || meta?.name || meta?.code || 'Value';
+    const unit = meta?.unit || '';
+    base.scales = base.scales || {};
+    base.scales.y = { ...(base.scales?.y || {}), title: { display: true, text: `${label}${unit ? ` (${unit})` : ''}`, color: '#fff' } };
+    return base;
+  }, [paramList, selectedParam]);
 
   const barData = useCompareBarData({ eventsA: eventsAFiltered, eventsB: eventsBFiltered, bucket, selectedYears, depth: depthSelection, selectedParam, lakeA, lakeB, lakeOptions });
 
@@ -483,46 +495,27 @@ function CompareLake({
             const paramMeta = (paramList || []).find(p => String(p.key || p.id || p.code) === String(selectedParam));
             const unit = paramMeta?.unit || '';
             const title = paramMeta ? `${paramMeta.label || paramMeta.name || paramMeta.code}` : 'Value';
+            const hasThresholdLines = Array.isArray(bd?.datasets) && bd.datasets.some((d) => d && d.type === 'line');
             const options = {
               responsive: true,
               maintainAspectRatio: false,
               plugins: {
+                // Show legend only for threshold lines (Min/Max)
                 legend: {
-                  position: 'top',
+                  display: !!hasThresholdLines,
                   labels: {
-                    usePointStyle: true,
-                    generateLabels: (chart) => {
+                    color: '#fff',
+                    filter: (legendItem, chartData) => {
                       try {
-                        const yearIndexMap = bd?.meta?.yearIndexMap || {};
-                        const yearOrder = bd?.meta?.yearOrder || Object.keys(yearIndexMap);
-                        const yearColors = bd?.meta?.yearColors || {};
-                        const items = [];
-                        (yearOrder || []).forEach((y) => {
-                          const idxs = yearIndexMap[String(y)] || [];
-                          if (!idxs.length) return;
-                          const firstIdx = idxs[0];
-                          const hidden = idxs.every((i) => chart.getDatasetMeta(i)?.hidden);
-                          const color = yearColors[String(y)] || 'rgba(200,200,200,0.9)';
-                          items.push({ text: String(y), fillStyle: color, strokeStyle: color, hidden, datasetIndex: firstIdx, year: String(y) });
-                        });
-                        return items;
-                      } catch { return []; }
+                        const ds = chartData?.datasets?.[legendItem.datasetIndex];
+                        return !!(ds && ds.type === 'line');
+                      } catch { return false; }
                     },
-                  },
-                  onClick: (e, legendItem, legend) => {
-                    try {
-                      const chart = legend.chart;
-                      const y = legendItem?.year;
-                      const yearIndexMap = bd?.meta?.yearIndexMap || {};
-                      const idxs = yearIndexMap[String(y)] || [];
-                      if (!idxs.length) return;
-                      const anyVisible = idxs.some((i) => !chart.getDatasetMeta(i)?.hidden);
-                      idxs.forEach((i) => chart.setDatasetVisibility(i, anyVisible ? false : true));
-                      chart.update();
-                    } catch {}
                   },
                 },
                 tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue}${unit ? ` ${unit}` : ''}` } },
+                // Draw per-group year labels inside the chart area to avoid axis label overlap
+                yearLabelPlugin: { meta: bd?.meta || {}, color: '#fff', fontSize: 11, paddingInside: 14 },
               },
               indexAxis: 'x',
               datasets: { bar: { categoryPercentage: 0.75, barPercentage: 0.9 } },
