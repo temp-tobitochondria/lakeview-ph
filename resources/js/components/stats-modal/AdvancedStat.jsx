@@ -2,16 +2,14 @@ import React, { useState, useEffect, useRef, useImperativeHandle } from "react";
 import { FiSettings, FiInfo } from 'react-icons/fi';
 import Popover from "../common/Popover";
 import { getToken } from "../../lib/api";
-import { fetchSampleEvents, deriveOrgOptions } from "./data/fetchers"; // removed unused fetchParameters
+import { deriveOrgOptions } from "./data/fetchers";
 import { alertSuccess, alertError } from '../../lib/alerts';
-// statsAdapter used via services/runAdvancedStat
 import { fmt, sci } from './formatters';
 import ResultPanel from './ResultPanel';
 import InfoModal from '../common/InfoModal';
 import useDebounce from './hooks/useDebounce';
 import useDisclosure from './hooks/useDisclosure';
 import useSampleEvents from './hooks/useSampleEvents';
-// import useStationsCache from './hooks/useStationsCache';
 import YearClPopover from './ui/YearClPopover';
 import TestSelector from './ui/TestSelector';
 import LakeSelect from './ui/LakeSelect';
@@ -54,7 +52,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [advisories, setAdvisories] = useState([]);
   const paramOptions = (parentParamOptions && parentParamOptions.length ? parentParamOptions : (params || []));
   const { standards, classes } = useStandardsAndClasses();
-  // Org options derived from events (keeps UI in sync with date range)
   const [paramEvaluationType, setParamEvaluationType] = useState(null);
 
   const [stationId, setStationId] = useState('');
@@ -72,11 +69,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
 
   const orgOptions = React.useMemo(() => deriveOrgOptions(primaryEvents), [primaryEvents]);
   const secondaryOrgOptions = React.useMemo(() => deriveOrgOptions(secondaryEvents), [secondaryEvents]);
-  // Help content imported from content/advancedStatHelp
-
-  // standards and classes now come from useStandardsAndClasses
-
-  // Inferred test mode: if comparing to another lake -> two-sample; class or nothing -> one-sample
   const inferredTest = React.useMemo(() => {
     if (!compareValue) return 'one-sample';
     if (String(compareValue).startsWith('lake:')) return 'two-sample';
@@ -97,24 +89,16 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
 
   useEffect(() => {
     if (selectedTest && !allowedTests.includes(selectedTest)) {
-      // silently clear invalid selection
       setSelectedTest('');
       setResult(null);
     }
   }, [allowedTests, selectedTest]);
 
-  // Year validation handled by useYearRange
-
-  // Populate dataset source options for primary lake when lake or date range changes
-
-
-  // Disable run based on required selections
   const runDisabled = React.useMemo(() => {
-    return false; // Always enable to show popups on missing fields
+    return false;
   }, []);
   
 
-  // Fetch depths via hook and ensure current depth selection stays valid
   const depthsFromHook = useAvailableDepths({
     paramCode,
     lakeId,
@@ -130,10 +114,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     if (depthMode === 'single' && depthValue && !availableDepths.includes(Number(depthValue))) setDepthValue('');
   }, [availableDepths, depthMode, depthValue]);
 
-  // Stations for one-sample (lake vs class)
   const stationOptions = useStationsForLakeClass({ lakeId, organizationId, paramCode, yearFrom, yearTo, enabled: inferredTest === 'one-sample' }) || [];
 
-  // Clear TOST selection if it becomes invalid (e.g., user changed to a non-range param or switched to two-sample)
   useEffect(() => {
     if ((selectedTest === 'tost' || selectedTest === 'tost_wilcoxon') && (!paramHasRange || inferredTest !== 'one-sample')) {
       setSelectedTest('');
@@ -147,7 +129,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     }
   }, [compareValue, secondaryOrganizationId]);
 
-  // Defensive: if compare lake becomes the same as primary, clear it
   useEffect(() => {
     const isLake = compareValue && String(compareValue).startsWith('lake:');
     const other = isLake ? String(compareValue).split(':')[1] : '';
@@ -159,19 +140,15 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
 
   useEffect(() => { if (result) setResult(null); }, [debouncedYearFrom, debouncedYearTo]);
 
-  // Clear advisories whenever primary UI selections or framing change
   useEffect(() => {
-    // Any UI toggle that meaningfully changes the context should clear previously computed advisories
     setAdvisories([]);
   }, [inferredTest, compareValue, selectedTest, lakeId, classCode, organizationId, secondaryOrganizationId, depthMode, depthValue, debouncedYearFrom, debouncedYearTo, paramCode, appliedStandardId]);
 
-  // Resolve param evaluation type via hook in one-sample mode
   const evalTypeHook = useParamEvaluationType({ enabled: inferredTest === 'one-sample', lakeId, paramCode, appliedStandardId });
   useEffect(() => { setParamEvaluationType(evalTypeHook || null); }, [evalTypeHook]);
 
   const run = async () => {
     setLoading(true); setError(null); setResult(null); setShowExactP(false); setAdvisories([]);
-    // Validations (unchanged)
     if (!lakeId) { alertError('Missing Lake', 'Please select a Primary Lake before running the test.'); setLoading(false); return; }
     if (!organizationId) { alertError('Missing Dataset Source', 'Please select a Dataset Source before running the test.'); setLoading(false); return; }
     if (!appliedStandardId) { alertError('Missing Applied Standard', 'Please select an Applied Standard before running the test.'); setLoading(false); return; }
@@ -205,7 +182,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       });
       setAdvisories(advisories);
       
-      // Check if threshold exists
       const minVal = computed.threshold_min != null ? Number(computed.threshold_min) : null;
       const maxVal = computed.threshold_max != null ? Number(computed.threshold_max) : null;
       const mu0 = computed.mu0 != null ? Number(computed.mu0) : null;
@@ -229,7 +205,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       if (e?.code === 'THRESHOLD_MISSING_RANGE' || e?.message === 'threshold_missing_range') {
         alertError('Threshold missing', 'Range evaluation requires both lower and upper thresholds.');
       } else if (e?.code === 'NOT_ENOUGH_DATA') {
-        // Prefer detailed message for two-sample if counts available
         if (inferredTest === 'two-sample' && e?.details?.n1 != null && e?.details?.n2 != null) {
           const otherLake = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : undefined;
           const primaryName = lakeName(lakes, lakeId) || `Lake ${lakeId}`;
@@ -245,7 +220,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   };
 
   const clearAll = () => {
-  // clearAll invoked
     setLakeId('');
     setClassCode('');
     setCompareValue('');
@@ -265,11 +239,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setStationId('');
   };
 
-  // fetchThreshold removed; handled by hook
-
   const exportPdf = async () => {
     try {
-      // Require user to be signed-in
       const token = getToken();
       if (!token) {
         await alertError('Sign in required', 'You must be a registered user to export results.');
@@ -305,7 +276,6 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     </div>
   <div>
   <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 1fr', gridTemplateRows:'repeat(2, auto)', gap:10, alignItems:'start', fontSize:13, minWidth:0 }}>
-      {/* Row 1: Lake | Class (header + selector) | Compare Lake | Years */}
       <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
         <LakeSelect lakes={lakes} value={lakeId} onChange={e=>{ setLakeId(e.target.value); setResult(null); }} />
       </div>
@@ -327,14 +297,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         </div>
       )}
 
-      {/* Row 2: Applied Standard, Parameter, Confidence Level (compact) */}
       <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
         <StandardSelect required standards={standards} value={appliedStandardId} onChange={e=>{ setAppliedStandardId(e.target.value); setResult(null); }} />
       </div>
       <div style={{ gridColumn: '2 / span 1', minWidth:0 }}>
         <div style={{ display:'flex', gap:6 }}>
           <ParamSelect options={paramOptions} value={paramCode} onChange={e=>{ setParamCode(e.target.value); setResult(null); }} />
-          {/* Depth selector (one-sample or lake vs lake two-sample) */}
           <DepthSelect
             availableDepths={availableDepths}
             inferredTest={inferredTest}
