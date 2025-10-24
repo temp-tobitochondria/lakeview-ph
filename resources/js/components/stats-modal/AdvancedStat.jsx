@@ -4,7 +4,6 @@ import Popover from "../common/Popover";
 import { getToken } from "../../lib/api";
 import { deriveOrgOptions } from "./data/fetchers";
 import { alertSuccess, alertError } from '../../lib/alerts';
-import { fmt, sci } from './formatters';
 import ResultPanel from './ResultPanel';
 import InfoModal from '../common/InfoModal';
 import useDebounce from './hooks/useDebounce';
@@ -192,9 +191,12 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       else if (mu0 != null) hasThreshold = true;
       
       if (!hasThreshold) {
-        alertError('No Threshold Available', 'No threshold exists for this parameter under the selected standard. Please select a different parameter or standard.');
-        setLoading(false);
-        return;
+        const isThresholdComparison = inferredTest === 'one-sample' && compareValue && String(compareValue).startsWith('class:') && selectedTest !== 'shapiro_wilk';
+        if (isThresholdComparison) {
+          alertError('No Threshold Available', 'No threshold exists for this parameter under the selected standard. Please select a different parameter or standard.');
+          setLoading(false);
+          return;
+        }
       }
       
       setResult(computed);
@@ -321,8 +323,8 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       </div>
     </div>
 
-      <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
-      <div style={{ display:'flex', gap:8 }}>
+      <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8 }}>
+      <div style={{ display:'flex', gap:8, marginLeft: 'auto' }}>
         <button ref={gearBtnRef} aria-label="Advanced options" title="Advanced options" className="pill-btn" onClick={toggleGearPopover} style={{ padding:'6px 10px', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
           <FiSettings size={16} />
         </button>
