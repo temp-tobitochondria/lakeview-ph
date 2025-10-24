@@ -137,6 +137,28 @@ function CompareLake({
     }
   }, [lakeA, lakeB]);
 
+  // If lake changes and the previously selected org is no longer valid, clear it (A)
+  useEffect(() => {
+    try {
+      if (!lakeA) return;
+      const opts = Array.isArray(derivedOrgOptionsA) ? derivedOrgOptionsA : [];
+      if (selectedOrgA && !opts.some(o => String(o.value) === String(selectedOrgA))) {
+        setSelectedOrgA('');
+      }
+    } catch {}
+  }, [lakeA, derivedOrgOptionsA]);
+
+  // If lake changes and the previously selected org is no longer valid, clear it (B)
+  useEffect(() => {
+    try {
+      if (!lakeB) return;
+      const opts = Array.isArray(derivedOrgOptionsB) ? derivedOrgOptionsB : [];
+      if (selectedOrgB && !opts.some(o => String(o.value) === String(selectedOrgB))) {
+        setSelectedOrgB('');
+      }
+    } catch {}
+  }, [lakeB, derivedOrgOptionsB]);
+
   const isComplete = useMemo(() => {
     const hasLake = Boolean(lakeA || lakeB);
     const hasParam = Boolean(selectedParam);
@@ -401,16 +423,16 @@ function CompareLake({
   <StatsSidebar isOpen={sidebarOpen && isModalOpen} width={sidebarWidth} usePortal top={72} side="left" zIndex={10000} onToggle={toggleSidebar}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>Lake A</div>
           <div style={{ display: 'grid', gap: 6 }}>
-            <LakeSelect lakes={lakeOptionsForA} value={lakeA} onChange={(e) => { setLakeA(e.target.value); setSelectedOrgA(""); setSelectedParam(""); setSelectedYears([]); }} />
-            <OrgSelect options={derivedOrgOptionsA} value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); setSelectedParam(""); }} required={false} placeholder="Select a dataset source" style={{ width:'100%' }} />
+            <LakeSelect lakes={lakeOptionsForA} value={lakeA} onChange={(e) => { setLakeA(e.target.value); /* keep org if still valid; effect below will clear if invalid */ setApplied(false); }} />
+            <OrgSelect options={derivedOrgOptionsA} value={selectedOrgA} onChange={(e) => { setSelectedOrgA(e.target.value); /* keep param */ }} required={false} placeholder="Select a dataset source" style={{ width:'100%' }} />
           </div>
 
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
 
           <div style={{ fontSize: 12, opacity: 0.85 }}>Lake B</div>
           <div style={{ display: 'grid', gap: 6 }}>
-            <LakeSelect lakes={lakeOptionsForB} value={lakeB} onChange={(e) => { setLakeB(e.target.value); setSelectedOrgB(""); setSelectedParam(""); setSelectedYears([]); }} />
-            <OrgSelect options={derivedOrgOptionsB} value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); setSelectedParam(""); }} required={false} placeholder="Select a dataset source" style={{ width:'100%' }} />
+            <LakeSelect lakes={lakeOptionsForB} value={lakeB} onChange={(e) => { setLakeB(e.target.value); /* keep org if still valid; effect below will clear if invalid */ setApplied(false); }} />
+            <OrgSelect options={derivedOrgOptionsB} value={selectedOrgB} onChange={(e) => { setSelectedOrgB(e.target.value); /* keep param */ }} required={false} placeholder="Select a dataset source" style={{ width:'100%' }} />
           </div>
 
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />

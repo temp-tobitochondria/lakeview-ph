@@ -73,52 +73,9 @@ export default function SingleLake({
   const hasStationIds = true;
   const { orgOptions: orgOptionsLocal, stationsByOrg, allStations } = useStationsCache(selectedLake);
   const stationsList = useMemo(() => (!selectedOrg ? (allStations || []) : (stationsByOrg?.[String(selectedOrg)] || [])), [selectedOrg, allStations, stationsByOrg]);
-  // remember last selections per lake to reduce reselection when switching back and forth
-  const lastSelections = React.useRef(new Map());
   useEffect(() => {
     setApplied(false);
   }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType]);
-
-  // Try to restore previous selections when switching back to a lake
-  useEffect(() => {
-    if (!selectedLake) return;
-    try {
-      const saved = lastSelections.current.get(String(selectedLake));
-      if (!saved) return;
-      // Restore org if still available
-      if (saved.org && Array.isArray(orgOptionsLocal) && orgOptionsLocal.some(o => String(o.id) === String(saved.org))) {
-        onOrgChange(saved.org);
-      }
-      // Restore stations by intersecting with stationsList for this lake/org
-      if (Array.isArray(saved.stations) && saved.stations.length && Array.isArray(stationsList)) {
-        const keyOf = (it) => {
-          if (!it) return '';
-          if (typeof it === 'string') return String(it);
-          return String(it.id ?? it.station_id ?? it.name ?? it.station_name ?? it.label ?? '');
-        };
-        const availableKeys = new Set(stationsList.map(keyOf));
-        const kept = saved.stations.filter((s) => availableKeys.has(keyOf(s)));
-        if (kept.length) onStationsChange(kept);
-      }
-      // Restore parameter if still present
-      if (saved.param && Array.isArray(paramOptions) && paramOptions.some(p => String(p.key || p.id || p.code) === String(saved.param))) {
-        onParamChange(saved.param);
-      }
-      // Restore years (only keep those available)
-      if (Array.isArray(saved.years) && saved.years.length && Array.isArray(availableYears)) {
-        const keep = saved.years.filter((y) => availableYears.includes(y));
-        if (keep.length) setSelectedYears(keep);
-      }
-      // Restore depth if still valid
-      if (saved.depth && Array.isArray(depthOptions) && depthOptions.includes(String(saved.depth))) {
-        setDepthSelection(String(saved.depth));
-      }
-      // remove stored entry after restoring
-      lastSelections.current.delete(String(selectedLake));
-    } catch (err) {
-      // ignore restore errors
-    }
-  }, [selectedLake, orgOptionsLocal, stationsList, paramOptions, availableYears, depthOptions]);
 
   // Available years for the selected lake/org based on events
   const availableYears = useMemo(() => {
@@ -265,6 +222,17 @@ export default function SingleLake({
         return;
       }
     }
+    // Depth profile requires a single year to be selected (no 'All years')
+    if (chartType === 'depth') {
+      if (!dateFrom || !dateTo) {
+        const sentence = `Please select a year.`;
+        try {
+          const Swal = (await import('sweetalert2')).default;
+          Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+        } catch (e) { window.alert(sentence); }
+        return;
+      }
+    }
     setApplied(true);
   };
 
@@ -371,58 +339,23 @@ export default function SingleLake({
   <StatsSidebar isOpen={sidebarOpen && isModalOpen} width={sidebarWidth} usePortal top={72} side="left" zIndex={10000} onToggle={toggleSidebar}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Lake</div>
-            <LakeSelect lakes={lakeOptions} value={selectedLake} onChange={(e) => {
-              const nextLake = e.target.value;
-              // persist current selections for the current lake before switching
-              try {
-                if (selectedLake) {
-                  lastSelections.current.set(String(selectedLake), {
-                    org: selectedOrg,
-                    stations: selectedStations,
-                    param: selectedParam,
-                    years: selectedYears,
-                    depth: depthSelection,
-                  });
-                }
-              } catch (err) { /* ignore persistence errors */ }
-              onLakeChange(nextLake);
-              setApplied(false);
-              setSelectedYears([]);
-              setDepthSelection('0');
-            }} />
+            <LakeSelect lakes={lakeOptions} value={selectedLake} onChange={(e) => { onLakeChange(e.target.value); setApplied(false); }} />
           </div>
 
           <div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Dataset source</div>
-            <OrgSelect
-              options={orgOptions}
-              value={selectedOrg}
-              onChange={(e) => {
-                const nextOrg = e.target.value;
-                // Try to preserve previously-selected stations when switching orgs by taking the intersection
-                try {
-                  const newStationsList = stationsByOrg?.[String(nextOrg)] || [];
-                  const keyOf = (it) => {
-                    if (!it) return '';
-                    if (typeof it === 'string') return String(it);
-                    return String(it.id ?? it.station_id ?? it.name ?? it.station_name ?? it.label ?? '');
-                  };
-                  const newKeys = new Set((Array.isArray(newStationsList) ? newStationsList : []).map(keyOf));
-                  const kept = (Array.isArray(selectedStations) ? selectedStations : []).filter((s) => newKeys.has(keyOf(s)));
-                  onOrgChange(nextOrg);
-                  onStationsChange(kept);
-                } catch (err) {
-                  // Fallback: clear stations if anything goes wrong
-                  onOrgChange(nextOrg);
-                  onStationsChange([]);
-                }
-                setApplied(false);
-              }}
-              disabled={!selectedLake}
-              required={false}
-              placeholder="Select a dataset source"
-              style={{ width: '100%' }}
-            />
+            <OrgSelect options={orgOptions} value={selectedOrg} onChange={(e) => {
+              const nextOrg = e.target.value;
+              // prune stations to those available in the new org instead of clearing all
+              try {
+                const list = !nextOrg ? (allStations || []) : (stationsByOrg?.[String(nextOrg)] || []);
+                const names = new Set((list || []).map((s) => String(s?.name || s?.station_name || s?.code || '')));
+                const pruned = (selectedStations || []).filter((n) => names.has(String(n)));
+                onStationsChange(pruned);
+              } catch {}
+              onOrgChange(nextOrg);
+              setApplied(false);
+            }} disabled={!selectedLake} required={false} placeholder="Select a dataset source" style={{ width: '100%' }} />
           </div>
 
           {true ? (
@@ -441,7 +374,7 @@ export default function SingleLake({
                   // allow selecting all stations in time-series mode
                   maxSelected={chartType === 'time' ? (stationsList?.length || 9999) : 3}
                   showLimitLabel={chartType !== 'time'}
-                  onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
+                  onChange={(next) => { onStationsChange(next); setApplied(false); }}
                 />
               </div>
             </div>
@@ -453,15 +386,7 @@ export default function SingleLake({
             <select className="pill-btn" value={chartType} onChange={(e) => {
               const next = e.target.value;
               setChartType(next);
-              // clear year/range selections when leaving depth to avoid leftover selectors
-              if (next !== 'depth') {
-                try {
-                  setSelectedYears([]);
-                  setDateFrom('');
-                  setDateTo('');
-                  setTimeRange('all');
-                } catch (err) { /* ignore if setters not in scope */ }
-              }
+              // preserve existing time selections across chart types
               setApplied(false);
             }} style={{ width: '100%' }}>
               <option value="time">Time series</option>

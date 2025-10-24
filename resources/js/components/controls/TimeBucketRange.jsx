@@ -137,7 +137,7 @@ export default function TimeBucketRange({
           }}
           style={{ width: '100%', marginBottom: 6 }}
         >
-          <option value="">All Years</option>
+          <option value="" disabled>Select a year</option>
           {Array.isArray(availableYears) && availableYears.length ? availableYears.map((y) => (
             <option key={String(y)} value={String(y)}>{String(y)}</option>
           )) : null}
