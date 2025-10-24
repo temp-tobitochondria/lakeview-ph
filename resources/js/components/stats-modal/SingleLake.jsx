@@ -1,18 +1,17 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import TimeBucketRange from "../controls/TimeBucketRange";
 import StatsSidebar from "./StatsSidebar";
-import { Line, Scatter, Bar } from "react-chartjs-2";
+import { Line, Bar } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement } from "chart.js";
 import InfoModal from "../common/InfoModal";
 import { buildGraphExplanation } from "../utils/graphExplain";
 import { eventStationName } from "./utils/dataUtils";
-import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets } from "./utils/shared";
+import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets, yearLabelPlugin } from "./utils/shared";
 import useSampleEvents from "./hooks/useSampleEvents";
 import useStationsCache from "./hooks/useStationsCache";
 // useSummaryStats removed
 import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
-import useCorrelationData from "./hooks/useCorrelationData";
 import useSingleBarData from "./hooks/useSingleBarData";
 import GraphInfoButton from "./ui/GraphInfoButton";
 import StationPicker from "./ui/StationPicker";
@@ -22,6 +21,8 @@ import OrgSelect from './ui/OrgSelect';
 import ParamSelect from './ui/ParamSelect';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement);
+// register year label plugin (used by bar charts)
+ChartJS.register(yearLabelPlugin);
 
 export default function SingleLake({
   lakeOptions,
@@ -52,16 +53,14 @@ export default function SingleLake({
   const sidebarWidth = 320;
   const stationBtnRef = useRef(null);
   const [applied, setApplied] = useState(false);
-  // 'time' | 'depth' | 'correlation' | 'bar'
+  // 'time' | 'depth' | 'bar'
   const [chartType, setChartType] = useState('time');
   const [seriesMode, setSeriesMode] = useState('avg'); // 'avg' | 'per-station'
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoContent, setInfoContent] = useState({ title: '', sections: [] });
   const [selectedYears, setSelectedYears] = useState([]);
   const [depthSelection, setDepthSelection] = useState('0');
-  // Correlation options
-  const [paramX, setParamX] = useState('');
-  const [paramY, setParamY] = useState('');
+  // Correlation removed
   const { events, loading } = useSampleEvents(selectedLake, selectedOrg, timeRange, dateFrom, dateTo);
   // Also fetch unfiltered events (all time) to derive available years without being affected
   // by the currently selected timeRange/dateFrom/dateTo. This prevents the year list from
@@ -72,7 +71,7 @@ export default function SingleLake({
   const stationsList = useMemo(() => (!selectedOrg ? (allStations || []) : (stationsByOrg?.[String(selectedOrg)] || [])), [selectedOrg, allStations, stationsByOrg]);
   useEffect(() => {
     setApplied(false);
-  }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType, paramX, paramY]);
+  }, [selectedLake, selectedOrg, selectedParam, JSON.stringify(selectedStations), timeRange, dateFrom, dateTo, bucket, chartType]);
 
   // Available years for the selected lake/org based on events
   const availableYears = useMemo(() => {
@@ -95,7 +94,7 @@ export default function SingleLake({
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
   const chartData = useTimeSeriesData({ events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake });
   const depthProfile = useDepthProfileData({ events, selectedParam, selectedStations, bucket });
-  const correlation = useCorrelationData({ events, station: (selectedStations && selectedStations.length === 1) ? selectedStations[0] : '', paramX, paramY, depthMode: 'surface', paramOptions });
+  // Correlation removed
   // derive depth options for selectedParam from events
   const depthOptions = useMemo(() => {
     const depths = new Set();
@@ -130,16 +129,23 @@ export default function SingleLake({
 
   const barData = useSingleBarData({ events, bucket, selectedYears, depth: depthSelection, selectedParam, lake: selectedLake, lakeOptions, seriesMode, selectedStations });
 
+  // Resolve parameter metadata (label/name/unit) for labeling axes
+  const selectedParamMeta = useMemo(() => {
+    const sel = String(selectedParam || '');
+    return (paramOptions || []).find(p => String(p.key || p.id || p.code) === sel) || null;
+  }, [paramOptions, selectedParam]);
+  const selectedParamLabel = useMemo(() => (selectedParamMeta?.label || selectedParamMeta?.name || selectedParamMeta?.code || 'Value'), [selectedParamMeta]);
+  const selectedParamUnit = useMemo(() => (selectedParamMeta?.unit || ''), [selectedParamMeta]);
+
   const canShowInfo = useMemo(() => {
     if (!applied) return false;
     try {
       if (chartType === 'time') return Boolean(chartData?.datasets?.length);
       if (chartType === 'depth') return Boolean(depthProfile?.datasets?.length);
-      if (chartType === 'correlation') return Boolean(correlation?.datasets?.length);
       if (chartType === 'bar') return Boolean(barData?.datasets?.length);
       return false;
     } catch { return false; }
-  }, [applied, chartType, chartData, depthProfile, correlation]);
+  }, [applied, chartType, chartData, depthProfile, barData]);
 
   const canChooseParam = useMemo(() => {
     if (!selectedLake || !selectedOrg) return false;
@@ -150,35 +156,52 @@ export default function SingleLake({
     const missing = [];
     if (!selectedLake) { missing.push('Select a lake'); return missing; }
     if (!selectedOrg) missing.push('choose a dataset source');
-  if (!selectedStations || selectedStations.length === 0) missing.push('choose at least one location');
-    if (chartType === 'correlation') {
-      if (selectedStations && selectedStations.length !== 1) missing.push('choose exactly one location for correlation');
-      if (!paramX) missing.push('select parameter X');
-      if (!paramY) missing.push('select parameter Y');
-      if (paramX && paramY && String(paramX) === String(paramY)) missing.push('choose different parameters for X and Y');
-    } else {
-      if (!selectedParam) missing.push('select a parameter');
-    }
+    if (!selectedStations || selectedStations.length === 0) missing.push('choose at least one location');
+    if (!selectedParam) missing.push('select a parameter');
     return missing;
   };
 
   const handleApply = async () => {
     const missing = computeMissingFields();
-    if (missing.length) {
-      const sentence = `Please ${missing.join(', ')}.`;
+  if (missing.length) {
+      // Special-case: single missing token 'Select a lake' -> short sentence
+      if (missing.length === 1 && /^Select a lake/i.test(missing[0])) {
+        const sentence = `Please select a lake.`;
+        try {
+          const Swal = (await import('sweetalert2')).default;
+          Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+        } catch (e) { window.alert(sentence); }
+        return;
+      }
+
+      // Map tokens to user-friendly clauses
+      const clauses = [];
+      missing.forEach((m) => {
+        const tok = String(m || '').toLowerCase();
+        if (/dataset source/i.test(m) || /choose a dataset source/i.test(tok)) clauses.push('choose a dataset source');
+        else if (/choose at least one location/i.test(tok) || /location/i.test(tok) && /at least/i.test(tok)) clauses.push('choose at least one location');
+  // correlation-specific prompts removed
+        else if (/select a parameter/i.test(tok) || /^parameter$/i.test(m)) clauses.push('select a parameter');
+        else clauses.push(tok);
+      });
+
+      const sentence = `Please ${clauses.join('; ')}.`;
       try {
         const Swal = (await import('sweetalert2')).default;
-        Swal.fire({
-          icon: 'warning',
-          title: 'Missing fields',
-          html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`,
-          width: 560,
-          showCloseButton: true,
-        });
-      } catch (e) {
-        window.alert(sentence);
-      }
+        Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+      } catch (e) { window.alert(sentence); }
       return;
+    }
+    // Bar chart requires at least one year selected
+    if (chartType === 'bar') {
+      if (!selectedYears || !selectedYears.length) {
+        const sentence = `Please select at least one year.`;
+        try {
+          const Swal = (await import('sweetalert2')).default;
+          Swal.fire({ icon: 'warning', title: 'Missing fields', html: `<div style="text-align:left; white-space:normal; word-break:break-word; font-size:13px">${sentence}</div>`, width: 560, showCloseButton: true });
+        } catch (e) { window.alert(sentence); }
+        return;
+      }
     }
     setApplied(true);
   };
@@ -187,13 +210,33 @@ export default function SingleLake({
     setSidebarOpen((v) => !v);
   };
 
-  const singleChartOptions = useMemo(() => baseLineChartOptions(), []);
+  const singleChartOptions = useMemo(() => {
+    const base = baseLineChartOptions();
+    const unit = selectedParamUnit || '';
+    const text = `${selectedParamLabel}${unit ? ` (${unit})` : ''}`;
+    base.scales = base.scales || {};
+    base.scales.y = { ...(base.scales?.y || {}), title: { display: true, text, color: '#fff' } };
+    return base;
+  }, [selectedParamLabel, selectedParamUnit]);
+
+  // If switching to Bar chart, ensure selectedStations does not exceed the allowed max (3)
+  useEffect(() => {
+    try {
+      if (chartType === 'bar' && Array.isArray(selectedStations) && selectedStations.length > 3) {
+        // Trim to the first 3 stations to enforce the bar-chart selection limit.
+        onStationsChange(selectedStations.slice(0, 3));
+        setApplied(false);
+      }
+    } catch (err) {
+      // Defensive: don't let trimming break the UI
+      // console.debug('Failed to trim selectedStations for bar chart', err);
+    }
+  }, [chartType, selectedStations, onStationsChange]);
 
   const isComplete = useMemo(() => {
     if (!selectedLake) return false;
-    if (chartType === 'correlation') return selectedStations && selectedStations.length === 1 && paramX && paramY && String(paramX) !== String(paramY);
     return Boolean(selectedStations && selectedStations.length > 0 && selectedParam);
-  }, [selectedLake, JSON.stringify(selectedStations), chartType, paramX, paramY, selectedParam]);
+  }, [selectedLake, JSON.stringify(selectedStations), selectedParam]);
 
   return (
     <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
@@ -283,7 +326,9 @@ export default function SingleLake({
                   onClose={() => setStationsOpen(false)}
                   stations={stationsList}
                   value={selectedStations}
-                  maxSelected={3}
+                  // allow selecting all stations in time-series mode
+                  maxSelected={chartType === 'time' ? (stationsList?.length || 9999) : 3}
+                  showLimitLabel={chartType !== 'time'}
                   onChange={(next) => { onStationsChange(next); onParamChange(""); setApplied(false); }}
                 />
               </div>
@@ -305,19 +350,11 @@ export default function SingleLake({
                   setTimeRange('all');
                 } catch (err) { /* ignore if setters not in scope */ }
               }
-              if (next === 'correlation') {
-                if (!paramX && selectedParam) setParamX(selectedParam);
-                if (!paramY) {
-                  const alt = (paramOptions || []).find(p => String(p.key || p.id || p.code) !== String(paramX || selectedParam));
-                  if (alt) setParamY(alt.key || alt.id || alt.code);
-                }
-              }
               setApplied(false);
             }} style={{ width: '100%' }}>
               <option value="time">Time series</option>
               <option value="depth">Depth profile</option>
               <option value="bar">Bar (Stations)</option>
-              <option value="correlation">Correlation</option>
             </select>
             
           </div>
@@ -379,41 +416,24 @@ export default function SingleLake({
             </div>
           )}
           {/* spatial controls removed */}
-          {chartType === 'correlation' && (
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              Station requirement: select exactly one location.
-            </div>
-          )}
+          {/* Correlation removed */}
 
           {/* Parameters */}
-          {chartType !== 'correlation' ? (
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
-              <ParamSelect options={paramOptions} value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); setDepthSelection('0'); }} disabled={!canChooseParam} placeholder="Select parameter" style={{ width: '100%' }} />
-              {chartType === 'bar' && depthOptions && depthOptions.length >= 1 && (
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, marginBottom: 4 }}>Depth</div>
-                  <select className="pill-btn" value={depthSelection} onChange={(e) => setDepthSelection(e.target.value)} disabled={!selectedParam} style={{ width: '100%' }}>
-                    {depthOptions.map((d) => {
-                      const label = d === '0' ? 'Surface (0 m)' : `${d} m`;
-                      return (<option key={String(d)} value={String(d)}>{label}</option>);
-                    })}
-                  </select>
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter</div>
+            <ParamSelect options={paramOptions} value={selectedParam} onChange={(e) => { onParamChange(e.target.value); setApplied(false); setDepthSelection('0'); }} disabled={!canChooseParam} placeholder="Select parameter" style={{ width: '100%' }} />
+            {chartType === 'bar' && depthOptions && depthOptions.length >= 1 && (
               <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter X</div>
-                <ParamSelect options={paramOptions} value={paramX} onChange={(e) => { setParamX(e.target.value); setApplied(false); }} disabled={!canChooseParam} placeholder="Select parameter X" style={{ width: '100%' }} />
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, marginBottom: 4 }}>Depth</div>
+                <select className="pill-btn" value={depthSelection} onChange={(e) => setDepthSelection(e.target.value)} disabled={!selectedParam} style={{ width: '100%' }}>
+                  {depthOptions.map((d) => {
+                    const label = d === '0' ? 'Surface (0 m)' : `${d} m`;
+                    return (<option key={String(d)} value={String(d)}>{label}</option>);
+                  })}
+                </select>
               </div>
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Parameter Y</div>
-                <ParamSelect options={paramOptions} value={paramY} onChange={(e) => { setParamY(e.target.value); setApplied(false); }} disabled={!canChooseParam} placeholder="Select parameter Y" style={{ width: '100%' }} />
-              </div>
-            </>
-          )}
+            )}
+          </div>
 
           <div>
             <button type="button" className="pill-btn liquid" onClick={handleApply} style={{ width: '100%' }}>Apply</button>
@@ -472,7 +492,7 @@ export default function SingleLake({
                         } } },
                       },
                       scales: {
-                        x: { type: 'linear', title: { display: true, text: `Value${depthProfile.unit ? ` (${depthProfile.unit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
+                        x: { type: 'linear', title: { display: true, text: `${selectedParamLabel}${(depthProfile?.unit || selectedParamUnit) ? ` (${depthProfile?.unit || selectedParamUnit})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
                         y: { type: 'linear', reverse: true, title: { display: true, text: 'Depth (m)', color: '#fff' }, min: 0, suggestedMax: Math.max(5, depthProfile.maxDepth || 0), ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
                       },
                     }}
@@ -508,73 +528,37 @@ export default function SingleLake({
                 const yearIndexMap = (barData?.meta?.yearIndexMap) || {};
                 const yearOrder = (barData?.meta?.yearOrder) || Object.keys(yearIndexMap);
                 const yearColors = (barData?.meta?.yearColors) || {};
+                const hasThresholdLines = Array.isArray(bd?.datasets) && bd.datasets.some((d) => d && d.type === 'line');
                 const options = {
                   responsive: true,
                   maintainAspectRatio: false,
                   plugins: {
+                    // Show legend only for threshold lines (Min/Max)
                     legend: {
-                      position: 'top',
+                      display: !!hasThresholdLines,
                       labels: {
-                        usePointStyle: true,
-                        generateLabels: (chart) => {
+                        color: '#fff',
+                        filter: (legendItem, chartData) => {
                           try {
-                            const items = [];
-                            (yearOrder || []).forEach((y) => {
-                              const idxs = yearIndexMap[String(y)] || [];
-                              if (!idxs.length) return;
-                              const firstIdx = idxs[0];
-                              const hidden = idxs.every((i) => chart.getDatasetMeta(i)?.hidden);
-                              const color = yearColors[String(y)] || 'rgba(200,200,200,0.9)';
-                              items.push({ text: String(y), fillStyle: color, strokeStyle: color, hidden, datasetIndex: firstIdx, year: String(y) });
-                            });
-                            return items;
-                          } catch { return []; }
+                            const ds = chartData?.datasets?.[legendItem.datasetIndex];
+                            return !!(ds && ds.type === 'line');
+                          } catch { return false; }
                         },
-                      },
-                      onClick: (e, legendItem, legend) => {
-                        try {
-                          const chart = legend.chart;
-                          const y = legendItem?.year;
-                          const idxs = yearIndexMap[String(y)] || [];
-                          if (!idxs.length) return;
-                          const anyVisible = idxs.some((i) => !chart.getDatasetMeta(i)?.hidden);
-                          idxs.forEach((i) => chart.setDatasetVisibility(i, anyVisible ? false : true));
-                          chart.update();
-                        } catch {}
                       },
                     },
                     tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue}` } },
+                    // Draw per-group year labels inside the chart area to avoid tick overlap
+                    yearLabelPlugin: { meta: barData?.meta || {}, color: '#fff', fontSize: 11, paddingInside: 14 },
                   },
                   indexAxis: 'x',
                   datasets: { bar: { categoryPercentage: 0.75, barPercentage: 0.9 } },
-                  scales: { x: { ticks: { color: '#fff' }, grid: { display: false } }, y: { ticks: { color: '#fff' }, title: { display: true, text: 'Value', color: '#fff' }, grid: { color: 'rgba(255,255,255,0.08)' } } },
+                  scales: { x: { ticks: { color: '#fff' }, grid: { display: false } }, y: { ticks: { color: '#fff' }, title: { display: true, text: `${selectedParamLabel}${selectedParamUnit ? ` (${selectedParamUnit})` : ''}`, color: '#fff' }, grid: { color: 'rgba(255,255,255,0.08)' } } },
                 };
                 return <Bar key={`bar-${selectedParam}-${selectedLake}-${seriesMode}`} ref={chartRef} data={bd} options={options} />;
               })()
             ) : (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ opacity: 0.9 }}>No bar data available for this selection.</span>
-              </div>
-            )
-          ) : chartType === 'correlation' ? (
-            correlation && correlation.datasets && correlation.datasets.length ? (
-              <Scatter
-                key={`corr-${paramX}-${paramY}-${selectedLake}-${selectedStations?.[0] || ''}`}
-                ref={chartRef}
-                data={{ datasets: correlation.datasets }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } } },
-                  scales: {
-                    x: { type: 'linear', title: { display: true, text: `X${correlation.unitX ? ` (${correlation.unitX})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                    y: { type: 'linear', title: { display: true, text: `Y${correlation.unitY ? ` (${correlation.unitY})` : ''}`, color: '#fff' }, ticks: { color: '#fff', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.15)' } },
-                  },
-                }}
-              />
-            ) : (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ opacity: 0.9 }}>No correlation data available. Ensure exactly one station is selected and both parameters have overlapping samples.</span>
               </div>
             )
           ) : null

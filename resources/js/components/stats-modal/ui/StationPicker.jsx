@@ -1,12 +1,14 @@
 import React from 'react';
 import Popover from '../../common/Popover';
 
-export default function StationPicker({ anchorRef, open, onClose, stations = [], value = [], onChange, doneLabel = 'Done', maxSelected = 3 }) {
+export default function StationPicker({ anchorRef, open, onClose, stations = [], value = [], onChange, doneLabel = 'Done', maxSelected = 3, showLimitLabel = true }) {
   return (
     <Popover anchorRef={anchorRef} open={open} onClose={onClose} minWidth={220}>
       {stations.length ? (
         <>
-          <div style={{ fontSize: 12, opacity: 0.75, padding: '0 6px 6px', color: '#fff' }}>Select up to {maxSelected} locations</div>
+          {showLimitLabel ? (
+            <div style={{ fontSize: 12, opacity: 0.75, padding: '0 6px 6px', color: '#fff' }}>Select up to {maxSelected} locations</div>
+          ) : null}
           {stations.map((s) => {
             const checked = value.includes(s);
             const atCap = !checked && Array.isArray(value) && value.length >= maxSelected;

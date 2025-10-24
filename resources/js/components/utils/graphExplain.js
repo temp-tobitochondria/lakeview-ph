@@ -1,6 +1,6 @@
 export function buildGraphExplanation(ctx) {
   const {
-  chartType = 'time', // 'time' | 'depth' | 'correlation'
+  chartType = 'time', // 'time' | 'depth' | 'bar'
     param = {},         // { code, name, unit }
     seriesMode = 'avg', // 'avg' | 'per-station'
     bucket = 'month',   // 'month' | 'quarter' | 'year'
@@ -57,27 +57,6 @@ export function buildGraphExplanation(ctx) {
     if (type === 'max') hint = 'Lower is better. Values above the maximum may be a problem.';
     if (type === 'range') hint = 'Best inside the range between the minimum and maximum. Outside that range indicates exceedance.';
     if (hint) sections.push({ heading: 'How to read a depth profile', text: hint });
-
-  } else if (chartType === 'correlation') {
-    sections.push({
-      heading: 'Correlation plot (what it shows)',
-      bullets: [
-        'This is a scatter plot that pairs two different parameters measured at the same time and place.',
-        'Each point is one paired measurement (for example, pH vs dissolved oxygen).',
-        'The trend line (R²) tells how well the line fits the points (closer to 1 = better fit).'
-      ]
-    });
-
-    // Simple, exclusive interpretation guidance for correlation
-    sections.push({
-      heading: 'How to interpret correlation',
-      bullets: [
-        'If points lie close to a straight line and R² is high, the two parameters change together.',
-        'If the line slopes up, when X increases Y also increases. If it slopes down, when X increases Y decreases.',
-        "If points are scattered with no clear line, there is little or no linear relationship.",
-        "Correlation is not the same as cause — two things can move together for other reasons."
-      ]
-    });
 
   } else if (chartType === 'bar') {
     sections.push({
