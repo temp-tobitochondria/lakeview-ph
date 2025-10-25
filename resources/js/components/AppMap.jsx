@@ -55,8 +55,6 @@ function AppMap({
   contoursUrl = "/api/tiles/contours/{z}/{x}/{y}.pbf",
   // optional: disable panning/dragging (used by measurement tools, etc.)
   disableDrag = false,
-  // separate toggle for label markers
-  showContourLabels = true,
 }) {
   // Prefer explicit tileUrl when provided; otherwise derive from view
   const url = tileUrl || BASEMAPS[view] || BASEMAPS.osm;
@@ -87,7 +85,7 @@ function AppMap({
   <TileLayer url={url} attribution={attribution} noWrap={noWrap} />
 
   {showPostgisContours ? <ContoursVectorLayer url={contoursUrl} /> : null}
-  {showPostgisContours ? <ContourLabelsLayer /> : null}
+  { /* Contour labels removed intentionally */ }
 
       {children}
     </MapContainer>
@@ -211,95 +209,3 @@ function ContoursVectorLayer({ url }) {
   return null;
 }
 
-function ContourLabelsLayer() {
-  const map = useMap();
-  const markersRef = React.useRef([]);
-  const pendingRef = React.useRef(null);
-
-  const clearMarkers = React.useCallback(() => {
-    if (!map) return;
-    try {
-      for (const m of markersRef.current) {
-        try { map.removeLayer(m); } catch {}
-      }
-    } finally {
-      markersRef.current = [];
-    }
-  }, [map]);
-
-  const fetchAndRender = React.useCallback(async () => {
-    if (!map) return;
-    const z = map.getZoom();
-    // Only render labels at zoom >= 14
-    if (z < 14) { clearMarkers(); return; }
-    const b = map.getBounds();
-    const sw = b.getSouthWest();
-    const ne = b.getNorthEast();
-    const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
-    const url = `/api/contours/labels?bbox=${encodeURIComponent(bbox)}&z=${z}`;
-    try {
-      // debounce in-flight
-      if (pendingRef.current) { try { pendingRef.current.abort(); } catch {} }
-      const ctrl = new AbortController();
-      pendingRef.current = ctrl;
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const gj = await res.json();
-      clearMarkers();
-      if (!gj || !Array.isArray(gj.features)) return;
-      const ms = [];
-      for (const f of gj.features) {
-        const coords = f?.geometry?.coordinates;
-        const elev = f?.properties?.elev;
-  const angle = Number.isFinite(f?.properties?.angle) ? f.properties.angle : 0;
-        if (!coords || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) continue;
-        const el = document.createElement('div');
-        // inline styles for subtle, rotated text with white halo
-        el.style.fontSize = '11px';
-        el.style.fontWeight = '600';
-        el.style.lineHeight = '1';
-        el.style.color = '#111';
-        el.style.whiteSpace = 'nowrap';
-        el.style.pointerEvents = 'none';
-        // text halo for readability
-        el.style.textShadow = '0 0 2px #fff, 0 0 2px #fff, 0 0 2px #fff';
-  // rotate so text runs parallel to the contour line: add 90deg and normalize to keep upright
-  let corrected = angle + 90;
-  // normalize into (-90, 90]
-  while (corrected > 90) corrected -= 180;
-  while (corrected <= -90) corrected += 180;
-  el.style.transform = `translate(-50%, -50%) rotate(${corrected}deg)`;
-        el.textContent = typeof elev !== 'undefined' ? `${elev} m` : '';
-        const icon = L.divIcon({ html: el, className: 'contour-label', iconSize: null });
-        const m = L.marker([coords[1], coords[0]], { icon, interactive: false, keyboard: false });
-        m.addTo(map);
-        ms.push(m);
-      }
-      markersRef.current = ms;
-    } catch (e) {
-      // swallow errors (network/abort)
-    }
-  }, [map, clearMarkers]);
-
-  React.useEffect(() => {
-    if (!map) return;
-    let raf = null;
-    const schedule = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => { fetchAndRender(); });
-    };
-    // initial
-    schedule();
-    map.on('moveend', schedule);
-    map.on('zoomend', schedule);
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      map.off('moveend', schedule);
-      map.off('zoomend', schedule);
-      clearMarkers();
-      if (pendingRef.current) { try { pendingRef.current.abort(); } catch {} }
-    };
-  }, [map, fetchAndRender, clearMarkers]);
-
-  return null;
-}

@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { FiLayers } from "react-icons/fi";
 
-function LayerControl({ selectedView, setSelectedView, showContours, setShowContours, showContourLabels, setShowContourLabels }) {
+function LayerControl({ selectedView, setSelectedView, showContours, setShowContours }) {
   const [open, setOpen] = useState(false);
 
   return (
