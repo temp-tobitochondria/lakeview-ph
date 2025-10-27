@@ -10,6 +10,43 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
 
   const gridItems = [];
   const push = (k,v)=>gridItems.push({k,v});
+  const pushTip = (k, v, tip)=>gridItems.push({k,v,tip});
+
+  const renderP = (p) => {
+    const pvNum = Number(p);
+    const btnStyle = { marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' };
+    const label = showExactP ? 'Hide exact p-value' : 'Show exact p-value';
+    if (Number.isFinite(pvNum) && pvNum < 0.001) {
+      return (
+        <span>
+          {showExactP ? sci(pvNum) : '<0.001'}
+          <button type="button" onClick={()=>setShowExactP(s=>!s)} title={label} aria-label={label} style={btnStyle}>
+            {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+          </button>
+        </span>
+      );
+    }
+    return sci(p);
+  };
+
+  const fmtYesNo = (b)=> b== null ? '' : (b ? 'Yes' : 'No');
+
+  const testKind = (()=>{
+    const t = (result.test_used || result.type || '').toLowerCase();
+    if (t.includes('shapiro')) return 'shapiro';
+    if (t.includes('levene')) return 'levene';
+    if (t === 'tost' || t.includes('tost_t') || (('p1' in result) && ('p2' in result))) return 'tost_t';
+    if (t.includes('tost_wilcoxon') || t.includes('wilcoxon-tost') || ('p_lower' in result && 'p_upper' in result)) return 'tost_wilcoxon';
+    if ('U' in result || 'u' in result) return 'mannwhitney';
+    if ('chi2' in result && 'table' in result) return 'mood_median';
+    if ('k_positive' in result || 'k_negative' in result) return 'sign';
+    if ('W' in result && ('normal' in result)) return 'shapiro';
+    if ('F' in result && ('equal_variances' in result)) return 'levene';
+    if (('t' in result) && ('df' in result) && ('n1' in result || 'n2' in result)) return 't_two';
+    if (('t' in result) && ('df' in result)) return 't_one';
+    if (('statistic' in result) && !('U' in result) && !('chi2' in result) && !('p_lower' in result)) return 'wilcoxon_one';
+    return 'generic';
+  })();
 
   const testLabel = testLabelFromResult(result) || result.test_used || result.type;
   push('Test Selected', testLabel);
@@ -32,134 +69,122 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
   const stats1 = two1 ? basicStats(two1) : null;
   const stats2 = two2 ? basicStats(two2) : null;
 
-  if ('n' in result) push('N', fmt(result.n || result.sample_n)); else if (oneStats) push('N', fmt(oneStats.n));
-  if ('n1' in result) push('N1', fmt(result.n1 || result.sample1_n)); else if (stats1) push('N1', fmt(stats1.n));
-  if ('n2' in result) push('N2', fmt(result.n2 || result.sample2_n)); else if (stats2) push('N2', fmt(stats2.n));
-  if ('mean' in result) push('Mean', fmt(result.mean)); else if (oneStats) push('Mean', fmt(oneStats.mean));
-  if ('median' in result) push('Median', fmt(result.median)); else if (oneStats) push('Median', fmt(oneStats.median));
-  if ('mean1' in result) push('Mean (Lake 1)', fmt(result.mean1)); else if (stats1) push('Mean (Lake 1)', fmt(stats1.mean));
-  if ('median1' in result) push('Median (Lake 1)', fmt(result.median1)); else if (stats1) push('Median (Lake 1)', fmt(stats1.median));
-  if ('mean2' in result) push('Mean (Lake 2)', fmt(result.mean2)); else if (stats2) push('Mean (Lake 2)', fmt(stats2.mean));
-  if ('median2' in result) push('Median (Lake 2)', fmt(result.median2)); else if (stats2) push('Median (Lake 2)', fmt(stats2.median));
-  if ('sd' in result) push('SD', fmt(result.sd)); else if (oneStats) push('SD', fmt(oneStats.sd));
-  if ('W' in result) push('W', fmt(result.W));
-  if ('sd1' in result) push('SD (Lake 1)', fmt(result.sd1)); else if (stats1) push('SD (Lake 1)', fmt(stats1.sd));
-  if ('sd2' in result) push('SD (Lake 2)', fmt(result.sd2)); else if (stats2) push('SD (Lake 2)', fmt(stats2.sd));
-  if ('var1' in result) push('Variance (Lake 1)', fmt(result.var1));
-  if ('var2' in result) push('Variance (Lake 2)', fmt(result.var2));
-  if (!('var1' in result) && Array.isArray(result.group_variances) && result.group_variances.length===2) {
-    push('Variance (Lake 1)', fmt(result.group_variances[0]));
-    push('Variance (Lake 2)', fmt(result.group_variances[1]));
-  }
-  if (Array.isArray(result.group_variances) && result.group_variances.length>2) {
-    push('Group variances', result.group_variances.map(v=>fmt(v)).join(', '));
-  }
-  if ('t' in result) push('t statistic', fmt(result.t));
-  if ('U' in result) push('U', fmt(result.U));
-  if ('z' in result) push('z', fmt(result.z));
-  if ('df' in result) push('Degrees Freedom', fmt(result.df));
-  if ('statistic' in result) push('Statistic', fmt(result.statistic));
-  if ('chi2' in result) push('Chi-square', fmt(result.chi2));
-  if ('k_positive' in result) push('Positives', fmt(result.k_positive));
-  if ('k_negative' in result) push('Negatives', fmt(result.k_negative));
-  if (!('statistic' in result)) {
-    if ('Wplus' in result) push('W+', fmt(result.Wplus));
-    if ('Wminus' in result) push('W-', fmt(result.Wminus));
-  }
-  if (result.test_used === 'tost' || result.type === 'tost') {
-    if ('t1' in result) push('t1 (lower)', fmt(result.t1));
-    if ('p1' in result) {
-      const pvNum = Number(result.p1);
-      if (Number.isFinite(pvNum) && pvNum < 0.001) {
-        push('p1 (H0: mean ≤ lower)', (
-          <span>
-            {showExactP ? sci(pvNum) : '<0.001'}
-            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
-              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-            </button>
-          </span>
-        ));
-      } else {
-        push('p1 (H0: mean ≤ lower)', sci(result.p1));
-      }
+  // Build minimal, user-focused fields per test
+  const addCommonAlpha = () => {
+    if (result.alpha != null) pushTip('Alpha (α)', fmt(result.alpha), 'Your significance cutoff for deciding.');
+  };
+
+  if (testKind === 'shapiro') {
+    const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
+    if (n != null) pushTip('N', fmt(n), 'Number of values used in the test.');
+    if ('W' in result) pushTip('W statistic', fmt(result.W), 'Test statistic for Shapiro–Wilk; closer to 1 suggests more normal.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing data this non-normal if data were normal.');
+    if ('normal' in result) pushTip('Normal?', fmtYesNo(result.normal), '“Yes” if no non-normality detected at α.');
+    addCommonAlpha();
+  } else if (testKind === 'levene') {
+    if ('n_total' in result) pushTip('Total N', fmt(result.n_total), 'Total number of observations across groups.');
+    if ('k' in result) pushTip('Groups', fmt(result.k), 'Number of groups compared.');
+    if ('equal_variances' in result) pushTip('Variances equal?', fmtYesNo(result.equal_variances), '“Yes” if no variance difference detected at α.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing this variance difference if variances were equal.');
+    // For two groups, show their variances if available
+    const var1 = ('var1' in result) ? result.var1 : (Array.isArray(result.group_variances) && result.group_variances.length===2 ? result.group_variances[0] : null);
+    const var2 = ('var2' in result) ? result.var2 : (Array.isArray(result.group_variances) && result.group_variances.length===2 ? result.group_variances[1] : null);
+    if (var1 != null && var2 != null) {
+      pushTip('Variance (Lake 1)', fmt(var1), 'Estimated variance in group 1.');
+      pushTip('Variance (Lake 2)', fmt(var2), 'Estimated variance in group 2.');
     }
-    if ('t2' in result) push('t2 (upper)', fmt(result.t2));
-    if ('p2' in result) {
-      const pvNum = Number(result.p2);
-      if (Number.isFinite(pvNum) && pvNum < 0.001) {
-        push('p2 (H0: mean ≥ upper)', (
-          <span>
-            {showExactP ? sci(pvNum) : '<0.001'}
-            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
-              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-            </button>
-          </span>
-        ));
-      } else {
-        push('p2 (H0: mean ≥ upper)', sci(result.p2));
-      }
-    }
-    if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
+    addCommonAlpha();
+  } else if (testKind === 't_one') {
+    const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
+    const meanVal = ('mean' in result) ? result.mean : (oneStats ? oneStats.mean : null);
+    const sdVal = ('sd' in result) ? result.sd : (oneStats ? oneStats.sd : null);
+    if (n != null) pushTip('N', fmt(n), 'Number of values used.');
+    if (meanVal != null) pushTip('Sample mean', fmt(meanVal), 'Average of your sample.');
+    if (sdVal != null) pushTip('Standard deviation', fmt(sdVal), 'Variability around the mean.');
+    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
+    if (meanVal != null && 'mu0' in result) pushTip('Difference (mean − μ0)', fmt(meanVal - result.mu0), 'How far the mean is from the threshold.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing a mean this far from μ0 if there were no real difference.');
+    addCommonAlpha();
+  } else if (testKind === 't_two') {
+    const n1 = ('n1' in result) ? result.n1 : (stats1 ? stats1.n : null);
+    const n2 = ('n2' in result) ? result.n2 : (stats2 ? stats2.n : null);
+    const m1 = ('mean1' in result) ? result.mean1 : (stats1 ? stats1.mean : null);
+    const m2 = ('mean2' in result) ? result.mean2 : (stats2 ? stats2.mean : null);
+    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
+    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
+    if (m1 != null) pushTip('Mean (Lake 1)', fmt(m1), 'Average in Lake 1.');
+    if (m2 != null) pushTip('Mean (Lake 2)', fmt(m2), 'Average in Lake 2.');
+    if (m1 != null && m2 != null) pushTip('Difference (L1 − L2)', fmt(m1 - m2), 'Mean difference between the two groups.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing a difference this large if the true means were equal.');
+    addCommonAlpha();
+  } else if (testKind === 'wilcoxon_one') {
+    const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
+    const med = ('median' in result) ? result.median : (oneStats ? oneStats.median : null);
+    if (n != null) pushTip('N (effective)', fmt(n), 'Number of non-zero differences used in the test.');
+    if (med != null) pushTip('Sample median', fmt(med), 'Middle value of your sample.');
+    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing ranks this extreme if the true median were μ0.');
+    addCommonAlpha();
+  } else if (testKind === 'sign') {
+    if ('n' in result) pushTip('N (effective)', fmt(result.n), 'Number of values not exactly equal to the threshold.');
+    if ('k_positive' in result) pushTip('Above threshold', fmt(result.k_positive), 'Count of values above the threshold.');
+    if ('k_negative' in result) pushTip('Below threshold', fmt(result.k_negative), 'Count of values below the threshold.');
+    const med = ('median' in result) ? result.median : (oneStats ? oneStats.median : null);
+    if (med != null) pushTip('Sample median', fmt(med), 'Middle value of your sample.');
+    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of this split if the true median were μ0.');
+    addCommonAlpha();
+  } else if (testKind === 'mannwhitney') {
+    const n1 = ('n1' in result) ? result.n1 : (stats1 ? stats1.n : null);
+    const n2 = ('n2' in result) ? result.n2 : (stats2 ? stats2.n : null);
+    const med1 = ('median1' in result) ? result.median1 : (stats1 ? stats1.median : null);
+    const med2 = ('median2' in result) ? result.median2 : (stats2 ? stats2.median : null);
+    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
+    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
+    if (med1 != null) pushTip('Median (Lake 1)', fmt(med1), 'Median in Lake 1.');
+    if (med2 != null) pushTip('Median (Lake 2)', fmt(med2), 'Median in Lake 2.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing rank differences this large if the two populations were the same.');
+    addCommonAlpha();
+  } else if (testKind === 'mood_median') {
+    const n1 = stats1 ? stats1.n : (Array.isArray(result.sample1_values) ? result.sample1_values.length : null);
+    const n2 = stats2 ? stats2.n : (Array.isArray(result.sample2_values) ? result.sample2_values.length : null);
+    const med1 = stats1 ? stats1.median : null;
+    const med2 = stats2 ? stats2.median : null;
+    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
+    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
+    if (med1 != null) pushTip('Median (Lake 1)', fmt(med1), 'Median in Lake 1.');
+    if (med2 != null) pushTip('Median (Lake 2)', fmt(med2), 'Median in Lake 2.');
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of this median split if the two populations had the same median.');
+    addCommonAlpha();
+  } else if (testKind === 'tost_t') {
+    const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
+    const meanVal = ('mean' in result) ? result.mean : (oneStats ? oneStats.mean : null);
+    const lower = (result.threshold_min != null) ? result.threshold_min : (result.lower != null ? result.lower : null);
+    const upper = (result.threshold_max != null) ? result.threshold_max : (result.upper != null ? result.upper : null);
+    const pTOST = ('pTOST' in result) ? result.pTOST : (('p1' in result && 'p2' in result) ? Math.max(Number(result.p1), Number(result.p2)) : null);
+    if (n != null) pushTip('N', fmt(n), 'Number of values used.');
+    if (meanVal != null) pushTip('Sample mean', fmt(meanVal), 'Average of your sample.');
+    if (lower != null && upper != null) pushTip('Acceptable range', `[${fmt(lower)}, ${fmt(upper)}]`, 'Range of differences considered “practically the same.”');
+    if (pTOST != null) pushTip('TOST p-value', renderP(pTOST), 'Single p-value for equivalence; must be < α to conclude equivalence.');
+    if ('equivalent' in result) pushTip('Equivalent?', fmtYesNo(result.equivalent), '“Yes” if TOST p-value is below α for both bounds.');
+    addCommonAlpha();
+  } else if (testKind === 'tost_wilcoxon') {
+    const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
+    const med = ('median' in result) ? result.median : (oneStats ? oneStats.median : null);
+    const lower = (result.lower != null) ? result.lower : (result.threshold_min != null ? result.threshold_min : null);
+    const upper = (result.upper != null) ? result.upper : (result.threshold_max != null ? result.threshold_max : null);
+    const pTOST = ('pTOST' in result) ? result.pTOST : (('p_lower' in result && 'p_upper' in result) ? Math.max(Number(result.p_lower), Number(result.p_upper)) : null);
+    if (n != null) pushTip('N (raw)', fmt(n), 'Total number of values.');
+    if (med != null) pushTip('Sample median', fmt(med), 'Middle value of your sample.');
+    if (lower != null && upper != null) pushTip('Acceptable range', `[${fmt(lower)}, ${fmt(upper)}]`, 'Range of differences considered “practically the same.”');
+    if (pTOST != null) pushTip('TOST p-value', renderP(pTOST), 'Single p-value for equivalence; must be < α to conclude equivalence.');
+    if ('equivalent' in result) pushTip('Equivalent?', fmtYesNo(result.equivalent), '“Yes” if TOST p-value is below α for both bounds.');
+    addCommonAlpha();
+  } else {
+    // Generic fallback: show p-value and alpha only to avoid overwhelming
+    if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Primary significance measure for this test.');
+    addCommonAlpha();
   }
-  if (result.test_used === 'tost_wilcoxon') {
-    if ('w_lower' in result) push('W (lower)', fmt(result.w_lower));
-    if ('p_lower' in result) {
-      const pvNum = Number(result.p_lower);
-      if (Number.isFinite(pvNum) && pvNum < 0.001) {
-        push('p (lower > bound)', (
-          <span>
-            {showExactP ? sci(pvNum) : '<0.001'}
-            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
-              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-            </button>
-          </span>
-        ));
-      } else {
-        push('p (lower > bound)', sci(result.p_lower));
-      }
-    }
-    if ('w_upper' in result) push('W (upper)', fmt(result.w_upper));
-    if ('p_upper' in result) {
-      const pvNum = Number(result.p_upper);
-      if (Number.isFinite(pvNum) && pvNum < 0.001) {
-        push('p (upper < bound)', (
-          <span>
-            {showExactP ? sci(pvNum) : '<0.001'}
-            <button type="button" onClick={()=>setShowExactP(s=>!s)} title={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} aria-label={showExactP ? 'Hide exact p-values' : 'Show exact p-values'} style={{ marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' }}>
-              {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-            </button>
-          </span>
-        ));
-      } else {
-        push('p (upper < bound)', sci(result.p_upper));
-      }
-    }
-    if ('equivalent' in result) push('Equivalent?', result.equivalent ? 'Yes' : 'No');
-  }
-  if ('p_value' in result) {
-    const pvNum = Number(result.p_value);
-    if (Number.isFinite(pvNum) && pvNum < 0.001) {
-      const btnStyle = { marginLeft:6, padding:'2px 6px', fontSize:12, lineHeight:'14px', border:'none', background:'transparent', color:'inherit', cursor:'pointer', display:'inline-flex', alignItems:'center' };
-      const label = showExactP ? 'Hide exact p-value' : 'Show exact p-value';
-      push('p-value', (
-        <span>
-          {showExactP ? sci(pvNum) : '<0.001'}
-          <button type="button" onClick={()=>setShowExactP(s=>!s)} title={label} aria-label={label} style={btnStyle}>
-            {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-          </button>
-        </span>
-      ));
-    } else {
-      push('p-value', sci(result.p_value));
-    }
-  }
-  if ('mu0' in result) push('Threshold (μ0)', fmt(result.mu0));
-  if (result.threshold_min != null) push('Threshold Min', fmt(result.threshold_min));
-  if (result.threshold_max != null) push('Threshold Max', fmt(result.threshold_max));
-  if (result.standard_code) push('Standard', result.standard_code);
-  if (result.class_code_used) push('Class Used', result.class_code_used);
-  if (result.standard_fallback) push('Std Fallback', 'Yes');
-  if (result.class_fallback) push('Class Fallback', 'Yes');
 
   const finalInterpretation = buildInterpretation({ result, paramCode, paramOptions, classCode, lakes, cl, fmt, sci, lakeId, compareValue });
   const ciLine = (r) => (r.ci_lower != null && r.ci_upper != null ? <div>CI ({Math.round((r.ci_level||0)*100)}%): [{fmt(r.ci_lower)}, {fmt(r.ci_upper)}]</div> : null);
@@ -169,7 +194,7 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
         {gridItems.map((it,i)=>(
           <React.Fragment key={i}>
-            <div style={{ fontSize:12, opacity:0.85, padding:6, borderBottom:'1px solid rgba(255,255,255,0.03)' }}>{it.k}</div>
+            <div title={it.tip || undefined} style={{ fontSize:12, opacity:0.85, padding:6, borderBottom:'1px solid rgba(255,255,255,0.03)' }}>{it.k}</div>
             <div style={{ fontSize:13, padding:6, borderBottom:'1px solid rgba(255,255,255,0.03)' }}>{(typeof it.v === 'string' || typeof it.v === 'number') ? String(it.v) : it.v}</div>
           </React.Fragment>
         ))}
@@ -178,11 +203,6 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
         <strong>Interpretation:</strong>
         <div style={{ marginTop:6 }}>{finalInterpretation}</div>
-        {result.test_used === 'tost_wilcoxon' && (
-          <div style={{ marginTop:6, fontSize:12, opacity:0.85 }}>
-            Normality failed → used Equivalence (Wilcoxon). {result.n < 10 ? 'Small sample; interpret with caution.' : ''}
-          </div>
-        )}
         {result.significant != null && (
           <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>
             Statistical decision: {result.significant ? 'Reject null hypothesis (difference detected).' : 'Fail to reject null hypothesis.'}
