@@ -36,6 +36,11 @@ export default async function runAdvancedStat({
   const otherLake = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : undefined;
   if (inferredTest === 'one-sample') {
     body.lake_id = Number(lakeId);
+    // If comparing against a class threshold, include explicit class override so backend uses that class's thresholds
+    if (compareValue && String(compareValue).startsWith('class:')) {
+      const code = String(compareValue).split(':')[1] || '';
+      if (code) body.class_code = code;
+    }
   } else {
     const lakeIds = [Number(lakeId), otherLake].filter(Boolean);
     body.lake_ids = lakeIds;

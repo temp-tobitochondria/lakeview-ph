@@ -160,6 +160,8 @@ class StatsController extends Controller
             'applied_standard_id' => 'nullable|integer|exists:wq_standards,id',
             'depth_m' => 'nullable|numeric', // optional depth filter applied equally to all selected lakes
             'station_id' => 'nullable|integer',
+            // Optional override: when client compares a lake to a target class threshold, allow explicit class_code
+            'class_code' => 'nullable|string',
         ]);
 
         $param = \DB::table('parameters')
@@ -271,10 +273,16 @@ class StatsController extends Controller
             })->values()->all();
 
             // Threshold metadata (optional)
-            $class = \DB::table('lakes')->where('id', $data['lake_id'])->value('class_code');
+            // Determine which class to use for threshold lookup: explicit override wins; else lake's own class
+            $class = $data['class_code'] ?? null;
+            if (!$class) {
+                $class = \DB::table('lakes')->where('id', $data['lake_id'])->value('class_code');
+            }
             $requestedStdId = $data['applied_standard_id'] ?? null;
-            $thrRow = self::findThresholdRow($param->id, $class, $requestedStdId);
-            $thrMin = $thrRow->min_value ?? null; $thrMax = $thrRow->max_value ?? null;
+            $allowClassFallback = empty($data['class_code']);
+            $thrRow = self::findThresholdRow($param->id, $class, $requestedStdId, $allowClassFallback);
+            $thrMin = $thrRow ? ($thrRow->min_value ?? null) : null; 
+            $thrMax = $thrRow ? ($thrRow->max_value ?? null) : null;
             $evalType = null;
             if ($thrMin !== null && $thrMax !== null) $evalType = 'range';
             elseif ($thrMin !== null) $evalType = 'min';
@@ -286,10 +294,10 @@ class StatsController extends Controller
                 'threshold_min' => $thrMin,
                 'threshold_max' => $thrMax,
                 'evaluation_type' => $evalType,
-                'standard_code' => $thrRow->standard_code ?? null,
-                'class_code_used' => $thrRow->class_code ?? $class,
+                'standard_code' => $thrRow ? ($thrRow->standard_code ?? null) : null,
+                'class_code_used' => $thrRow ? ($thrRow->class_code ?? $class) : $class,
                 'applied_standard_id_requested' => $requestedStdId,
-                'applied_standard_id_used' => $thrRow->standard_id ?? null,
+                'applied_standard_id_used' => $thrRow ? ($thrRow->standard_id ?? null) : null,
                 'events' => $events,
             ]);
         }
@@ -321,7 +329,7 @@ class StatsController extends Controller
     }
     // Removed legacy server-side endpoints (tTest/adaptive/manual) in favor of client-side computation.
 
-    private static function findThresholdRow(int $parameterId, ?string $class, ?int $requestedStdId)
+    private static function findThresholdRow(int $parameterId, ?string $class, ?int $requestedStdId, bool $allowClassFallback = true)
     {
         $base = function($withClass) use ($parameterId, $class){
             $q = \DB::table('parameter_thresholds as pt')
@@ -333,7 +341,10 @@ class StatsController extends Controller
         $thrRow = null; $classFallback=false;
         if ($requestedStdId) {
             $thrRow = $base(true)->where('pt.standard_id',$requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']);
-            if (!$thrRow) { $thrRow = $base(false)->where('pt.standard_id',$requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']); $classFallback = (bool)$thrRow; }
+            if (!$thrRow && $allowClassFallback) { 
+                $thrRow = $base(false)->where('pt.standard_id',$requestedStdId)->first(['pt.*','ws.code as standard_code','ws.is_current']); 
+                $classFallback = (bool)$thrRow; 
+            }
         }
         if (!$thrRow) {
             $thrRow = $base(true)
@@ -343,7 +354,7 @@ class StatsController extends Controller
                 ->orderByRaw('pt.max_value IS NULL')
                 ->first(['pt.*','ws.code as standard_code','ws.is_current']);
         }
-        if (!$thrRow && $class) {
+        if (!$thrRow && $class && $allowClassFallback) {
             $thrRow = $base(false)
                 ->orderByDesc('ws.is_current')
                 ->orderBy('ws.priority')

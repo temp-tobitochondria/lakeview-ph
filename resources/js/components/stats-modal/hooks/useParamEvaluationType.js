@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiPublic } from '../../../lib/api';
 
 // Resolves parameter evaluation type (min/max/range) from /stats/series given selections
-export default function useParamEvaluationType({ enabled, lakeId, paramCode, appliedStandardId }) {
+export default function useParamEvaluationType({ enabled, lakeId, paramCode, appliedStandardId, classCodeOverride }) {
   const [evaluationType, setEvaluationType] = useState(null);
 
   useEffect(() => {
@@ -11,6 +11,7 @@ export default function useParamEvaluationType({ enabled, lakeId, paramCode, app
       if (!enabled || !lakeId || !paramCode) { if (!abort) setEvaluationType(null); return; }
       try {
         const body = { parameter_code: paramCode, lake_id: Number(lakeId), applied_standard_id: appliedStandardId || undefined };
+        if (classCodeOverride) body.class_code = classCodeOverride;
         const res = await apiPublic('/stats/series', { method: 'POST', body });
         if (!abort) setEvaluationType(res?.evaluation_type || null);
       } catch {
@@ -18,7 +19,7 @@ export default function useParamEvaluationType({ enabled, lakeId, paramCode, app
       }
     })();
     return () => { abort = true; };
-  }, [enabled, lakeId, paramCode, appliedStandardId]);
+  }, [enabled, lakeId, paramCode, appliedStandardId, classCodeOverride]);
 
   return evaluationType;
 }

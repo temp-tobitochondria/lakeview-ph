@@ -164,7 +164,13 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setAdvisories([]);
   }, [inferredTest, compareValue, selectedTest, lakeId, classCode, organizationId, secondaryOrganizationId, depthMode, depthValue, debouncedYearFrom, debouncedYearTo, paramCode, appliedStandardId]);
 
-  const evalTypeHook = useParamEvaluationType({ enabled: inferredTest === 'one-sample', lakeId, paramCode, appliedStandardId });
+  const evalTypeHook = useParamEvaluationType({
+    enabled: inferredTest === 'one-sample',
+    lakeId,
+    paramCode,
+    appliedStandardId,
+    classCodeOverride: (inferredTest === 'one-sample' && compareValue && String(compareValue).startsWith('class:')) ? classCode : undefined,
+  });
   useEffect(() => { setParamEvaluationType(evalTypeHook || null); }, [evalTypeHook]);
 
   const run = async () => {
