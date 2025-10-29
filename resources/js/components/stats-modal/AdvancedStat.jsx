@@ -149,6 +149,13 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     }
   }, [compareValue, secondaryOrganizationId]);
 
+  // When switching to lake vs lake (two-sample), clear Applied Standard so it reverts to default/placeholder
+  useEffect(() => {
+    if (inferredTest === 'two-sample' && appliedStandardId) {
+      setAppliedStandardId('');
+    }
+  }, [inferredTest]);
+
   useEffect(() => {
     const isLake = compareValue && String(compareValue).startsWith('lake:');
     const other = isLake ? String(compareValue).split(':')[1] : '';
@@ -177,7 +184,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setLoading(true); setError(null); setResult(null); setShowExactP(false); setAdvisories([]);
     if (!lakeId) { alertError('Missing Lake', 'Please select a Primary Lake before running the test.'); setLoading(false); return; }
     if (!organizationId) { alertError('Missing Dataset Source', 'Please select a Dataset Source before running the test.'); setLoading(false); return; }
-    if (!appliedStandardId) { alertError('Missing Applied Standard', 'Please select an Applied Standard before running the test.'); setLoading(false); return; }
+  if (inferredTest !== 'two-sample' && !appliedStandardId) { alertError('Missing Applied Standard', 'Please select an Applied Standard before running the test.'); setLoading(false); return; }
     if (!paramCode) { alertError('Missing Parameter', 'Please select a Parameter before running the test.'); setLoading(false); return; }
     if (!selectedTest) { alertError('Missing Test', 'Please select a Test before running the test.'); setLoading(false); return; }
     if (!allowedTests.includes(selectedTest)) { alertError('Invalid Test Selection', 'The selected test is not applicable for the current comparison mode.'); setLoading(false); return; }
@@ -327,7 +334,14 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       )}
 
       <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
-        <StandardSelect required standards={standards} value={appliedStandardId} onChange={e=>{ setAppliedStandardId(e.target.value); setResult(null); }} />
+        <StandardSelect
+          required
+          standards={standards}
+          value={appliedStandardId}
+          onChange={e=>{ setAppliedStandardId(e.target.value); setResult(null); }}
+          disabled={inferredTest === 'two-sample'}
+          title={inferredTest === 'two-sample' ? 'Not used for lake vs lake comparison' : undefined}
+        />
       </div>
       <div style={{ gridColumn: '2 / span 1', minWidth:0 }}>
         <div style={{ display:'flex', gap:6 }}>
