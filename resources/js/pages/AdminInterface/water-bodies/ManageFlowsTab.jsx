@@ -7,6 +7,7 @@ import MapViewport from '../../../components/MapViewport';
 import { GeoJSON, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { api } from '../../../lib/api';
+import { cachedGet, invalidateHttpCache } from '../../../lib/httpCache';
 import { confirm, alertError, alertSuccess } from '../../../lib/alerts';
 import TableToolbar from '../../../components/table/TableToolbar';
 import TableLayout from '../../../layouts/TableLayout';
@@ -64,7 +65,7 @@ export default function ManageFlowsTab() {
   const fetchLakesOptions = useCallback(async () => {
     setLakesLoading(true);
     try {
-      const res = await api('/options/lakes');
+      const res = await cachedGet('/options/lakes', { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res) ? res : res?.data ?? [];
       setLakes(list);
     } catch (err) {
@@ -79,7 +80,7 @@ export default function ManageFlowsTab() {
     try {
       const params = {};
       if (typeFilter) params.type = typeFilter;
-      const res = await api('/lake-flows', { method: 'GET', params });
+      const res = await cachedGet('/lake-flows', { params, ttlMs: 5 * 60 * 1000 });
       const list = Array.isArray(res) ? res : res?.data ?? [];
       setRows(normalizeRows(list));
     } catch (e) {
@@ -98,6 +99,7 @@ export default function ManageFlowsTab() {
     if (!ok) return;
     try { 
       await api(`/lake-flows/${src.id}`, { method: 'DELETE' }); 
+      invalidateHttpCache('/lake-flows');
       await alertSuccess('Deleted', `"${src.name || 'Flow point'}" has been deleted successfully.`);
       fetchRows(); 
     } catch (e) { 
@@ -169,7 +171,7 @@ export default function ManageFlowsTab() {
       await alertError('Save failed', e.message || 'Failed to save flow point');
       return;
     }
-    setFormOpen(false); fetchRows();
+    setFormOpen(false); invalidateHttpCache('/lake-flows'); fetchRows();
   };
 
   const columns = useMemo(()=>[

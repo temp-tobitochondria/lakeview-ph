@@ -3,6 +3,7 @@ import { FiSave, FiTrash2 } from "react-icons/fi";
 
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 
 const GRID_TABLE_ID = "admin-thresholds-grid";
@@ -23,9 +24,9 @@ function ThresholdsTab() {
   const fetchReference = useCallback(async () => {
     try {
       const [paramRes, classRes, standardRes] = await Promise.all([
-        api("/admin/parameters"),
-        api("/admin/water-quality-classes"),
-        api("/admin/wq-standards"),
+        cachedGet("/admin/parameters", { ttlMs: 10 * 60 * 1000 }),
+        cachedGet("/admin/water-quality-classes", { ttlMs: 30 * 60 * 1000 }),
+        cachedGet("/admin/wq-standards", { ttlMs: 10 * 60 * 1000 }),
       ]);
       setParameters(Array.isArray(paramRes?.data) ? paramRes.data : []);
       setClasses(Array.isArray(classRes?.data) ? classRes.data : []);
@@ -38,7 +39,7 @@ function ThresholdsTab() {
   const fetchThresholds = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api("/admin/parameter-thresholds");
+      const res = await cachedGet("/admin/parameter-thresholds", { ttlMs: 5 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : [];
       setThresholds(list);
     } catch (err) {
@@ -152,6 +153,7 @@ function ThresholdsTab() {
         await alertSuccess("Created", `Saved ${row.class_code} threshold.`);
       }
       setGridEdits((prev) => ({ ...prev, [row.class_code]: {} }));
+      invalidateHttpCache('/admin/parameter-thresholds');
       await fetchThresholds();
     } catch (err) {
       console.error("Failed to save threshold", err);
@@ -169,6 +171,7 @@ function ThresholdsTab() {
     try {
       await api(`/admin/parameter-thresholds/${row.__id}`, { method: "DELETE" });
       setGridEdits((prev) => ({ ...prev, [row.class_code]: {} }));
+      invalidateHttpCache('/admin/parameter-thresholds');
       await fetchThresholds();
       await alertSuccess('Deleted', 'Threshold deleted.');
     } catch (err) {

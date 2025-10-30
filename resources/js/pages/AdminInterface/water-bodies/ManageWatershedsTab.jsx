@@ -11,6 +11,7 @@ import TableToolbar from "../../../components/table/TableToolbar";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 import WatershedForm from "../../../components/WatershedForm";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 
 const TABLE_ID = "admin-watercat-watersheds";
 const VIS_KEY = `${TABLE_ID}::visible`;
@@ -101,7 +102,7 @@ export default function ManageWatershedsTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await api("/watersheds");
+      const data = await cachedGet("/watersheds", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setRows(normalizeRows(list));
     } catch (err) {
@@ -292,6 +293,7 @@ export default function ManageWatershedsTab() {
         await alertSuccess('Created', `"${payload.name}" was created.`);
       }
       setFormOpen(false);
+      invalidateHttpCache('/watersheds');
       await loadWatersheds();
     } catch (e) {
       console.error(e);
@@ -310,6 +312,7 @@ export default function ManageWatershedsTab() {
     setErrorMsg("");
     try {
       await api(`/watersheds/${target.id}`, { method: "DELETE" });
+      invalidateHttpCache('/watersheds');
       await loadWatersheds();
       await alertSuccess('Deleted', `"${target.name}" was deleted.`);
     } catch (e) {

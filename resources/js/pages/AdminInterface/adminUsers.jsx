@@ -3,6 +3,7 @@ import { FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi';
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
 import api from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 
@@ -126,7 +127,7 @@ export default function AdminUsersPage() {
   const fetchUsers = async (params = {}) => {
     setLoading(true);
     try {
-      const res = unwrap(await api.get("/admin/users", { params }));
+      const res = unwrap(await cachedGet("/admin/users", { params, ttlMs: 5 * 60 * 1000 }));
   const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       const filtered = myId ? items.filter(u => u.id !== myId) : items;
   setRows(filtered);
@@ -201,6 +202,8 @@ export default function AdminUsersPage() {
       if (mode === "edit" && editingId) { await api.put(`/admin/users/${editingId}`, payload); toast("User updated"); }
       else { await api.post("/admin/users", payload); toast("User created"); }
       closeModal();
+      // bust cache so refetch is fresh
+      invalidateHttpCache('/admin/users');
       await fetchUsers(buildParams({ page: 1 }));
     } catch (e) {
       console.error("Save failed", e);
@@ -214,6 +217,7 @@ export default function AdminUsersPage() {
     if (!isConfirmed) return;
     try {
       await api.delete(`/admin/users/${row.id}`); toast("User deleted");
+      invalidateHttpCache('/admin/users');
       const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
       await fetchUsers(buildParams({ page: nextPage }));
     } catch (e) { console.error("Delete failed", e); Swal.fire("Delete failed", e?.response?.data?.message || "", "error"); }

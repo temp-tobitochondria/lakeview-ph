@@ -8,6 +8,7 @@ import { FiEye, FiTrash2, FiDroplet } from "react-icons/fi";
 import DashboardHeader from '../../components/DashboardHeader';
 
 import { api } from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { fetchLakeOptions } from "../../lib/layers";
 import { alertSuccess, alertError, alertWarning, confirm as swalConfirm } from "../../lib/alerts";
 
@@ -92,7 +93,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
 
       (async () => {
         try {
-          const params = await api('/options/parameters');
+          const params = await cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 });
           if (!mounted) return;
           setParamCatalog(Array.isArray(params) ? params : []);
         } catch (e) {
@@ -102,7 +103,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
 
       (async () => {
         try {
-          const r = await api('/admin/tenants');
+          const r = await cachedGet('/admin/tenants', { ttlMs: 5 * 60 * 1000 });
           if (!mounted) return;
           const data = Array.isArray(r?.data) ? r.data : [];
           setOrgs(data.map((o) => ({ id: o.id, name: o.name })));
@@ -121,7 +122,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
     (async () => {
       try {
         const path = organizationId ? `/admin/sample-events?organization_id=${encodeURIComponent(organizationId)}` : '/admin/sample-events';
-        const res = await api(path);
+        const res = await cachedGet(path, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
         setTests(data);
@@ -140,9 +141,9 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
     try {
       const eventsPath = organizationId ? `/admin/sample-events?organization_id=${encodeURIComponent(organizationId)}` : '/admin/sample-events';
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        api(eventsPath),
+        cachedGet(eventsPath, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
-        api('/options/parameters'),
+        cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
 
       if (testsRes.status === 'fulfilled') {
@@ -233,6 +234,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
         try {
           await api(`/admin/sample-events/${row.id}`, { method: 'DELETE' });
           setTests((prev) => prev.filter((t) => t.id !== row.id));
+          invalidateHttpCache('/admin/sample-events');
           await alertSuccess('Deleted', 'The test was removed.');
         } catch (e) {
           await alertError('Delete failed', e?.message || 'Please try again.');
@@ -292,6 +294,7 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
             const res = await api(`/admin/sample-events/${selected.id}/toggle-publish`, { method: 'POST' });
             setTests((prev) => prev.map((t) => (t.id === res.data.id ? res.data : t)));
             setSelected(res.data);
+            invalidateHttpCache('/admin/sample-events');
             await alertSuccess(res.data.status === 'public' ? 'Published' : 'Unpublished');
           } catch (e) {
             await alertError('Publish failed', e?.message || 'Please try again.');

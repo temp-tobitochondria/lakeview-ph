@@ -5,6 +5,7 @@ import TableLayout from "../../../layouts/TableLayout";
 import TableToolbar from "../../../components/table/TableToolbar";
 import FilterPanel from "../../../components/table/FilterPanel";
 import { api, buildQuery } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 
 const CATEGORY_OPTIONS = [
@@ -121,7 +122,7 @@ function ParametersTab() {
     setLoading(true);
     try {
       const qs = buildQuery(opts);
-      const res = await api(`/admin/parameters${qs}`);
+      const res = await cachedGet(`/admin/parameters`, { params: opts, ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setParams(list);
     } catch (err) {
@@ -201,6 +202,7 @@ function ParametersTab() {
 
       setGridEdits((prev) => ({ ...prev, [key]: {} }));
       if (!effectiveRow.__id) setNewRows((prev) => prev.filter((rid) => rid !== key));
+      invalidateHttpCache('/admin/parameters');
       await fetchParameters({ search: query });
     } catch (err) {
       console.error("Failed to save parameter", err);
@@ -219,6 +221,7 @@ function ParametersTab() {
     try {
       await api(`/admin/parameters/${row.__id}`, { method: "DELETE" });
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      invalidateHttpCache('/admin/parameters');
       await fetchParameters({ search: query });
       await alertSuccess('Deleted', `"${row.code}" was deleted.`);
     } catch (err) {

@@ -3,6 +3,7 @@ import { FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import { alertSuccess, alertError } from "../../../lib/alerts";
 
 const emptyStandard = {
@@ -25,7 +26,7 @@ function StandardsTab() {
   const fetchStandards = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api("/admin/wq-standards");
+      const res = await cachedGet("/admin/wq-standards", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setStandards(list);
     } catch (err) {
@@ -81,6 +82,7 @@ function StandardsTab() {
       }
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
       if (!row.__id) setNewRows((prev) => prev.filter((rid) => rid !== row.id));
+      invalidateHttpCache('/admin/wq-standards');
       await fetchStandards();
     } catch (err) {
       console.error("Failed to save standard", err);
@@ -97,6 +99,7 @@ function StandardsTab() {
     try {
       await api(`/admin/wq-standards/${row.__id}`, { method: "DELETE" });
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      invalidateHttpCache('/admin/wq-standards');
       await fetchStandards();
       await alertSuccess("Deleted", `Deleted ${row.code}.`);
     } catch (err) {
@@ -216,4 +219,3 @@ function StandardsTab() {
   );
 }
 export default StandardsTab;
-

@@ -9,6 +9,7 @@ import "leaflet/dist/leaflet.css";
 
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import LakeForm from "../../../components/LakeForm";
 import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
 import TableToolbar from "../../../components/table/TableToolbar";
@@ -256,7 +257,7 @@ function ManageLakesTab() {
 
   const fetchWatersheds = useCallback(async () => {
     try {
-      const ws = await api("/watersheds");
+      const ws = await cachedGet("/watersheds", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(ws) ? ws : ws?.data ?? [];
       setWatersheds(list);
     } catch (err) {
@@ -267,7 +268,7 @@ function ManageLakesTab() {
 
   const fetchClasses = useCallback(async () => {
     try {
-      const res = await api("/options/water-quality-classes");
+      const res = await cachedGet("/options/water-quality-classes", { ttlMs: 60 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setClassOptions(list);
     } catch (err) {
@@ -279,7 +280,7 @@ function ManageLakesTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await api("/lakes");
+      const data = await cachedGet("/lakes", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setAllLakes(normalizeRows(list));
     } catch (err) {
@@ -630,6 +631,7 @@ function ManageLakesTab() {
         // Proceed with delete
         try {
           await api(`/lakes/${target.id}`, { method: "DELETE" });
+          invalidateHttpCache('/lakes');
           await fetchLakes();
           await alertSuccess('Deleted', `"${target.name}" was deleted.`);
         } catch (err) {
@@ -650,6 +652,7 @@ function ManageLakesTab() {
           setErrorMsg("");
           try {
             await api(`/lakes/${target.id}`, { method: "DELETE" });
+            invalidateHttpCache('/lakes');
             await fetchLakes();
             await alertSuccess('Deleted', `"${target.name}" was deleted.`);
           } catch (err2) {
@@ -704,6 +707,7 @@ function ManageLakesTab() {
           await alertSuccess('Saved', `"${payload.name}" was updated.`);
         }
         setFormOpen(false);
+        invalidateHttpCache('/lakes');
         await fetchLakes();
       } catch (err) {
         console.error("[ManageLakesTab] Failed to save lake", err);
