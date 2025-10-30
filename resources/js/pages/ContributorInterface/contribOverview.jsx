@@ -4,6 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import { FiClipboard, FiDatabase, FiUsers } from 'react-icons/fi';
 
 import api from '../../lib/api';
+import { cachedGet } from '../../lib/httpCache';
 import kpiCache from '../../lib/kpiCache';
 import DashboardHeader from '../../components/DashboardHeader';
 import { FiHome } from 'react-icons/fi';
@@ -100,7 +101,7 @@ export default function ContribOverview({ tenantId: propTenantId }) {
     if (tenantId === null || userId === null) {
       (async () => {
         try {
-          const meRes = await api.get('/auth/me');
+          const meRes = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
             const tId = meRes?.data?.tenant_id ?? meRes?.tenant_id ?? null;
             const uId = meRes?.data?.id ?? meRes?.id ?? null;
             if (!cancelled) {

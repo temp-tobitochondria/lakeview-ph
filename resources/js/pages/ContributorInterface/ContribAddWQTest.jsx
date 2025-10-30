@@ -3,6 +3,7 @@ import WQTestWizard from "../../components/water-quality-test/WQTestWizard";
 import { FiDroplet } from "react-icons/fi";
 import DashboardHeader from '../../components/DashboardHeader';
 import { api } from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { alertError, alertSuccess } from "../../lib/alerts";
 
 export default function ContribAddWQTest() {
@@ -13,7 +14,7 @@ export default function ContribAddWQTest() {
     let mounted = true;
     (async () => {
       try {
-        const me = await api('/auth/me');
+        const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
         if (!mounted) return;
         if (me && (me.organization || me.tenant || me.tenant_id || me.organization_id)) {
           const org = me.organization || (me.tenant ? { id: me.tenant.id, name: me.tenant.name } : null);
@@ -40,6 +41,10 @@ export default function ContribAddWQTest() {
         onSubmit={async (payload) => {
           try {
             const res = await api('/admin/sample-events', { method: 'POST', body: payload });
+            try {
+              invalidateHttpCache('/admin/sample-events');
+              if (organization?.id) invalidateHttpCache(`/contrib/${organization.id}/sample-events`);
+            } catch {}
             alertSuccess('Saved', 'Water quality test saved to server.');
             return res?.data;
           } catch (e) {

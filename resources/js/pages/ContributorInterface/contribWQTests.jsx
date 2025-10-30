@@ -9,6 +9,7 @@ import { FiEye, FiEdit2, FiTrash2, FiDroplet } from "react-icons/fi";
 import DashboardHeader from "../../components/DashboardHeader";
 
 import { api } from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { fetchLakeOptions } from "../../lib/layers";
 import { alertSuccess, alertError, alertWarning, confirm as swalConfirm } from "../../lib/alerts";
 
@@ -72,7 +73,7 @@ export default function ContribWQTests() {
     let mounted = true;
     (async () => {
       try {
-        const me = await api("/auth/me");
+        const me = await cachedGet("/auth/me", { ttlMs: 60 * 1000 });
         if (!mounted) return;
         setCurrentUserId(me?.id ?? null);
         const org = me?.organization || (me?.tenant ? me.tenant : null);
@@ -98,7 +99,7 @@ export default function ContribWQTests() {
     if (!currentOrgId) return () => {};
     (async () => {
       try {
-        const r = await api.get(`/org/${currentOrgId}/users`);
+        const r = await cachedGet(`/org/${currentOrgId}/users`, { ttlMs: 5 * 60 * 1000 });
         if (!mounted) return;
         const raw = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
         const filtered = (Array.isArray(raw) ? raw : []).filter((u) => {
@@ -179,7 +180,7 @@ export default function ContribWQTests() {
     (async () => {
       try {
         const basePath = `/contrib/${currentOrgId}/sample-events`;
-        const res = await api(basePath);
+        const res = await cachedGet(basePath, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
         // All events should already be tenant-scoped; still keep defensive filter
@@ -207,9 +208,9 @@ export default function ContribWQTests() {
   const eventsPath = currentOrgId ? `/contrib/${currentOrgId}/sample-events` : null;
       if (!currentOrgId) return;
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        api(`/contrib/${currentOrgId}/sample-events`),
+        cachedGet(`/contrib/${currentOrgId}/sample-events`, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
-        api('/options/parameters'),
+        cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
 
       if (testsRes.status === 'fulfilled') {
@@ -316,6 +317,7 @@ export default function ContribWQTests() {
           if (!currentOrgId) return;
           const basePath = `/contrib/${currentOrgId}/sample-events`;
           await api(`${basePath}/${row.id}`, { method: "DELETE" });
+          try { invalidateHttpCache(basePath); } catch {}
           setTests((prev) => prev.filter((t) => t.id !== row.id));
           await alertSuccess('Deleted', 'The test was removed.');
         } catch (e) {

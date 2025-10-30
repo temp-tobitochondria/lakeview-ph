@@ -1,6 +1,7 @@
 // resources/js/pages/OrgInterface/orgLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../lib/api';
+import { cachedGet } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
 import FilterPanel from '../../components/table/FilterPanel';
@@ -64,7 +65,7 @@ export default function OrgAuditLogsPage() {
   const page = meta.current_page ?? 1;
   const perPage = meta.per_page ?? 10;
 
-  const fetchMe = async () => { try { const u = await api.get('/auth/me'); setMe(u); } catch { setMe(null); } };
+  const fetchMe = async () => { try { const u = await cachedGet('/auth/me', { ttlMs: 60 * 1000 }); setMe(u); } catch { setMe(null); } };
 
   const isOrgAdmin = me?.role === 'org_admin';
   const effectiveTenantId = isOrgAdmin ? me?.tenant_id : null;
@@ -95,7 +96,7 @@ export default function OrgAuditLogsPage() {
     if (!effectiveTenantId) return; // need a tenant for org route
     setLoading(true); setError(null);
     try {
-  const res = await api.get(`/org/${effectiveTenantId}/audit-logs`, { params });
+  const res = await cachedGet(`/org/${effectiveTenantId}/audit-logs`, { params, ttlMs: 2 * 60 * 1000 });
   // NOTE: api.get returns the parsed JSON body. For Laravel paginator, this is an object
   // with top-level pagination keys and a `data` array. Do not access `res.data` here.
   const body = res;
