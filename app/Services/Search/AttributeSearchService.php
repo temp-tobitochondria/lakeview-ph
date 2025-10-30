@@ -45,30 +45,6 @@ SQL;
                 ] + ($place ? ['place' => '%' . $place . '%'] : []);
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'lakes', null, $place);
-            } elseif ($entity === 'watersheds') {
-                $hasLayerGeom = Schema::hasColumn('layers', 'geom');
-                $geomExpr = $hasLayerGeom
-                    ? "CASE WHEN ly.geom IS NOT NULL THEN ST_AsGeoJSON(ly.geom) ELSE NULL END"
-                    : "NULL::text";
-                $sql = <<<SQL
-SELECT w.id,
-       COALESCE(w.name, ly.name) AS name,
-       {$geomExpr} AS geom
-FROM watersheds w
-LEFT JOIN layers ly ON ly.body_type='watershed' AND ly.body_id=w.id AND ly.is_active=true AND ly.visibility='public'
-WHERE (
-    w.name ILIKE :kw OR
-    COALESCE(w.description,'') ILIKE :kw OR
-    COALESCE(ly.name, ly.name) ILIKE :kw
-)
-SQL;
-                if ($place) {
-                    $sql .= "\nAND (w.name ILIKE :place OR COALESCE(w.description,'') ILIKE :place)";
-                }
-                $sql .= "\nORDER BY name ASC\nLIMIT :limit";
-                $params = ['kw' => $kw, 'limit' => $limit] + ($place ? ['place' => '%' . $place . '%'] : []);
-                $rows = DB::select($sql, $params);
-                return $this->mapper->mapRows($rows, 'watersheds', null, $place);
             } elseif ($entity === 'layers') {
                 $hasLayerGeom = Schema::hasColumn('layers', 'geom');
                 $geomExpr2 = $hasLayerGeom
@@ -127,78 +103,6 @@ SQL;
                 $params = ['kw' => $kw, 'limit' => $limit];
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'parameters', null, $place);
-            } elseif ($entity === 'lake_flows') {
-                // Make plural "flows" also match singular word parts like inflow/outflow
-                $kw2 = '%' . preg_replace('/flows/i', 'flow', trim($q)) . '%';
-                $sql = <<<SQL
-SELECT f.id,
-       COALESCE(NULLIF(f.name,''), NULLIF(f.alt_name,''), CONCAT(f.flow_type, ' flow')) AS name,
-       f.flow_type,
-       f.source,
-    f.lake_id,
-       l.name AS lake_name,
-       ST_AsGeoJSON(f.coordinates) AS coordinates_geojson,
-       f.latitude, f.longitude
-FROM lake_flows f
-LEFT JOIN lakes l ON l.id = f.lake_id
-WHERE (
-    COALESCE(f.name, '') ILIKE :kw OR COALESCE(f.name,'') ILIKE :kw2 OR
-    COALESCE(f.alt_name, '') ILIKE :kw OR COALESCE(f.alt_name,'') ILIKE :kw2 OR
-    COALESCE(f.source, '') ILIKE :kw OR COALESCE(f.source,'') ILIKE :kw2 OR
-    f.flow_type ILIKE :kw OR f.flow_type ILIKE :kw2 OR
-    COALESCE(l.name,'') ILIKE :kw OR COALESCE(l.name,'') ILIKE :kw2
-)
-ORDER BY name ASC
-LIMIT :limit
-SQL;
-                $params = ['kw' => $kw, 'kw2' => $kw2, 'limit' => $limit];
-                $rows = DB::select($sql, $params);
-                return $this->mapper->mapRows($rows, 'lake_flows', null, $place);
-            }
-
-            // New: organizations (tenants)
-            if ($entity === 'organizations') {
-                $qtrim = trim((string)$q);
-                $isGeneric = ($qtrim === '' || preg_match('/^org(anization)?s?$/i', $qtrim));
-                // Be permissive about visibility: include tenants even if active is NULL; exclude soft-deleted only
-                if ($isGeneric) {
-                    $sql = <<<SQL
-SELECT t.id, t.name, t.slug, t.contact_email
-FROM tenants t
-WHERE t.deleted_at IS NULL AND COALESCE(t.active, TRUE) = TRUE
-ORDER BY t.name ASC
-LIMIT :limit
-SQL;
-                    $params = ['limit' => $limit];
-                } else {
-                    $sql = <<<SQL
-SELECT t.id, t.name, t.slug, t.contact_email
-FROM tenants t
-WHERE t.deleted_at IS NULL AND COALESCE(t.active, TRUE) = TRUE AND (
-    t.name ILIKE :kw OR COALESCE(t.slug,'') ILIKE :kw OR COALESCE(t.contact_email,'') ILIKE :kw
-)
-ORDER BY t.name ASC
-LIMIT :limit
-SQL;
-                    $params = ['kw' => $kw, 'limit' => $limit];
-                }
-                $rows = DB::select($sql, $params);
-                // Fallback: if nothing found for a specific name, list any tenants that have public layers
-                if (!$isGeneric && empty($rows)) {
-                    $sql2 = <<<SQL
-SELECT DISTINCT t.id, t.name, t.slug, t.contact_email
-FROM tenants t
-JOIN users u ON u.tenant_id = t.id
-JOIN layers ly ON ly.uploaded_by = u.id AND ly.visibility = 'public'
-WHERE t.deleted_at IS NULL AND (
-    t.name ILIKE :kw OR COALESCE(t.slug,'') ILIKE :kw OR COALESCE(t.contact_email,'') ILIKE :kw
-)
-ORDER BY t.name ASC
-LIMIT :limit
-SQL;
-                    $rows = DB::select($sql2, ['kw' => $kw, 'limit' => $limit]);
-                }
-                return $this->mapper->mapRows($rows, 'organizations', null, null);
             }
 
             return [];

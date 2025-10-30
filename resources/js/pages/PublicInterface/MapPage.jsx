@@ -38,7 +38,7 @@ import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
 import AboutPage from "./AboutPage";
 import UserManual from "./UserManual";
 import api from "../../lib/api";
-import { fetchWatershedOptions, fetchPublicLayers } from "../../lib/layers";
+// Removed watershed/org search-related utilities (no longer used by Map search)
 
 // Small helper to create an SVG pin icon as a data URI for a given color
 function createPinIcon(color = '#3388ff') {
@@ -194,138 +194,10 @@ function MapPage() {
             setLakePanelOpen(true);
           } catch {}
         }
-      } else if (entity === 'watersheds') {
-        // Prefer watershed name from result
-        const watershedName = (item.name || item.attributes?.name || '').trim();
-        let pickedLake = null;
-        if (watershedName && publicFC?.features?.length) {
-          const lowerWs = watershedName.toLowerCase();
-          // Find any lake whose watershed_name matches
-          pickedLake = publicFC.features.find(f => String(f?.properties?.watershed_name || '').toLowerCase() === lowerWs) || null;
-        }
-        if (!pickedLake && publicFC?.features?.length) {
-          // Fallback: if result carries an associated lake name
-          const lakeName = (item.attributes && (item.attributes.lake_name || '')) || '';
-          const lower = String(lakeName).toLowerCase();
-          if (lower) pickedLake = publicFC.features.find(f => String(f?.properties?.name || '').toLowerCase() === lower) || null;
-        }
-        if (pickedLake) {
-          try {
-            const gj = L.geoJSON(pickedLake); const b = gj.getBounds();
-            if (b?.isValid?.() && mapRef.current) mapRef.current.flyToBounds(b, { padding: [24,24], maxZoom: 13 });
-          } catch {}
-          // Select lake, but don't open panel
-          try { selectLakeFeature(pickedLake, undefined, { openPanel: false }); } catch {}
-        }
-        // Fast-path: if the search item already includes watershed geometry, draw it immediately
-        try {
-          const rawGeom = item.geom || item.geometry || item.attributes?.geom || item.attributes?.geometry;
-          if (rawGeom) {
-            applyWatershedGeometry(rawGeom, { name: watershedName || 'Watershed' }, { fit: true });
-          }
-        } catch (_) {}
-        // Try to draw watershed outline regardless of lake detail timing by directly loading watershed layers
-        try {
-          if (watershedName) {
-            const opts = await fetchWatershedOptions(watershedName);
-            const exact = opts.find(o => String(o.name || '').toLowerCase() === watershedName.toLowerCase());
-            const ws = exact || opts[0];
-            if (ws?.id) {
-              const layers = await fetchPublicLayers({ bodyType: 'watershed', bodyId: ws.id, includeBounds: true });
-              const target = layers?.find(l => l.is_active) || layers?.[0];
-              if (target) {
-                await applyOverlayByLayerId(target.id, { fit: true });
-              }
-            }
-          }
-        } catch (_) {}
-      } else if (entity === 'lake_flows') {
-        // Ensure the flows markers are shown on the map
-        if (!showFlows) setShowFlows(true);
-        // Try to select the lake this flow belongs to for context (but do not open panel)
-        const flowLakeId = item.lake_id || item.attributes?.lake_id || null;
-        const flowLakeName = item.attributes?.lake_name || null;
-        if (publicFC?.features?.length) {
-          let ft = null;
-          if (flowLakeId != null) {
-            const getId = (x) => x?.id ?? x?.properties?.id ?? x?.properties?.lake_id ?? null;
-            ft = publicFC.features.find(f => getId(f) != null && String(getId(f)) === String(flowLakeId));
-          }
-          if (!ft && flowLakeName) {
-            const nmLower = String(flowLakeName).toLowerCase();
-            ft = publicFC.features.find(f => String(f?.properties?.name || '').toLowerCase() === nmLower);
-          }
-          if (ft) {
-            try {
-              const gj = L.geoJSON(ft); const b = gj.getBounds();
-              if (b?.isValid?.() && mapRef.current) mapRef.current.flyToBounds(b, { padding: [24,24], maxZoom: 13 });
-              // Also set selected lake silently (do not open panel)
-              try { selectLakeFeature(ft, undefined, { openPanel: false }); } catch {}
-            } catch {}
-          }
-        }
-        // If flow has lat/lon, jump directly to marker and open popup once markers are mounted
-        const lat = Number(item.attributes?.latitude ?? item.latitude);
-        const lon = Number(item.attributes?.longitude ?? item.longitude);
-        if (Number.isFinite(lat) && Number.isFinite(lon) && mapRef.current) {
-          mapRef.current.flyTo([lat, lon], 14, { duration: 0.6 });
-          setTimeout(() => {
-            try { jumpToFlow({ id: item.id, latitude: lat, longitude: lon, name: item.name || item.attributes?.name, flow_type: item.attributes?.flow_type, source: item.attributes?.source }); } catch {}
-          }, showFlows ? 120 : 320);
-        }
-      } else if (entity === 'organizations') {
-        // When an organization is selected, show all lakes handled by that organization
-        const tenantId = item.id || item.attributes?.id;
-        if (tenantId != null) {
-          try {
-            const res = await fetch(`/api/public/lakes-geo?tenant_id=${encodeURIComponent(String(tenantId))}`);
-            if (res.ok) {
-              const fc = await res.json();
-              if (fc && Array.isArray(fc.features)) {
-                // Fit to bounds of all returned lakes
-                try {
-                  const gj = L.geoJSON(fc);
-                  const b = gj.getBounds();
-                  if (b?.isValid?.() && mapRef.current) {
-                    mapRef.current.flyToBounds(b, { padding: [28,28], maxZoom: 11, duration: 0.9, easeLinearity: 0.25 });
-                  }
-                } catch {}
-                // Show a contextual list of lakes in the results popover for quick selection
-                const lakeResults = fc.features.map((ft) => {
-                  const p = ft?.properties || {};
-                  return {
-                    table: 'lakes',
-                    entity: 'lakes',
-                    id: p.id ?? p.lake_id ?? null,
-                    name: p.name || 'Lake',
-                    attributes: {
-                      id: p.id ?? p.lake_id ?? null,
-                      name: p.name || 'Lake',
-                      region: p.region ?? p.region_list ?? null,
-                      province: p.province ?? p.province_list ?? null,
-                      municipality: p.municipality ?? p.municipality_list ?? null,
-                      class_code: p.class_code ?? null,
-                    },
-                    geom: ft?.geometry ?? null,
-                  };
-                });
-                setSearchResults(lakeResults);
-                setSearchMode('results');
-                setSearchOpen(true);
-                // Do not open lake panel yet; user can click a lake from the list
-              } else {
-                setSearchResults([]);
-                setSearchOpen(true);
-              }
-            }
-          } catch {}
-        }
       }
     } catch {}
-    // Keep the results open for organizations (shows lakes). Close otherwise after selection.
-    if ((item.table || item.entity || '') !== 'organizations') {
-      setSearchOpen(false);
-    }
+    // Close results popover after selection
+    setSearchOpen(false);
   };
 
   const handleClearSearch = () => {

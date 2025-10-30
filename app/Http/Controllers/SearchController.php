@@ -40,17 +40,14 @@ class SearchController extends Controller
         };
         $place = $extractPlace($q);
 
-        // Detect entity/table with optional override
+        // Detect entity/table with optional override (restricted: lakes, parameters, layers)
         $requestedEntity = strtolower(trim((string) $request->input('entity', '')));
         $entity = 'lakes';
-        if (in_array($requestedEntity, ['lakes','watersheds','parameters','layers','lake_flows','municipalities','organizations'], true)) {
+        if (in_array($requestedEntity, ['lakes','parameters','layers','municipalities'], true)) {
             $entity = $requestedEntity;
         } else {
-            if (str_contains($qlc, 'watershed')) $entity = 'watersheds';
-            elseif (str_contains($qlc, 'parameter')) $entity = 'parameters';
+            if (str_contains($qlc, 'parameter')) $entity = 'parameters';
             elseif (str_contains($qlc, 'layer')) $entity = 'layers';
-            elseif (str_contains($qlc, 'inflow') || str_contains($qlc, 'outflow') || str_contains($qlc, 'flow')) $entity = 'lake_flows';
-            elseif (str_contains($qlc, 'organization') || str_contains($qlc, 'organisation') || preg_match('/\borgs?\b/i', $q)) $entity = 'organizations';
         }
 
         // Treat municipality as lakes search constrained by place
@@ -147,38 +144,25 @@ class SearchController extends Controller
             }, $rows);
         };
 
-        // Analytical handling per-entity (lakes/watersheds primarily)
+        // Analytical handling (lakes only)
         $isAnalytical = $hasLargest || $hasSmallest || $hasDeepest || $hasHighest || $hasLowest || $hasLongest;
-        if ($isAnalytical && in_array($entity, ['lakes','watersheds'], true)) {
+        if ($isAnalytical && $entity === 'lakes') {
             $orderDir = ($hasSmallest || $hasLowest) ? 'ASC' : 'DESC';
-            if ($entity === 'lakes') {
-                $metric = 'area_m2';
-                if ($hasDeepest) $metric = 'depth';
-                elseif ($hasHighest || $hasLowest) $metric = 'elevation';
-                elseif ($hasLongest) $metric = 'shoreline_m';
-                $data = $this->analytical->searchLakes([
-                    'place' => $place,
-                    'orderDir' => $orderDir,
-                    'metric' => $metric,
-                    'limit' => $finalLimit,
-                ]);
-                return response()->json([
-                    'data' => $data,
-                    'intent' => [ 'code' => 'ANALYTICAL', 'metric' => $metric, 'order' => $orderDir, 'limit' => $finalLimit ],
-                    'diagnostics' => [ 'approach' => 'service-analytical', 'entity' => $entity, 'place' => $place ],
-                ]);
-            } else {
-                $data = $this->analytical->searchWatersheds([
-                    'place' => $place,
-                    'orderDir' => $orderDir,
-                    'limit' => $finalLimit,
-                ]);
-                return response()->json([
-                    'data' => $data,
-                    'intent' => [ 'code' => 'ANALYTICAL', 'metric' => 'area_m2', 'order' => $orderDir, 'limit' => $finalLimit ],
-                    'diagnostics' => [ 'approach' => 'service-analytical', 'entity' => $entity, 'place' => $place ],
-                ]);
-            }
+            $metric = 'area_m2';
+            if ($hasDeepest) $metric = 'depth';
+            elseif ($hasHighest || $hasLowest) $metric = 'elevation';
+            elseif ($hasLongest) $metric = 'shoreline_m';
+            $data = $this->analytical->searchLakes([
+                'place' => $place,
+                'orderDir' => $orderDir,
+                'metric' => $metric,
+                'limit' => $finalLimit,
+            ]);
+            return response()->json([
+                'data' => $data,
+                'intent' => [ 'code' => 'ANALYTICAL', 'metric' => $metric, 'order' => $orderDir, 'limit' => $finalLimit ],
+                'diagnostics' => [ 'approach' => 'service-analytical', 'entity' => $entity, 'place' => $place ],
+            ]);
         }
 
         // Attribute/fuzzy search by entity using ILIKE
@@ -194,20 +178,7 @@ class SearchController extends Controller
             ]);
         }
 
-        // If user asked for watersheds but nothing matched, return a small generic list to avoid "nothing shows"
-        if ($entity === 'watersheds') {
-            $fallback = DB::select(
-                'SELECT w.id, w.name AS name, NULL::text AS geom FROM watersheds w ORDER BY w.name ASC LIMIT :limit',
-                ['limit' => $limit]
-            );
-            if (!empty($fallback)) {
-                return response()->json([
-                    'data' => $mapRows($fallback, 'watersheds', null),
-                    'intent' => [ 'code' => 'ATTRIBUTE', 'entity' => 'watersheds', 'note' => 'generic-fallback' ],
-                    'diagnostics' => [ 'approach' => 'controller-attribute-fallback' ],
-                ]);
-            }
-        }
+        // No watersheds/flows/organizations querying in Map Page search
 
         // Fallback: delegate to semantic engine
         $opts = [ 'limit' => $limit ];
