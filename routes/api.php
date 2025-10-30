@@ -69,6 +69,12 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(function () {
     Route::get('/whoami', fn() => ['ok' => true]);
 
+    // Admin KPIs (lightweight counts)
+    Route::get('/kpis/orgs', [\App\Http\Controllers\Api\Admin\KpiController::class, 'orgs']);
+    Route::get('/kpis/users', [\App\Http\Controllers\Api\Admin\KpiController::class, 'users']);
+    Route::get('/kpis/lakes', [\App\Http\Controllers\Api\Admin\KpiController::class, 'lakes']);
+    Route::get('/kpis/tests', [\App\Http\Controllers\Api\Admin\KpiController::class, 'tests']);
+
     // Feedback management
     Route::get('/feedback',         [AdminFeedbackController::class, 'index']);
     Route::get('/feedback/{feedback}', [AdminFeedbackController::class, 'show'])->whereNumber('feedback');

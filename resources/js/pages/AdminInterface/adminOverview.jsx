@@ -131,9 +131,8 @@ export default function AdminOverview() {
       if (cached !== null) {
         publish('lakes', { value: cached, loading: false });
       } else {
-        const lakeRes = await api.get('/lakes');
-        const lakesList = Array.isArray(lakeRes) ? lakeRes : lakeRes?.data ?? [];
-        const lakeTotal = Array.isArray(lakesList) ? lakesList.length : 0;
+        const lakeRes = await api.get('/admin/kpis/lakes');
+        const lakeTotal = lakeRes?.data?.count ?? lakeRes?.count ?? null;
         kpiCache.setKpi(key, lakeTotal);
         publish('lakes', { value: lakeTotal, loading: false });
       }
@@ -147,9 +146,8 @@ export default function AdminOverview() {
       if (cached !== null) {
         publish('events', { value: cached, loading: false });
       } else {
-        const evRes = await api.get('/admin/sample-events');
-        const evList = evRes?.data ?? [];
-        const evTotal = Array.isArray(evList) ? evList.length : (evRes?.data?.length ?? 0);
+        const evRes = await api.get('/admin/kpis/tests');
+        const evTotal = evRes?.data?.count ?? evRes?.count ?? null;
         kpiCache.setKpi(key, evTotal);
         publish('events', { value: evTotal, loading: false });
       }
