@@ -109,7 +109,9 @@ Set on Web, Worker, and Cron as applicable.
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://your-domain.tld
-ASSET_URL=https://your-domain.tld
+# Leave ASSET_URL unset to keep relative asset URLs (recommended)
+# ASSET_URL=https://your-domain.tld
+FORCE_HTTPS=true
 APP_KEY=base64:PASTE_GENERATED_KEY
 
 # Database
@@ -144,6 +146,7 @@ Notes:
 - Generate `APP_KEY` locally:
   `php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"`
 - If you opt for Redis: set `CACHE_STORE=redis`, `SESSION_DRIVER=redis`, provide `REDIS_URL=redis://:password@host:6379`
+- Mixed content/CORS: keep `ASSET_URL` unset and rely on HTTPS via `FORCE_HTTPS=true` (default) which the app enforces in production.
 
 ## First deploy checklist
 
