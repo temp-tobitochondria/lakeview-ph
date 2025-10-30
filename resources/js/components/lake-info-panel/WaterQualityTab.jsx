@@ -77,8 +77,27 @@ function WaterQualityTab({ lake }) {
       const key = `public:sample-events:lake:${lakeId}:org:${org||''}:from:${fromEff||''}:to:${toEff||''}:lim:${lim}`;
       const TTL = 5 * 60 * 1000; // 5 minutes
       const cached = cache.get(key, { maxAgeMs: TTL });
-      if (cached && (!initialLoadedRef.current)) {
-        setTests(Array.isArray(cached) ? cached : []);
+      // Stale-while-revalidate: if we have cache, render it immediately and clear initial overlay
+      if (cached) {
+        const rowsCached = Array.isArray(cached) ? cached : [];
+        setTests(rowsCached);
+        if (!org) {
+          const uniq = new Map();
+          rowsCached.forEach((r) => {
+            const oid = r.organization_id ?? r.organization?.id;
+            const name = r.organization_name ?? r.organization?.name;
+            if (oid && name && !uniq.has(String(oid))) uniq.set(String(oid), { id: oid, name });
+          });
+          const list = Array.from(uniq.values());
+          setOrgs(list);
+          if ((!orgId || !list.some(o => String(o.id) === String(orgId))) && list.length > 0) {
+            setOrgId(String(list[0].id));
+          }
+        }
+        if (!initialLoadedRef.current) {
+          initialLoadedRef.current = true;
+          setInitialLoading(false);
+        }
       }
       const res = await apiPublic(`/public/sample-events${qs}`);
       const rows = Array.isArray(res?.data) ? res.data : [];

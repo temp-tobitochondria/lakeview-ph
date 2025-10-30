@@ -18,29 +18,31 @@ export default function TestsTab({ lake, onJumpToStation }) {
   const [orgId, setOrgId] = useState("");
   const [stations, setStations] = useState([]);
   const [stationId, setStationId] = useState("");
-  const [years, setYears] = useState([]);
-  const [yearFrom, setYearFrom] = useState("");
-  const [yearTo, setYearTo] = useState("");
+  const [years, setYears] = useState([]);        // available years for this lake
+  const [year, setYear] = useState("");         // selected single year (defaults to latest)
+  const [allRows, setAllRows] = useState([]);    // unfiltered raw rows for current lake
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
 
+  // Reset first-load marker when lake changes
+  useEffect(() => { initialLoadedRef.current = false; }, [lakeId]);
+
+  // Fetch for the current lake (stale-while-revalidate). Filtering happens in a separate effect.
   useEffect(() => {
-    if (!lakeId) { setTests([]); setOrgs([]); setStations([]); setYears([]); setInitialLoading(false); return; }
+    if (!lakeId) { setAllRows([]); setTests([]); setOrgs([]); setStations([]); setYears([]); setInitialLoading(false); return; }
     let mounted = true;
     (async () => {
-      // mark first-load
-      initialLoadedRef.current = false;
-      setInitialLoading(true);
+      if (!initialLoadedRef.current) setInitialLoading(true);
       setLoading(true);
       try {
         const qs = buildQuery({ lake_id: lakeId, limit: 500 });
         const key = `public:sample-events:lake:${lakeId}:limit:500`;
         const TTL = 5 * 60 * 1000; // 5 minutes
-        const cached = cache.get(key, { maxAgeMs: TTL });
-        if (cached) {
-          let rows = Array.isArray(cached) ? cached : [];
+
+        const applyRows = (rows) => {
           if (!mounted) return;
-          
+          setAllRows(rows);
+          // Derive orgs from all rows
           const uniqOrgs = new Map();
           rows.forEach((r) => {
             const oid = r.organization_id ?? r.organization?.id;
@@ -48,80 +50,99 @@ export default function TestsTab({ lake, onJumpToStation }) {
             if (oid && oname && !uniqOrgs.has(String(oid))) uniqOrgs.set(String(oid), { id: oid, name: oname });
           });
           setOrgs(Array.from(uniqOrgs.values()));
-        }
+
+          // Derive available years and default to latest if needed
+          const yearSet = new Set();
+          rows.forEach((r) => {
+            if (!r?.sampled_at) return;
+            const d = new Date(r.sampled_at); if (!isNaN(d)) yearSet.add(d.getFullYear());
+          });
+          const yearsArr = Array.from(yearSet).map(Number).sort((a,b) => b - a); // latest first
+          setYears(yearsArr);
+          if (yearsArr.length > 0) {
+            const latest = yearsArr[0];
+            if (!year || !yearsArr.includes(Number(year))) setYear(String(latest));
+          } else {
+            if (year) setYear("");
+          }
+
+          if (!initialLoadedRef.current) {
+            initialLoadedRef.current = true;
+            setInitialLoading(false);
+          }
+        };
+
+        // Serve from cache immediately if available
+        const cached = cache.get(key, { maxAgeMs: TTL });
+        if (cached) applyRows(Array.isArray(cached) ? cached : []);
+
+        // Always revalidate in background
         const res = await apiPublic(`/public/sample-events${qs}`);
         if (!mounted) return;
-        let rows = Array.isArray(res?.data) ? res.data : [];
+        const rows = Array.isArray(res?.data) ? res.data : [];
         cache.set(key, rows, { ttlMs: TTL });
-
-        const uniqOrgs = new Map();
-        rows.forEach((r) => {
-          const oid = r.organization_id ?? r.organization?.id;
-          const oname = r.organization_name ?? r.organization?.name;
-          if (oid && oname && !uniqOrgs.has(String(oid))) uniqOrgs.set(String(oid), { id: oid, name: oname });
-        });
-        setOrgs(Array.from(uniqOrgs.values()));
-
-        let filtered = rows.filter((r) => {
-          if (orgId) {
-            const oid = r.organization_id ?? r.organization?.id;
-            if (!oid || String(oid) !== String(orgId)) return false;
-          }
-          if (stationId) {
-            const sid = r.station?.id ?? null;
-            if (!sid || String(sid) !== String(stationId)) return false;
-          }
-          if (yearFrom || yearTo) {
-            if (!r.sampled_at) return false;
-            const d = new Date(r.sampled_at);
-            if (isNaN(d)) return false;
-            const y = d.getFullYear();
-            if (yearFrom && y < Number(yearFrom)) return false;
-            if (yearTo && y > Number(yearTo)) return false;
-          }
-          return true;
-        });
-
-        const uniqStations = new Map();
-        const uniqYears = new Set();
-        filtered.forEach((r) => {
-          const sid = r.station?.id ?? null;
-          const sname = r.station?.name ?? r.station_name ?? null;
-          if (sid && sname && !uniqStations.has(String(sid))) uniqStations.set(String(sid), { id: sid, name: sname });
-          if (r.sampled_at) {
-            const d = new Date(r.sampled_at);
-            if (!isNaN(d)) uniqYears.add(String(d.getFullYear()));
-          }
-        });
-        setStations(Array.from(uniqStations.values()));
-        setYears(Array.from(uniqYears).map((y) => Number(y)).sort((a,b) => a - b));
-
-        setTests(filtered);
-
-        if (stationId) {
-          const exists = Array.from(uniqStations.values()).some((s) => String(s.id) === String(stationId));
-          if (!exists) setStationId("");
-        }
-
-        const markers = filtered
-          .map((r) => {
-            const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
-            const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
-            if (lat == null || lon == null) return null;
-            return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null), stationId: r.station?.id, orgId: r.organization_id || r.organization?.id, lakeId: lakeId };
-          })
-          .filter(Boolean);
-        try {
-          window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } }));
-        } catch {}
+        applyRows(rows);
       } catch (e) {
         console.error('[TestsTab] failed to load', e);
         await alertError('Failed', e?.message || 'Could not load tests');
-        if (mounted) setTests([]);
-      } finally { if (mounted) { setLoading(false); if (!initialLoadedRef.current) { initialLoadedRef.current = true; setInitialLoading(false); } } }
+        if (mounted) { setAllRows([]); setTests([]); }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          if (!initialLoadedRef.current) { initialLoadedRef.current = true; setInitialLoading(false); }
+        }
+      }
     })();
     return () => { mounted = false; };
-  }, [lakeId, orgId, stationId, yearFrom, yearTo]);
+  }, [lakeId]);
+
+  // Derive filtered tests + stations and emit markers whenever filters or data change
+  useEffect(() => {
+    // Filter according to orgId, stationId and single year (if set)
+    let filtered = (allRows || []).filter((r) => {
+      if (orgId) {
+        const oid = r.organization_id ?? r.organization?.id;
+        if (!oid || String(oid) !== String(orgId)) return false;
+      }
+      if (stationId) {
+        const sid = r.station?.id ?? null;
+        if (!sid || String(sid) !== String(stationId)) return false;
+      }
+      if (year) {
+        if (!r.sampled_at) return false;
+        const d = new Date(r.sampled_at);
+        if (isNaN(d)) return false;
+        if (d.getFullYear() !== Number(year)) return false;
+      }
+      return true;
+    });
+
+    const uniqStations = new Map();
+    filtered.forEach((r) => {
+      const sid = r.station?.id ?? null;
+      const sname = r.station?.name ?? r.station_name ?? null;
+      if (sid && sname && !uniqStations.has(String(sid))) uniqStations.set(String(sid), { id: sid, name: sname });
+    });
+    const stationsArr = Array.from(uniqStations.values());
+    setStations(stationsArr);
+    if (stationId) {
+      const exists = stationsArr.some((s) => String(s.id) === String(stationId));
+      if (!exists) setStationId("");
+    }
+
+    setTests(filtered);
+
+    // Emit markers for the current filtered set
+    const markers = filtered
+      .map((r) => {
+        const lat = r.station?.latitude ?? r.station?.lat ?? r.latitude ?? r.lat ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[1] : null) : null);
+        const lon = r.station?.longitude ?? r.station?.lon ?? r.longitude ?? r.lon ?? (r.point?.coordinates ? (Array.isArray(r.point.coordinates) ? r.point.coordinates[0] : null) : null);
+        if (lat == null || lon == null) return null;
+        return { lat: Number(lat), lon: Number(lon), label: (r.station?.name || null), stationId: r.station?.id, orgId: r.organization_id || r.organization?.id, lakeId: lakeId };
+      })
+      .filter(Boolean);
+    try { window.dispatchEvent(new CustomEvent('lv-wq-markers', { detail: { markers } })); } catch {}
+  }, [allRows, orgId, stationId, year, lakeId]);
 
   useEffect(() => {
     const onRequest = async () => {
@@ -191,21 +212,11 @@ export default function TestsTab({ lake, onJumpToStation }) {
               <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Station</label>
               <StationSelect options={stations} value={stationId} onChange={(e) => setStationId(e.target.value)} includeAllOption={true} allValue="" allLabel="All Stations" showPlaceholder={false} style={{ padding: '6px 8px', height: 'auto' }} />
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
-              <div className="form-group" style={{ minWidth: 0 }}>
-                <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Year from</label>
-                <select value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} style={{ padding: '6px 8px' }}>
-                  <option value="">Any</option>
-                  {years.map((y) => (<option key={`f-${y}`} value={String(y)}>{y}</option>))}
-                </select>
-              </div>
-              <div className="form-group" style={{ minWidth: 0 }}>
-                <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Year to</label>
-                <select value={yearTo} onChange={(e) => setYearTo(e.target.value)} style={{ padding: '6px 8px' }}>
-                  <option value="">Any</option>
-                  {years.map((y) => (<option key={`t-${y}`} value={String(y)}>{y}</option>))}
-                </select>
-              </div>
+            <div className="form-group" style={{ minWidth: 0 }}>
+              <label style={{ fontSize: 11, marginBottom: 2, color: '#fff' }}>Year</label>
+              <select value={year} onChange={(e) => setYear(e.target.value)} style={{ padding: '6px 8px' }}>
+                {years.map((y) => (<option key={`y-${y}`} value={String(y)}>{y}{years[0] === y ? ' (latest)' : ''}</option>))}
+              </select>
             </div>
           </div>
           {loading && (
@@ -213,7 +224,7 @@ export default function TestsTab({ lake, onJumpToStation }) {
               <LoadingSpinner label="Loading tests…" color="#fff" />
             </div>
           )}
-          {!loading && tests.length === 0 && <div className="insight-card"><em>No tests match your filters. Try clearing filters or expanding the date range.</em></div>}
+          {!loading && tests.length === 0 && <div className="insight-card"><em>No tests match your filters. Try a different dataset source, station, or year.</em></div>}
         {tests.map((t) => (
           <div className="insight-card" key={t.id}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
