@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 // Use shared authenticated API client (adds Bearer token automatically)
 import api from '../../lib/api';
+import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { FiDatabase, FiUploadCloud, FiPlayCircle, FiStar, FiTrash2 } from 'react-icons/fi';
 import DashboardHeader from '../../components/DashboardHeader';
@@ -25,13 +26,15 @@ export default function AdminPopulationData() {
   const pollRef = useRef(null);
 
   // showError: whether errors should be surfaced to the UI (we avoid showing on initial auto-load)
-  const load = useCallback(async (showError = false) => {
+  const load = useCallback(async (showError = false, fresh = false) => {
     setLoading(true);
     if (showError) setError('');
     try {
       const params = {};
       if (yearFilter) params.year = yearFilter;
-      const resp = await api.get('/admin/population-rasters', { params });
+      const resp = fresh
+        ? await api.get('/admin/population-rasters', { params })
+        : await cachedGet('/admin/population-rasters', { params, ttlMs: 5 * 60 * 1000 });
       // resp is the parsed JSON body: { data: [...] }
       const list = Array.isArray(resp?.data) ? resp.data : [];
       setRows(list.filter(Boolean));
@@ -51,7 +54,7 @@ export default function AdminPopulationData() {
   useEffect(() => {
     const anyIngesting = rows.some(r => r.status === 'ingesting');
     if (anyIngesting && !pollRef.current) {
-      pollRef.current = setInterval(() => load(false), 5000);
+      pollRef.current = setInterval(() => load(false, true), 5000);
     } else if (!anyIngesting && pollRef.current) {
       clearInterval(pollRef.current); pollRef.current = null;
     }
@@ -75,7 +78,8 @@ export default function AdminPopulationData() {
       const created = resp?.data || null;
       setRows(r => [created, ...r].filter(Boolean));
       // Also refresh from server to ensure we reflect canonical DB state
-      await load(true);
+      try { invalidateHttpCache('/admin/population-rasters'); } catch {}
+      await load(true, true);
       // show a success toast
       Swal.fire({
         toast: true,
@@ -141,8 +145,9 @@ export default function AdminPopulationData() {
     setActingIds(a => ({ ...a, [id]: 'makingDefault' }));
     try {
   await api.post(`/admin/population-rasters/${id}/make-default`);
+      try { invalidateHttpCache('/admin/population-rasters'); } catch {}
       // Force a refresh to pick up catalog changes (and possibly ready status)
-      await load(true);
+      await load(true, true);
       Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Set as default', showConfirmButton: false, timer: 2000 });
     } catch (e) {
       const msg = e?.response?.data?.message || 'Failed to make default';
@@ -168,6 +173,7 @@ export default function AdminPopulationData() {
     try {
   await api.delete(`/admin/population-rasters/${id}`);
       setRows(rs => rs.filter(r => r.id !== id));
+      try { invalidateHttpCache('/admin/population-rasters'); } catch {}
       Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Deleted', showConfirmButton: false, timer: 1800 });
     } catch (e) {
       const msg = e?.response?.data?.message || 'Failed to delete raster';

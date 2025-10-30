@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { api } from "../lib/api";
+import { cachedGet } from "../lib/httpCache";
 
 const EMPTY = {
   id: null,
@@ -41,8 +42,8 @@ export default function LakeForm({
   const [municipalityFiltered, setMunicipalityFiltered] = useState([]);
 
   useEffect(() => {
-    // Fetch existing regions, provinces, municipalities from lakes
-    api('/lakes').then(res => {
+    // Fetch existing regions, provinces, municipalities from lakes via shared cache
+    cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false }).then(res => {
       const lakes = res.data || res || [];
       const allRegions = new Set();
       const allProvinces = new Set();
@@ -178,7 +179,6 @@ export default function LakeForm({
             onChange={(e) => setForm({ ...form, flows_status: e.target.value })}
             disabled={form.flows_status === 'present'}
           >
-            <option value="present">Exists</option>
             <option value="none">None</option>
             <option value="unknown">Not yet recorded</option>
           </select>
@@ -437,4 +437,3 @@ function CoordinatePickToggle({ form, setForm }) {
     </div>
   );
 }
-

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import api from "../lib/api";
+import { cachedGet, invalidateHttpCache } from "../lib/httpCache";
 import Modal from "./Modal";
 import Swal from "sweetalert2";
 import LoadingSpinner from "./LoadingSpinner";
@@ -30,9 +31,9 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 		try {
 			const promises = [];
 			// Members: reuse admin users index filtered by tenant_id and roles
-			promises.push(api.get('/admin/users', { params: { tenant_id: org.id } }).catch(() => ({ data: { data: [] } })));
+			promises.push(cachedGet('/admin/users', { params: { tenant_id: org.id }, ttlMs: 5 * 60 * 1000 }).catch(() => ({ data: { data: [] } })));
 			// Public users list
-			promises.push(api.get('/admin/users', { params: { role: 'public', tenant_null: true } }).catch(() => ({ data: { data: [] } })));
+			promises.push(cachedGet('/admin/users', { params: { role: 'public', tenant_null: true }, ttlMs: 5 * 60 * 1000 }).catch(() => ({ data: { data: [] } })));
 			const [membersRes, publicRes] = await Promise.all(promises);
 			const mm = Array.isArray(membersRes?.data?.data) ? membersRes.data.data : (Array.isArray(membersRes?.data) ? membersRes.data : []);
 			setMembers(mm.filter(u => ['org_admin','contributor'].includes(u.role)));
@@ -59,6 +60,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 		if (!ok) return;
 		try {
 			await api.delete(`/admin/tenants/${org.id}/admins/${user.id}`);
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire("Removed", `${user.name} removed.`, "success");
 		} catch (e) {
@@ -85,6 +87,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 				role: "org_admin",
 				tenant_id: org.id
 			});
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire("Updated", "User info updated.", "success");
 			closeEdit();
@@ -99,6 +102,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 	const promoteToAdmin = async (user) => {
 		try {
 			await api.put(`/admin/users/${user.id}`, { role: 'org_admin', tenant_id: org.id, name: user.name, email: user.email });
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire('Promoted','User is now an organization admin.','success');
 		} catch (e) {
@@ -108,6 +112,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 	const demoteToContributor = async (user) => {
 		try {
 			await api.put(`/admin/users/${user.id}`, { role: 'contributor', tenant_id: org.id, name: user.name, email: user.email });
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire('Updated','User is now a contributor.','success');
 		} catch (e) {
@@ -119,6 +124,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 		if (!ok) return;
 		try {
 			await api.put(`/admin/users/${user.id}`, { role: 'public', tenant_id: null, name: user.name, email: user.email });
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire('Removed','User removed from organization.','success');
 		} catch (e) {
@@ -130,6 +136,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 	const addAsContributor = async (user) => {
 		try {
 			await api.put(`/admin/users/${user.id}`, { role: 'contributor', tenant_id: org.id, name: user.name || user.email, email: user.email });
+			try { invalidateHttpCache('/admin/users'); } catch {}
 			await fetchTabs();
 			Swal.fire('Added','User added as contributor.','success');
 		} catch (e) {

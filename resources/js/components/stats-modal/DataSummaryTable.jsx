@@ -6,6 +6,7 @@ import useStationsCache from './hooks/useStationsCache';
 import useSampleEvents from './hooks/useSampleEvents';
 import LoadingSpinner from '../LoadingSpinner';
 import api, { getToken } from '../../lib/api';
+import { cachedGet } from '../../lib/httpCache';
 import LakeSelect from './ui/LakeSelect';
 import OrgSelect from './ui/OrgSelect';
 
@@ -277,7 +278,7 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
         // fallback to generic API
       }
       try {
-        const res = await api('/lakes');
+        const res = await cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false });
         if (!mounted) return;
         const list = Array.isArray(res) ? res : (res?.data || []);
         setLakeOptions(list);

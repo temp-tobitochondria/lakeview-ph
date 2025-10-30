@@ -280,7 +280,7 @@ function ManageLakesTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await cachedGet("/lakes", { ttlMs: 10 * 60 * 1000 });
+      const data = await cachedGet("/lakes", { ttlMs: 10 * 60 * 1000, auth: false });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setAllLakes(normalizeRows(list));
     } catch (err) {

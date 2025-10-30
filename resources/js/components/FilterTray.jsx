@@ -1,5 +1,6 @@
 // resources/js/components/FilterTray.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { cachedGet } from "../lib/httpCache";
 
 function NumberInput({ label, value, onChange, placeholder }) {
   return (
@@ -55,12 +56,11 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     (async () => {
       setLoading(true); setLoadError("");
       try {
-        const [classesRes, lakesRes] = await Promise.all([
-          fetch('/api/options/water-quality-classes'),
-          fetch('/api/lakes'),
+        // Use shared HTTP cache to persist across pages (public/admin)
+        const [classesJson, lakesJson] = await Promise.all([
+          cachedGet('/options/water-quality-classes', { ttlMs: 60 * 60 * 1000, auth: false }),
+          cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false }),
         ]);
-        const classesJson = await classesRes.json().catch(() => ([]));
-        const lakesJson = await lakesRes.json().catch(() => ([]));
 
         if (!alive) return;
 
