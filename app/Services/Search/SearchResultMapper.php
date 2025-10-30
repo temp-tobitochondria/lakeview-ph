@@ -57,10 +57,7 @@ class SearchResultMapper
                         }
                     }
                 }
-                if ($areaNum === null && isset($row['area_km2_from_layer']) && is_numeric($row['area_km2_from_layer'])) {
-                    $areaNum = (float)$row['area_km2_from_layer'];
-                    $unit = 'km²';
-                }
+                // Do not fall back to layer-derived area; only trust values from lakes table
 
                 $metricText = '';
                 if ($attributeUsed && isset($row['metric_value']) && is_numeric($row['metric_value'])) {

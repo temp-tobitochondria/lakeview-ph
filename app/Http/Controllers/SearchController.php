@@ -107,9 +107,7 @@ class SearchController extends Controller
                     if ($areaNum === null) {
                         foreach (['surface_area_ha','area_ha'] as $k) { if (isset($row[$k]) && is_numeric($row[$k])) { $areaNum = (float)$row[$k]; $unit='ha'; break; } }
                     }
-                    if ($areaNum === null && isset($row['area_km2_from_layer']) && is_numeric($row['area_km2_from_layer'])) {
-                        $areaNum = (float)$row['area_km2_from_layer']; $unit='km²';
-                    }
+                    // Do not fall back to layer-derived area; rely only on lakes table fields
                     // Analytical metric inclusion (depth/elevation/area/shoreline)
                     $metricText = '';
                     if ($attributeUsed && isset($row['metric_value']) && is_numeric($row['metric_value'])) {

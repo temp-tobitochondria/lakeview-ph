@@ -15,21 +15,16 @@ class AttributeSearchService
         $cacheKey = sprintf('attr:%s:%s:%s:%d', $entity, md5($q), md5((string)$place), $limit);
         return Cache::remember($cacheKey, now()->addMinutes(2), function () use ($entity, $q, $place, $limit) {
             $kw = '%' . trim($q) . '%';
-            $hasLayerGeom = Schema::hasColumn('layers', 'geom');
             $rows = [];
             if ($entity === 'lakes') {
                 $hasLakeKeyword = (bool)preg_match('/\blakes?\b/i', $q);
-                $areaExpr = $hasLayerGeom
-                    ? "(CASE WHEN ly.geom IS NOT NULL THEN ST_Area(ly.geom::geography)/1000000.0 ELSE NULL END)"
-                    : "NULL::double precision";
                 $sql = <<<SQL
 SELECT l.id,
        COALESCE(NULLIF(l.name, ''), NULLIF(l.alt_name, ''), 'Lake') AS name,
        l.class_code, l.region, l.province,
-       {$areaExpr} AS area_km2_from_layer,
+       l.surface_area_km2,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson
 FROM lakes l
-LEFT JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.is_active=true AND ly.visibility='public'
 WHERE (
     l.name ILIKE :kwName OR
     l.alt_name ILIKE :kwName OR
@@ -49,6 +44,7 @@ SQL;
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'lakes', null, $place);
             } elseif ($entity === 'watersheds') {
+                $hasLayerGeom = Schema::hasColumn('layers', 'geom');
                 $geomExpr = $hasLayerGeom
                     ? "CASE WHEN ly.geom IS NOT NULL THEN ST_AsGeoJSON(ly.geom) ELSE NULL END"
                     : "NULL::text";
@@ -72,6 +68,7 @@ SQL;
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'watersheds', null, $place);
             } elseif ($entity === 'layers') {
+                $hasLayerGeom = Schema::hasColumn('layers', 'geom');
                 $geomExpr2 = $hasLayerGeom
                     ? "CASE WHEN ly.geom IS NOT NULL THEN ST_AsGeoJSON(ly.geom) ELSE NULL END"
                     : "NULL::text";

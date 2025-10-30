@@ -22,15 +22,15 @@ class AnalyticalSearchService
             if ($place) $params['place'] = '%' . $place . '%';
 
             if ($metric === 'area_m2') {
+                // Derive area from lakes table (surface_area_km2), convert to m² for metric_value
                 $sql = <<<SQL
 SELECT l.id,
        COALESCE(NULLIF(l.name, ''), NULLIF(l.alt_name, ''), 'Lake') AS name,
        l.region, l.province,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson,
-       ST_Area(ly.geom::geography) AS metric_value
+       (l.surface_area_km2 * 1000000.0) AS metric_value
 FROM lakes l
-LEFT JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.is_active=true AND ly.visibility='public'
-WHERE ly.geom IS NOT NULL
+WHERE l.surface_area_km2 IS NOT NULL
 SQL;
             } elseif ($metric === 'shoreline_m') {
                 $sql = <<<SQL
