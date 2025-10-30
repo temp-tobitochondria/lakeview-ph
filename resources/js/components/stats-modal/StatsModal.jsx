@@ -7,9 +7,13 @@ import Modal from "../Modal";
 import SingleLake from "./SingleLake";
 import CompareLake from "./CompareLake";
 import AdvancedStat from "./AdvancedStat";
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement } from "chart.js";
+import { yearLabelPlugin } from "./utils/shared";
+import { exportAndDownload } from "./utils/exportChart";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, BarElement);
+// Ensure custom plugins used by charts are registered in this module too
+try { ChartJS.register(yearLabelPlugin); } catch {}
 
 export default function StatsModal({ open, onClose, title = "Lake Statistics" }) {
   const modalStyle = {
@@ -114,21 +118,12 @@ export default function StatsModal({ open, onClose, title = "Lake Statistics" })
     const ref = activeTab === "single" ? singleChartRef : compareChartRef;
     const inst = ref?.current;
     if (!inst) return;
-    try {
-      const url = inst.toBase64Image ? inst.toBase64Image() : inst.canvas?.toDataURL("image/png");
-      if (!url) return;
-      const lakeName = lakeOptions.find((l) => String(l.id) === String(selectedLake))?.name || "lake";
-      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      const label = activeTab === "single"
-        ? `${lakeName}-${selectedParam || "param"}`
-        : `compare-${compareSelectedParam || "param"}`;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `stats-${label}-${ts}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {}
+    const lakeName = lakeOptions.find((l) => String(l.id) === String(selectedLake))?.name || "lake";
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const label = activeTab === "single"
+      ? `${lakeName}-${selectedParam || "param"}`
+      : `compare-${compareSelectedParam || "param"}`;
+    exportAndDownload(inst, `stats-${label}-${ts}.png`);
   };
 
   const ensureAuthOrPrompt = useCallback(async () => {
