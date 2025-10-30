@@ -307,7 +307,7 @@ function WaterQualityTab({ lake }) {
 
 
             return (
-              <div className="insight-card" style={{ backgroundColor: '#0f172a' }}>
+              <div key={p.id ?? p.code ?? title} className="insight-card" style={{ backgroundColor: '#0f172a' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <h4 style={{ margin: 0 }}>{title}</h4>
                   <div style={{ display: 'flex', gap: 6 }}>

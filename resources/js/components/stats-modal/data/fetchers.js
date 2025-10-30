@@ -96,18 +96,21 @@ export async function fetchStationsForLake({ lakeId, from, to, limit = 1000, org
   const key = `stations:${lakeId}|${from||''}|${to||''}|${limit}|${organizationId||''}`;
   const cached = _getCache(key);
   if (cached) return cached.slice();
-  // Attempt admin stations
-  try {
-    const res = await api(`/admin/stations?lake_id=${encodeURIComponent(lakeId)}`);
-    const list = Array.isArray(res?.data) ? res.data : [];
-    const normalized = list.map((s) => {
-      const latRaw = s.latitude ?? s.lat ?? null;
-      const lngRaw = s.longitude ?? s.lng ?? null;
-      const name = s.name || (latRaw != null && lngRaw != null ? `${Number(latRaw).toFixed(6)}, ${Number(lngRaw).toFixed(6)}` : `Station ${s.id || ''}`);
-      return name;
-    });
-    if (normalized.length) { _setCache(key, normalized); return normalized.slice(); }
-  } catch {}
+  // Attempt admin stations only when an organization context is provided
+  if (organizationId && api.getToken && api.getToken()) {
+    try {
+      const qs = buildQuery({ lake_id: lakeId, organization_id: organizationId });
+      const res = await api(`/admin/stations${qs}`);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      const normalized = list.map((s) => {
+        const latRaw = s.latitude ?? s.lat ?? null;
+        const lngRaw = s.longitude ?? s.lng ?? null;
+        const name = s.name || (latRaw != null && lngRaw != null ? `${Number(latRaw).toFixed(6)}, ${Number(lngRaw).toFixed(6)}` : `Station ${s.id || ''}`);
+        return name;
+      });
+      if (normalized.length) { _setCache(key, normalized); return normalized.slice(); }
+    } catch {}
+  }
   // Fallback to sample events
   try {
   const qs = buildQuery({ lake_id: lakeId, sampled_from: from || undefined, sampled_to: to || undefined, limit, organization_id: organizationId || undefined });
