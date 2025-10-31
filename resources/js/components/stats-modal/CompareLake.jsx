@@ -49,6 +49,9 @@ function CompareLake({
   const [selectedParam, setSelectedParam] = useState("");
   const { events: eventsA, loading: loadingA } = useSampleEvents(lakeA, selectedOrgA, timeRange, dateFrom, dateTo);
   const { events: eventsB, loading: loadingB } = useSampleEvents(lakeB, selectedOrgB, timeRange, dateFrom, dateTo);
+  // Unfiltered events to drive bar charts and year lists independent of the current time range
+  const { events: eventsAAll } = useSampleEvents(lakeA, selectedOrgA, 'all', '', '');
+  const { events: eventsBAll } = useSampleEvents(lakeB, selectedOrgB, 'all', '', '');
   const loading = loadingA || loadingB;
   // Station identifiers are required for all datasets
   const hasStationIdsA = true;
@@ -346,7 +349,16 @@ function CompareLake({
     return base;
   }, [paramList, selectedParam]);
 
-  const barData = useCompareBarData({ eventsA: eventsAFiltered, eventsB: eventsBFiltered, bucket, selectedYears, depth: depthSelection, selectedParam, lakeA, lakeB, lakeOptions });
+  const barData = useCompareBarData({ eventsA: eventsAAll, eventsB: eventsBAll, bucket, selectedYears, depth: depthSelection, selectedParam, lakeA, lakeB, lakeOptions });
+
+  // Since custom year selection is removed from Time Series, prevent lingering 'custom'
+  useEffect(() => {
+    if (chartType === 'time' && timeRange === 'custom') {
+      setTimeRange('all');
+      setDateFrom('');
+      setDateTo('');
+    }
+  }, [chartType, timeRange]);
 
   const canShowInfo = useMemo(() => {
     if (!applied) return false;
@@ -470,6 +482,7 @@ function CompareLake({
                 dateTo={dateTo}
                 setDateTo={setDateTo}
                 availableYears={availableYears}
+                includeCustom={false}
               />
             )}
             {chartType === 'bar' && (

@@ -9,7 +9,6 @@ import { eventStationName } from "./utils/dataUtils";
 import { lakeName, lakeClass, baseLineChartOptions, normalizeDepthDatasets, yearLabelPlugin } from "./utils/shared";
 import useSampleEvents from "./hooks/useSampleEvents";
 import useStationsCache from "./hooks/useStationsCache";
-// useSummaryStats removed
 import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
 import useSingleBarData from "./hooks/useSingleBarData";
@@ -148,7 +147,17 @@ export default function SingleLake({
     } catch (e) { /* noop */ }
   }, [seriesMode, depthOptions]);
 
-  const barData = useSingleBarData({ events, bucket, selectedYears, depth: depthSelection, selectedParam, lake: selectedLake, lakeOptions, seriesMode, selectedStations });
+  // Bar charts ignore the time-series range; years selection drives grouping.
+  const barData = useSingleBarData({ events: eventsAll, bucket, selectedYears, depth: depthSelection, selectedParam, lake: selectedLake, lakeOptions, seriesMode, selectedStations });
+
+  // Since custom range is removed from Time Series, force a safe preset if lingering
+  useEffect(() => {
+    if (chartType === 'time' && timeRange === 'custom') {
+      setTimeRange('all');
+      setDateFrom('');
+      setDateTo('');
+    }
+  }, [chartType, timeRange]);
 
   // Resolve parameter metadata (label/name/unit) for labeling axes
   const selectedParamMeta = useMemo(() => {
@@ -441,6 +450,7 @@ export default function SingleLake({
               dateTo={dateTo}
               setDateTo={setDateTo}
               availableYears={availableYears}
+              includeCustom={false}
             />
           )}
 

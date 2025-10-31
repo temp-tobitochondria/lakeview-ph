@@ -66,13 +66,43 @@ export function exportChartToDataUrl(inst, { format = 'image/png', scale = 1, ba
     const pxW = Math.max(1, Math.round(cssW * dpr * (scale || 1)));
     const pxH = Math.max(1, Math.round(cssH * dpr * (scale || 1)));
 
-    const off = document.createElement('canvas');
-    off.width = pxW;
-    off.height = pxH;
+  const off = document.createElement('canvas');
+  off.width = pxW;
+  off.height = pxH;
 
     const data = deepClone(inst.config?.data || inst.data || {});
     const type = inst.config?.type || 'line';
     const lightOptions = buildLightOptions(inst.options || {});
+
+    // Simplify legends for exported bar charts to avoid clutter:
+    // - Show only threshold lines (dataset.type === 'line') in legend
+    // - If no line datasets exist, hide legend entirely
+    try {
+      if (String(type).toLowerCase() === 'bar') {
+        const dsets = Array.isArray(data?.datasets) ? data.datasets : [];
+        const hasLine = dsets.some((ds) => ds && ds.type === 'line');
+        lightOptions.plugins = lightOptions.plugins || {};
+        lightOptions.plugins.legend = lightOptions.plugins.legend || {};
+        if (hasLine) {
+          lightOptions.plugins.legend.display = true;
+          const prevLabels = lightOptions.plugins.legend.labels || {};
+          lightOptions.plugins.legend.labels = {
+            ...prevLabels,
+            // keep labels in dark for export; filter to only line datasets
+            filter: (legendItem, chartData) => {
+              try {
+                const ds = chartData?.datasets?.[legendItem.datasetIndex];
+                return !!(ds && ds.type === 'line');
+              } catch {
+                return false;
+              }
+            },
+          };
+        } else {
+          lightOptions.plugins.legend.display = false;
+        }
+      }
+    } catch {}
 
     // Background painter
     const bgWhitePlugin = {
@@ -129,4 +159,3 @@ export default {
   downloadDataUrl,
   exportAndDownload,
 };
-
