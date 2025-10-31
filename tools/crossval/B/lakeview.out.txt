@@ -1,0 +1,21 @@
+- Section: Test B — Summary
+- Shapiro–Wilk (Lake A): n=47.000000, W=0.865421, p_value=<0.001 (p=0.0000674345588614; 6.74e-5), normal=false
+- Shapiro–Wilk (Lake B): n=12.000000, W=0.961358, p_value=0.803032, normal=true
+- Levene (A vs B): method=Levene (Brown-Forsythe median-centered), F=3.785995, df1=1.000000, df2=57.000000, p_value=0.056620, equal_variances=true
+- Seasonal MK: n_wet=1.000000, n_dry=2.000000, S=1.000000, Var=1.000000, Z=0.000000, p_value=>0.999 (p=1.000000), direction=No trend
+- Sen’s slope: slope_per_year=1.500000, intercept=-3034.000000
+- One-sample t (two-sided): n=47.000000, mean=2.851064, sd=1.444310, df=46.000000, t=-19.693607, p_value=<0.001 (p=0.00000000000; 0.00e+0), rejected=undefined
+- Wilcoxon signed-rank (two-sided): n=46.000000, statistic=0.000000, p_value=<0.001 (p=2.44929521109e-9; 2.45e-9), rejected=true
+- Sign test (two-sided): n=46.000000, k_positive=0.000000, k_negative=46.000000, p_value=<0.001 (p=2.84217094304e-14; 2.84e-14), significant=true
+- One-sample t (greater): n=47.000000, mean=2.851064, sd=1.444310, df=46.000000, t=-19.693607, p_value=>0.999 (p=1.000000), rejected=undefined
+- Wilcoxon signed-rank (greater): n=46.000000, statistic=0.000000, p_value=>0.999 (p=1.000000), rejected=false
+- Sign test (greater): n=46.000000, k_positive=0.000000, k_negative=46.000000, p_value=>0.999 (p=1.000000), significant=false
+- One-sample t (less): n=47.000000, mean=2.851064, sd=1.444310, df=46.000000, t=-19.693607, p_value=<0.001 (p=2.37320454966e-24; 2.37e-24), rejected=undefined
+- Wilcoxon signed-rank (less): n=46.000000, statistic=0.000000, p_value=<0.001 (p=1.22464764558e-9; 1.22e-9), rejected=true
+- Sign test (less): n=46.000000, k_positive=0.000000, k_negative=46.000000, p_value=<0.001 (p=1.42108547152e-14; 1.42e-14), significant=true
+- TOST t: n=47.000000, mean=8.370213, sd=0.567571, df=46.000000, t1=22.590181, t2=7.607160, p_lower=<0.001 (p=0.00000000000; 0.00e+0), p_upper=<0.001 (p=5.64323587859e-10; 5.64e-10), p_max=<0.001 (p=5.64323587859e-10; 5.64e-10), equivalent=true
+- TOST Wilcoxon: n=47.000000, median=8.400000, mean=8.370213, sd=0.567571, w_lower=1128.000000, w_upper=66.000000, p_lower=<0.001 (p=1.21623611182e-9; 1.22e-9), p_upper=<0.001 (p=1.09355091772e-7; 1.09e-7), p_max=<0.001 (p=1.09355091772e-7; 1.09e-7), equivalent=true
+- Student t-test: n1=47.000000, n2=12.000000, mean1=2.851064, mean2=3.791667, sd1=1.444310, sd2=0.510718, t=-2.208616, df=57.000000, p_value=0.031238, significant=true
+- Welch t-test: n1=47.000000, n2=12.000000, mean1=2.851064, mean2=3.791667, sd1=1.444310, sd2=0.510718, t=-3.657974, df=50.968573, p_value=<0.001 (p=0.000602592467291; 6.03e-4), significant=true
+- Mann–Whitney U: n1=47.000000, n2=12.000000, U=141.500000, U1=141.500000, U2=422.500000, z=-2.696971, p_value=0.006997, significant=true
+- Mood’s median: median_global=3.000000, chi2=17.853428, df=1.000000, p_value=<0.001 (p=0.0000238589092056; 2.39e-5), significant=true

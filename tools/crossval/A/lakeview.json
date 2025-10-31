@@ -1,0 +1,15 @@
+{
+  "Shapiro-Wilk": "<0.001 (p=6.74324585896e-10; 6.74e-10)",
+  "Levene (Brown-Forsythe)": "0.006851",
+  "Seasonal Mann-Kendall": "0.022887",
+  "Sen's Slope": "N/A",
+  "One Sample t-test (Less)": "0.116521",
+  "Wilcoxon Signed-Rank (Less)": "0.002562",
+  "Sign Test (Less)": "<0.001 (p=0.000383382494871; 3.83e-4)",
+  "Equivalence TOST t": "<0.001 (p=0.00000000000; 0.00e+0)",
+  "Equivalence TOST Wilcoxon": "<0.001 (p=4.52391331904e-15; 4.52e-15)",
+  "Student t-test": "<0.001 (p=0.00000316326693395; 3.16e-6)",
+  "Welch t-test": "<0.001 (p=0.00000890636764650; 8.91e-6)",
+  "Mann-Whitney U": "<0.001 (p=9.21042837554e-8; 9.21e-8)",
+  "Mood's Median": "<0.001 (p=3.18556692025e-7; 3.19e-7)"
+}
