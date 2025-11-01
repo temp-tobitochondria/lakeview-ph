@@ -77,3 +77,22 @@ export async function alertWarning(title = 'Warning', text = '') {
 export async function alertInfo(title = 'Info', text = '') {
   return ReactSwal.fire({ icon: 'info', title, text, customClass });
 }
+
+// Show a blocking loading modal; caller should call closeLoading() when done
+export async function showLoading(title = 'Loading', text = 'Please wait...') {
+  return ReactSwal.fire({
+    title,
+    text,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    showConfirmButton: false,
+    didOpen: () => {
+      ReactSwal.showLoading();
+    },
+    customClass,
+  });
+}
+
+export function closeLoading() {
+  try { ReactSwal.close(); } catch {}
+}

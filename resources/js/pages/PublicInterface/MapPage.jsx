@@ -32,6 +32,8 @@ import { usePublicLakes } from "./hooks/usePublicLakes";
 import { useLakeSelection } from "./hooks/useLakeSelection";
 import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
+import { alertError, showLoading, closeLoading } from "../../lib/alerts";
+import { getFlowpath, getWatershed } from "../../lib/globalWatersheds";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 import AboutData from "./AboutData";
 import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
@@ -212,6 +214,10 @@ function MapPage() {
   const location = useLocation();
   const mapRef = useRef(null);
   const flowsRef = useRef({});
+  // Global Watersheds API overlays
+  const [gwWatershedFC, setGwWatershedFC] = useState(null);
+  const [gwRiversFC, setGwRiversFC] = useState(null);
+  const [gwFlowpathFC, setGwFlowpathFC] = useState(null);
   // ---------------- Auth / route modal (centralized auth state) ----------------
   const { userRole, authUser, authOpen, authMode, openAuth, closeAuth, setAuthMode } = useAuthRole();
 
@@ -406,6 +412,49 @@ function MapPage() {
     };
   }, [sidebarPinned, location.pathname]);
 
+  // ---------------- Global Watersheds API integration ----------------
+  const fitToGeoJSON = (fc) => {
+    try {
+      if (!mapRef.current || !fc) return;
+      const gjLayer = L.geoJSON(fc);
+      const b = gjLayer.getBounds();
+      if (b?.isValid?.()) {
+        mapRef.current.fitBounds(b, { padding: [24,24], maxZoom: 13 });
+      }
+    } catch {}
+  };
+
+  const handleTraceFlowPath = async (latlng) => {
+    if (!latlng) return;
+    const zoom = mapRef.current?.getZoom?.() ?? 2;
+    try {
+      showLoading('Tracing flow path…', ' Getting flow path data');
+      const fc = await getFlowpath({ lat: latlng.lat, lng: latlng.lng, zoom });
+      setGwFlowpathFC(fc); // replace previous
+      fitToGeoJSON(fc);
+    } catch (e) {
+      await alertError('Flow path error', e?.message || 'Unable to fetch flow path.');
+    } finally {
+      closeLoading();
+    }
+  };
+
+  const handleDelineateWatershed = async (latlng) => {
+    if (!latlng) return;
+    const zoom = mapRef.current?.getZoom?.() ?? 2;
+    try {
+      showLoading('Delineating watershed…', 'Getting watershed data');
+      const { watershed, rivers } = await getWatershed({ lat: latlng.lat, lng: latlng.lng, zoom, includeRivers: true });
+      setGwWatershedFC(watershed);
+      setGwRiversFC(rivers || null);
+      fitToGeoJSON(watershed);
+    } catch (e) {
+      await alertError('Watershed error', e?.message || 'Unable to delineate watershed.');
+    } finally {
+      closeLoading();
+    }
+  };
+
   return (
     <div className={themeClass} style={{ height: "100vh", width: "100vw", margin: 0, padding: 0, position: 'relative' }}>
   <AppMap view={selectedView} zoomControl={false} showPostgisContours={showContours} showContourLabels={showContourLabels} whenCreated={(m) => { mapRef.current = m; try { window.lv_map = m; } catch {} }}>
@@ -431,6 +480,32 @@ function MapPage() {
               const nm = feat?.properties?.name || 'Watershed';
               layer.bindTooltip(nm, { sticky: true });
             }}
+          />
+        )}
+
+        {/* Global Watersheds API results */}
+        {gwWatershedFC && (
+          <GeoJSON
+            key={`gw-ws-${JSON.stringify(gwWatershedFC).length}`}
+            data={gwWatershedFC}
+            style={{ color: 'green', weight: 5, fillColor: 'green', fillOpacity: 0.15 }}
+            onEachFeature={(feat, layer) => { try { layer.bringToFront(); } catch {} }}
+          />
+        )}
+        {gwRiversFC && (
+          <GeoJSON
+            key={`gw-rv-${JSON.stringify(gwRiversFC).length}`}
+            data={gwRiversFC}
+            style={{ color: '#1976d2', weight: 2.5, opacity: 0.9 }}
+            onEachFeature={(feat, layer) => { try { layer.bringToFront(); } catch {} }}
+          />
+        )}
+        {gwFlowpathFC && (
+          <GeoJSON
+            key={`gw-fp-${JSON.stringify(gwFlowpathFC).length}`}
+            data={gwFlowpathFC}
+            style={{ color: 'cyan', weight: 5, opacity: 0.95 }}
+            onEachFeature={(feat, layer) => { try { layer.bringToFront(); } catch {} }}
           />
         )}
 
@@ -496,6 +571,8 @@ function MapPage() {
               onMeasureDistance={() => { setMeasureMode("distance"); setMeasureActive(true); }}
               onMeasureArea={() => { setMeasureMode("area"); setMeasureActive(true); }}
               onElevationProfile={() => { setProfileActive(true); setMeasureActive(false); }}
+              onTraceFlowPath={handleTraceFlowPath}
+              onDelineateWatershed={handleDelineateWatershed}
             />
           )}
         </MapWithContextMenu>
