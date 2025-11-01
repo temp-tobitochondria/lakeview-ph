@@ -185,6 +185,7 @@ function MapPage() {
     baseMatchesSelectedLake, baseKeyBump,
     selectLakeFeature, applyOverlayByLayerId, handlePanelToggleWatershed, resetToActive,
     applyWatershedGeometry,
+    baseIsPoint,
   } = useLakeSelection({ publicFC, mapRef, setPanelOpen: setLakePanelOpen });
 
   const searchApi = usePublicSearch({ mapRef, publicFC, selectLakeFeature, setLakePanelOpen });
@@ -433,6 +434,7 @@ function MapPage() {
         isOpen={lakePanelOpen}
         onClose={() => setLakePanelOpen(false)}
         lake={selectedLake}
+    isPointLake={baseIsPoint}
         onJumpToStation={jumpToStation}
         onToggleHeatmap={togglePopulationHeatmap}
   onClearHeatmap={clearHeatmap}

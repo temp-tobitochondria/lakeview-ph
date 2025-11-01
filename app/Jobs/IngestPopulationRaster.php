@@ -54,7 +54,14 @@ class IngestPopulationRaster implements ShouldQueue
             $r->ingestion_step = 'hashing';
             $r->save();
             $r->file_size_bytes = Storage::disk($disk)->size($r->path);
-            $r->file_sha256 = hash('sha256', Storage::disk($disk)->get($r->path));
+            // Streamed hashing to avoid loading entire file into memory
+            try {
+                $localHashPath = Storage::disk($disk)->path($r->path);
+                $r->file_sha256 = @hash_file('sha256', $localHashPath) ?: null;
+            } catch (\Throwable $e) {
+                // Fallback to non-streaming (small files) if path() isn't supported
+                try { $r->file_sha256 = hash('sha256', Storage::disk($disk)->get($r->path)); } catch (\Throwable $e2) { $r->file_sha256 = null; }
+            }
             $r->save();
 
             $r->ingestion_step = 'preparing_table';
@@ -127,16 +134,28 @@ class IngestPopulationRaster implements ShouldQueue
                         'cmd' => $cmdR2p,
                     ]);
                     $processR2p = new Process($cmdR2p, null, null, null, 1800);
-                    $processR2p->run();
+                    // Avoid buffering entire SQL output in memory; stream to file
+                    $processR2p->disableOutput();
+                    $lines = 0; $hasInsert = false; $hasCopy = false; $errBuf = '';
+                    // Ensure tmp file is new/empty
+                    @unlink($tmpSql);
+                    $processR2p->run(function ($type, $buffer) use ($tmpSql, &$lines, &$hasInsert, &$hasCopy, &$errBuf) {
+                        if ($type === Process::OUT) {
+                            file_put_contents($tmpSql, $buffer, FILE_APPEND);
+                            $lines += substr_count($buffer, "\n");
+                            if (!$hasInsert && str_contains($buffer, 'INSERT INTO')) $hasInsert = true;
+                            if (!$hasCopy && str_contains($buffer, 'COPY ')) $hasCopy = true;
+                        } else {
+                            // Keep a small rolling window of stderr for diagnostics
+                            if (strlen($errBuf) < 16384) {
+                                $errBuf .= $buffer;
+                                if (strlen($errBuf) > 16384) $errBuf = substr($errBuf, -16384);
+                            }
+                        }
+                    });
                     if (!$processR2p->isSuccessful()) {
-                        $err = $processR2p->getErrorOutput() ?: $processR2p->getOutput();
-                        throw new \RuntimeException('raster2pgsql failed: ' . $err);
+                        throw new \RuntimeException('raster2pgsql failed: ' . $errBuf);
                     }
-                    $r2pOutput = $processR2p->getOutput();
-                    file_put_contents($tmpSql, $r2pOutput);
-                    $lines = substr_count($r2pOutput, "\n");
-                    $hasInsert = str_contains($r2pOutput, 'INSERT INTO');
-                    $hasCopy = str_contains($r2pOutput, 'COPY ');
                     Log::info('IngestPopulationRaster: raster2pgsql output stats', [
                         'id' => $r->id,
                         'lines' => $lines,
@@ -146,7 +165,8 @@ class IngestPopulationRaster implements ShouldQueue
                     if ($lines < 10 || (!$hasInsert && !$hasCopy)) {
                         Log::warning('IngestPopulationRaster: raster2pgsql output suspicious (few lines, no INSERT/COPY)', [
                             'id' => $r->id,
-                            'first_500' => substr($r2pOutput, 0, 500),
+                            // Do not log full SQL; read a tiny preview from file for diagnostics
+                            'first_500' => @substr((string)@file_get_contents($tmpSql, false, null, 0, 500), 0, 500),
                         ]);
                     }
 
