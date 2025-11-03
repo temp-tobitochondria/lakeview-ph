@@ -25,6 +25,14 @@ import "../css/util/scrollbars.css";
 
 //Component
 import RequireRole from "../js/components/RequireRole.jsx";
+import { cachedGet } from "./lib/httpCache";
+
+// Warm frequently used caches ASAP so subsequent screens are instant.
+// Do not await; fire-and-forget.
+try {
+  cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false });
+  cachedGet('/options/water-quality-classes', { ttlMs: 60 * 60 * 1000, auth: false });
+} catch {}
 
 function App() {
   return (

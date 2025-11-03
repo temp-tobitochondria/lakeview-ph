@@ -1,5 +1,7 @@
 // resources/js/lib/layers.js
 import { api, apiPublic, buildQuery, getToken } from "./api";
+import cache from './storageCache';
+import { cachedGet, invalidateHttpCache } from './httpCache';
 
 /** Normalize array responses: array | {data: array} | {data:{data: array}} */
 const pluck = (r) => {
@@ -82,15 +84,21 @@ export const fetchWatershedOptions = async (q = "") => {
 };
 
 /** ---- Layers (PUBLIC list for LakeInfoPanel) ---- */
-export async function fetchPublicLayers({ bodyType, bodyId, includeBounds = false } = {}) {
+export async function fetchPublicLayers({ bodyType, bodyId, includeBounds = false, forceNetwork = false } = {}) {
   if (!bodyType || !bodyId) return [];
   const qs = buildQuery({
     body_type: bodyType,
     body_id: bodyId,
     include: includeBounds ? "bounds" : "",
   });
+  const key = `public:layers:list:${bodyType}:${bodyId}:${includeBounds ? 'b' : '-'}`;
+  const TTL = 10 * 60 * 1000; // 10 minutes
+  const cached = cache.get(key, { maxAgeMs: TTL });
+  if (cached && !forceNetwork) return cached;
   const res = await apiPublic(`/public/layers${qs}`);
-  return pluck(res);
+  const rows = pluck(res);
+  cache.set(key, rows, { ttlMs: TTL });
+  return rows;
 }
 
 /** NEW: fetch a single public layer with geometry */
@@ -99,9 +107,15 @@ export async function fetchPublicLayerGeo(id, { includeBounds = true } = {}) {
   const include = ["geom"];
   if (includeBounds) include.push("bounds");
   const qs = buildQuery({ include: include.join(",") });
+  const key = `public:layers:geo:${id}:${includeBounds ? 'b' : '-'}`;
+  const TTL = 24 * 60 * 60 * 1000; // 24h
+  const cached = cache.get(key, { maxAgeMs: TTL });
+  if (cached) return cached;
   try {
     const r = await apiPublic(`/public/layers/${encodeURIComponent(id)}${qs}`);
-    return r?.data || null;
+    const val = r?.data || null;
+    if (val) cache.set(key, val, { ttlMs: TTL });
+    return val;
   } catch (_) {
     return null;
   }
@@ -116,12 +130,12 @@ export const fetchAllLayers = async ({ bodyType, bodyId, includeGeom = false, in
   const include = [];
   if (includeGeom) include.push('geom');
   if (includeBounds) include.push('bounds');
-  const qs = buildQuery({
+  const params = {
     body_type: bodyType || '',
     body_id: bodyId || '',
     include: include.join(',')
-  });
-  const res = await api(`/layers${qs}`);
+  };
+  const res = await cachedGet('/layers', { params, ttlMs: 5 * 60 * 1000 });
   return pluck(res);
 };
 
@@ -135,10 +149,21 @@ export const fetchLayersForBody = async (bodyType, bodyId) => {
   return pluck(res);
 };
 
-export const createLayer = (payload) => api("/layers", { method: "POST", body: payload });
+export const createLayer = async (payload) => {
+  const r = await api("/layers", { method: "POST", body: payload });
+  try {
+    // Invalidate admin list and public layer caches
+    invalidateHttpCache(['/layers']);
+    cache.clear('public:layers');
+  } catch (_) {}
+  return r;
+};
 
-export const activateLayer = (id) =>
-  api(`/layers/${id}`, { method: "PATCH", body: { is_active: true } });
+export const activateLayer = async (id) => {
+  const r = await api(`/layers/${id}`, { method: "PATCH", body: { is_active: true } });
+  try { invalidateHttpCache('/layers'); cache.clear('public:layers'); } catch (_) {}
+  return r;
+};
 
 export const computeNextVisibility = (current, allowed = []) => {
   const base = Array.isArray(allowed) && allowed.length ? allowed.filter(Boolean) : ['public', 'admin'];
@@ -161,10 +186,18 @@ export const toggleLayerVisibility = (row, allowed) => {
   if (!next || next === row.visibility) {
     return Promise.resolve(row);
   }
-  return api(`/layers/${row.id}`, { method: "PATCH", body: { visibility: next } });
+  return api(`/layers/${row.id}`, { method: "PATCH", body: { visibility: next } })
+    .then((res) => {
+      try { invalidateHttpCache('/layers'); cache.clear('public:layers'); } catch (_) {}
+      return res;
+    });
 };
 
-export const deleteLayer = (id) => api(`/layers/${id}`, { method: "DELETE" });
+export const deleteLayer = async (id) => {
+  const r = await api(`/layers/${id}`, { method: "DELETE" });
+  try { invalidateHttpCache('/layers'); cache.clear('public:layers'); } catch (_) {}
+  return r;
+};
 
 /** Fetch body name for header display */
 export const fetchBodyName = async (bodyType, id) => {
@@ -182,8 +215,11 @@ export const fetchBodyName = async (bodyType, id) => {
 };
 
 /** Update layer metadata (no geometry) */
-export const updateLayer = (id, payload) =>
-  api(`/layers/${id}`, { method: 'PATCH', body: payload });
+export const updateLayer = async (id, payload) => {
+  const r = await api(`/layers/${id}`, { method: 'PATCH', body: payload });
+  try { invalidateHttpCache('/layers'); cache.clear('public:layers'); } catch (_) {}
+  return r;
+};
 
 export async function setLayerDefault(layerId, isActive) {
   return api(`/layers/${layerId}/default`, {

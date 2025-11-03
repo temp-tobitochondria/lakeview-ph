@@ -133,6 +133,7 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile
           >
             <FaDrawPolygon className="context-icon" /> Measure Area
           </li>
+          
           <li
             className="context-item"
             onClick={() => {

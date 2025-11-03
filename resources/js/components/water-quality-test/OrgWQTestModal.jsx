@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Modal from "../Modal";
 import { api } from "../../lib/api";
-import { alertSuccess, alertError } from "../../lib/alerts";
+import { alertSuccess, alertError, showLoading, closeLoading } from "../../lib/alerts";
 import AppMap from "../AppMap";
 import MapViewport from "../MapViewport";
 import { Marker, Popup } from "react-leaflet";
@@ -61,6 +61,12 @@ export default function OrgWQTestModal({
   const [sampleEvent, setSampleEvent] = useState(record || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const formatDepth = (d) => {
+    const n = Number(d);
+    if (!Number.isFinite(n)) return d ?? '—';
+    return n === 0 ? 'Surface' : d;
+  };
 
   useEffect(() => {
     setSampleEvent(record || null);
@@ -190,6 +196,9 @@ export default function OrgWQTestModal({
   const save = () => {
     (async () => {
       try {
+        // Show a blocking loading modal while saving
+        // Note: don't await showLoading; it resolves only when closed.
+        showLoading('Saving changes…', 'Almost there — this may take a few seconds.');
         // send updated sampling event to backend
         const payload = {
           lake_id: sampleEvent.lake_id,
@@ -216,10 +225,14 @@ export default function OrgWQTestModal({
   const res = await api(`${basePath}/${sampleEvent.id}`, { method: 'PUT', body: payload });
     const updated = res.data || sampleEvent;
         onSave?.(updated);
+        closeLoading();
         await alertSuccess('Saved', 'Sampling event updated successfully.');
         onClose?.();
       } catch (e) {
         await alertError('Save failed', e?.message || 'Please try again.');
+      } finally {
+        // ensure we close loader in any case
+        closeLoading();
       }
     })();
   };
@@ -414,7 +427,7 @@ export default function OrgWQTestModal({
                             />
                           </div>
                         ) : (
-                          <>{r.depth_m ?? 0}</>
+                          <>{formatDepth(r.depth_m ?? 0)}</>
                         )}
                       </td>
                       <td>{pfLabel(r.pass_fail)}</td>

@@ -32,6 +32,7 @@ function yqmFrom(record) {
 }
 
 import { api } from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { fetchLakeOptions } from "../../lib/layers";
 import { alertSuccess, alertError, alertWarning, confirm as swalConfirm } from "../../lib/alerts";
 
@@ -53,7 +54,7 @@ export default function OrgWQTests({
     let mounted = true;
     (async () => {
       try {
-        const me = await api("/auth/me");
+        const me = await cachedGet("/auth/me", { ttlMs: 60 * 1000 });
         if (!mounted) return;
         // Normalize backend role values like 'org_admin' to frontend-friendly strings
         const role = (me?.role || "")
@@ -83,7 +84,7 @@ export default function OrgWQTests({
     if (!currentTenantId) return () => {};
     (async () => {
       try {
-        const r = await api.get(`/org/${currentTenantId}/users`);
+        const r = await cachedGet(`/org/${currentTenantId}/users`, { ttlMs: 5 * 60 * 1000 });
         if (!mounted) return;
         const raw = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
         const filtered = (Array.isArray(raw) ? raw : []).filter((u) => {
@@ -122,7 +123,7 @@ export default function OrgWQTests({
 
       (async () => {
         try {
-          const params = await api('/options/parameters');
+          const params = await cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 });
           if (!mounted) return;
           setParamCatalog(Array.isArray(params) ? params : []);
         } catch (e) {
@@ -169,7 +170,7 @@ export default function OrgWQTests({
     (async () => {
       try {
         const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
-  const res = await api(basePath);
+        const res = await cachedGet(basePath, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
         const data = Array.isArray(res.data) ? res.data : [];
         setTests(data);
@@ -250,9 +251,9 @@ export default function OrgWQTests({
     try {
       const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        api(basePath),
+        cachedGet(basePath, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
-        api('/options/parameters'),
+        cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
 
       if (testsRes.status === 'fulfilled') {
@@ -433,6 +434,7 @@ export default function OrgWQTests({
         if (!ok) return;
         try {
           await api(`${basePath}/${row.id}`, { method: "DELETE" });
+          try { invalidateHttpCache(basePath); } catch {}
           setTests((prev) => prev.filter((t) => t.id !== row.id));
           await alertSuccess('Deleted', 'The test was removed.');
         } catch (e) {
@@ -523,6 +525,7 @@ export default function OrgWQTests({
               // backend returns updated record
               setTests((prev) => prev.map((t) => (t.id === res.data.id ? res.data : t)));
               setSelected(res.data);
+              try { invalidateHttpCache(basePath); } catch {}
               await alertSuccess(res.data.status === 'public' ? 'Published' : 'Unpublished');
             } catch (e) {
               // fallback local toggle

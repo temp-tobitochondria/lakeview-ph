@@ -1,6 +1,7 @@
 // resources/js/pages/AdminInterface/adminLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api, { buildQuery } from '../../lib/api';
+import { cachedGet } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
 import FilterPanel from '../../components/table/FilterPanel';
@@ -159,10 +160,10 @@ export default function AdminAuditLogsPage() {
 
 	const fetchLogs = async (params = {}) => {
 		setLoading(true); setError(null);
-		try {
-			const res = await api.get(effectiveBase, { params });
-			// api.get returns the parsed JSON body; for Laravel paginator, it's an object with `data` and meta fields
-			const body = res;
+    try {
+      const res = await cachedGet(effectiveBase, { params, ttlMs: 2 * 60 * 1000 });
+      // api.get returns the parsed JSON body; for Laravel paginator, it's an object with `data` and meta fields
+      const body = res;
 			let items = Array.isArray(body) ? body : (Array.isArray(body?.data) ? body.data : []); // adapt paginator
 			// Remove SampleResult rows (database-only artifacts)
 			if (Array.isArray(items)) {
@@ -655,4 +656,3 @@ export default function AdminAuditLogsPage() {
 	</div>
 	);
 }
-

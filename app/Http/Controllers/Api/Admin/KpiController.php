@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Role;
+use App\Models\Lake;
+use App\Models\SamplingEvent;
 
 class KpiController extends Controller
 {
@@ -29,6 +31,26 @@ class KpiController extends Controller
         $roles = [Role::PUBLIC, Role::CONTRIBUTOR, Role::ORG_ADMIN];
         $roleIds = Role::query()->whereIn('name', $roles)->pluck('id')->toArray();
         $total = User::whereIn('role_id', $roleIds)->count();
+        return response()->json(['count' => $total]);
+    }
+
+    /**
+     * Total number of lakes in the database (lightweight count only).
+     * GET /api/admin/kpis/lakes
+     */
+    public function lakes(Request $request)
+    {
+        $total = Lake::query()->count();
+        return response()->json(['count' => $total]);
+    }
+
+    /**
+     * Total number of sampling events (all organizations).
+     * GET /api/admin/kpis/tests
+     */
+    public function tests(Request $request)
+    {
+        $total = SamplingEvent::query()->count();
         return response()->json(['count' => $total]);
     }
 }

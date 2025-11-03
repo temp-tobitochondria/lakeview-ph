@@ -3,7 +3,8 @@ import { FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
-import { alertSuccess, alertError } from "../../../lib/alerts";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
+import { confirm, alertSuccess, alertError, showLoading, closeLoading } from "../../../lib/alerts";
 
 const emptyStandard = {
   code: "",
@@ -25,7 +26,7 @@ function StandardsTab() {
   const fetchStandards = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api("/admin/wq-standards");
+      const res = await cachedGet("/admin/wq-standards", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setStandards(list);
     } catch (err) {
@@ -69,6 +70,7 @@ function StandardsTab() {
     };
     try {
       if (row.__id) {
+  showLoading('Saving standard', 'Please wait…');
         await api(`/admin/wq-standards/${row.__id}`, { method: "PUT", body: payload });
         await alertSuccess("Saved", `Updated ${payload.code}.`);
       } else {
@@ -76,15 +78,19 @@ function StandardsTab() {
           await alertError("Validation", "Code is required for new standard");
           return;
         }
+  showLoading('Creating standard', 'Please wait…');
         await api(`/admin/wq-standards`, { method: "POST", body: payload });
         await alertSuccess("Created", `Created ${payload.code}.`);
       }
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
       if (!row.__id) setNewRows((prev) => prev.filter((rid) => rid !== row.id));
+      invalidateHttpCache('/admin/wq-standards');
       await fetchStandards();
     } catch (err) {
       console.error("Failed to save standard", err);
       await alertError("Save failed", err?.message || "Failed to save standard");
+    } finally {
+      closeLoading();
     }
   };
 
@@ -94,14 +100,33 @@ function StandardsTab() {
       setNewRows((prev) => prev.filter((rid) => rid !== row.id));
       return;
     }
+    // Confirm deletion
+    const ok = await confirm({ title: 'Delete standard?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
+    if (!ok) return;
+    // Guard: prevent deletion if there are sampling events using this standard
     try {
+      const resEv = await api(`/admin/sample-events?applied_standard_id=${encodeURIComponent(row.__id)}&per_page=1`);
+      const arrEv = Array.isArray(resEv?.data) ? resEv.data : Array.isArray(resEv) ? resEv : [];
+      const hasEvents = (Array.isArray(arrEv) && arrEv.length > 0) || (resEv?.meta && typeof resEv.meta.total === 'number' && resEv.meta.total > 0);
+      if (hasEvents) {
+        await alertError('Delete not allowed', `Cannot delete "${row.code}" because there are sampling events that used this standard.`);
+        return;
+      }
+    } catch (_) {
+      // Ignore pre-check failures; backend will still enforce constraints
+    }
+    try {
+  showLoading('Deleting standard', 'Please wait…');
       await api(`/admin/wq-standards/${row.__id}`, { method: "DELETE" });
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      invalidateHttpCache('/admin/wq-standards');
       await fetchStandards();
       await alertSuccess("Deleted", `Deleted ${row.code}.`);
     } catch (err) {
       console.error("Failed to delete standard", err);
       await alertError("Delete failed", err?.message || "Failed to delete standard");
+    } finally {
+      closeLoading();
     }
   };
 
@@ -216,4 +241,3 @@ function StandardsTab() {
   );
 }
 export default StandardsTab;
-

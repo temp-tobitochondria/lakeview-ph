@@ -3,7 +3,7 @@ import { runOneSample, runTwoSample } from '../statsAdapter';
 import { fmt } from '../formatters';
 
 // Core orchestration for AdvancedStat execution.
-// Returns { computed, advisories } or throws typed errors with .code.
+// Returns { computed } or throws typed errors with .code.
 export default async function runAdvancedStat({
   inferredTest,
   selectedTest,
@@ -19,6 +19,7 @@ export default async function runAdvancedStat({
   secondaryOrganizationId,
   stationId,
   cl = '0.95',
+  customValues,
 }) {
   const alpha = 1 - Number(cl || '0.95');
 
@@ -48,11 +49,46 @@ export default async function runAdvancedStat({
     if (orgIds.some(v => v)) body.organization_ids = lakeIds.map((_, idx) => orgIds[idx] ?? null);
   }
 
-  const series = await apiPublic('/stats/series', { method: 'POST', body });
-  const evalType = series?.evaluation_type;
+  const isCustomPrimary = String(lakeId) === 'custom';
+  let series;
+  let evalType = null;
+
+  if (isCustomPrimary) {
+    const otherLake = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : undefined;
+    if (inferredTest === 'one-sample') {
+      // Custom dataset vs class thresholds
+      const classCode = (compareValue && String(compareValue).startsWith('class:')) ? String(compareValue).split(':')[1] : '';
+      const thr = await apiPublic('/stats/thresholds', { method: 'POST', body: { parameter_code: paramCode, applied_standard_id: appliedStandardId || undefined, class_code: classCode || undefined } });
+      series = {
+        sample_values: (customValues || []).map(Number).filter(Number.isFinite),
+        threshold_min: thr?.threshold_min ?? null,
+        threshold_max: thr?.threshold_max ?? null,
+        evaluation_type: thr?.evaluation_type ?? null,
+      };
+      evalType = series.evaluation_type;
+    } else {
+      // Custom dataset vs lake: fetch sample values only for the other lake as one-sample
+      const body2 = {
+        parameter_code: paramCode,
+        lake_id: Number(otherLake),
+        date_from: yearFrom ? `${yearFrom}-01-01` : undefined,
+        date_to: yearTo ? `${yearTo}-12-31` : undefined,
+      };
+      if (depthMode === 'single' && depthValue) body2.depth_m = Number(depthValue);
+      if (secondaryOrganizationId) body2.organization_id = secondaryOrganizationId;
+      const res2 = await apiPublic('/stats/series', { method: 'POST', body: body2 });
+      series = {
+        sample1_values: (customValues || []).map(Number).filter(Number.isFinite),
+        sample2_values: (res2?.sample_values || []).map(Number).filter(Number.isFinite),
+      };
+      evalType = res2?.evaluation_type || null;
+    }
+  } else {
+    series = await apiPublic('/stats/series', { method: 'POST', body });
+    evalType = series?.evaluation_type;
+  }
 
   let computed;
-  const advisories = [];
 
   if (inferredTest === 'one-sample') {
     const values = (series?.sample_values || []).map(Number).filter(Number.isFinite);
@@ -85,22 +121,15 @@ export default async function runAdvancedStat({
       }
       computed = await runOneSample({ selectedTest, values, mu0, alpha, evalType, thrMin, thrMax, alt });
     }
-    // Advisories and distance to thresholds
-    const n = values.length;
-    if (n < 5) advisories.push('Fewer than 5 samples; low statistical power.');
-    else if (n < 10) advisories.push('Moderate sample size (<10); interpret with caution.');
     const mean = computed.mean != null ? computed.mean : (values.reduce((a,b)=>a+b,0)/values.length);
     const thrMinEff = series?.threshold_min ?? null;
     const thrMaxEff = series?.threshold_max ?? null;
     if (evalType === 'min' && thrMinEff != null) {
       const dist = mean - thrMinEff; computed.range_distance = dist;
-      advisories.push(dist >= 0 ? `Mean is above minimum by ${fmt(dist)}` : `Mean is below minimum by ${fmt(Math.abs(dist))}`);
     } else if (evalType === 'max' && thrMaxEff != null) {
       const dist = thrMaxEff - mean; computed.range_distance = dist;
-      advisories.push(dist >= 0 ? `Mean is below maximum by ${fmt(dist)}` : `Mean exceeds maximum by ${fmt(Math.abs(dist))}`);
     } else if (evalType === 'range' && thrMinEff != null && thrMaxEff != null) {
       let dist = 0; if (mean < thrMinEff) dist = thrMinEff - mean; else if (mean > thrMaxEff) dist = mean - thrMaxEff; computed.range_distance = dist;
-      advisories.push(dist === 0 ? 'Mean lies within acceptable range.' : (mean < thrMinEff ? `Mean is below range by ${fmt(dist)}` : `Mean is above range by ${fmt(dist)}`));
     }
   } else {
     const x = (series?.sample1_values || []).map(Number).filter(Number.isFinite);
@@ -112,9 +141,7 @@ export default async function runAdvancedStat({
       throw err;
     }
     computed = await runTwoSample({ selectedTest, sample1: x, sample2: y, alpha, evalType });
-    const n1 = x.length, n2 = y.length; const small = Math.min(n1, n2), large = Math.max(n1, n2);
-    if (small < 5) advisories.push('One group has fewer than 5 samples; statistical power is limited.');
-    if (large > 0 && small / large < 0.5) advisories.push('Sample size imbalance (smaller group < 50% of larger); consider cautious interpretation.');
+    const n1 = x.length, n2 = y.length;
     const thrMin = series?.threshold_min ?? null; const thrMax = series?.threshold_max ?? null;
     if (thrMin != null || thrMax != null) {
       const mean1 = computed.mean1 != null ? computed.mean1 : (x.reduce((a,b)=>a+b,0)/x.length);
@@ -128,13 +155,9 @@ export default async function runAdvancedStat({
       const d1 = distCalc(mean1); const d2 = distCalc(mean2);
       if (d1 != null) computed.range_distance1 = d1;
       if (d2 != null) computed.range_distance2 = d2;
-      if (evalType === 'range') {
-        if (d1 === 0 && d2 === 0) advisories.push('Both group means lie within the acceptable range.');
-        else if ((d1 === 0 && d2 !== 0) || (d2 === 0 && d1 !== 0)) advisories.push('Only one group mean lies within the acceptable range.');
-      }
     }
   }
 
   if (series?.events) computed = { ...computed, events: series.events };
-  return { computed, advisories };
+  return { computed };
 }

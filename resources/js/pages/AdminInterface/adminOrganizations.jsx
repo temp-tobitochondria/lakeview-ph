@@ -3,6 +3,7 @@ import { FiEdit2, FiTrash2, FiBriefcase } from 'react-icons/fi';
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
 import api from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import Swal from "sweetalert2";
 import OrganizationForm from "../../components/OrganizationForm";
 import OrganizationManageModal from "../../components/OrganizationManageModal";
@@ -87,7 +88,7 @@ export default function AdminOrganizationsPage() {
   const fetchOrgs = async (params={}) => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/tenants', { params });
+      const res = await cachedGet('/admin/tenants', { params, ttlMs: 5 * 60 * 1000 });
       const payload = res.data;
       const items = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
       setRows(items);
@@ -167,6 +168,7 @@ export default function AdminOrganizationsPage() {
         Swal.fire('Organization created','','success');
       }
       setOpenForm(false);
+      invalidateHttpCache('/admin/tenants');
       fetchOrgs(buildParams({ page:1 }));
     } catch(e){
       Swal.fire('Save failed', e?.response?.data?.message || '', 'error');
@@ -181,6 +183,7 @@ export default function AdminOrganizationsPage() {
       await api.delete(url);
       Swal.fire('Organization deleted','','success');
       const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
+      invalidateHttpCache('/admin/tenants');
       fetchOrgs(buildParams({ page: nextPage }));
     } catch(e){
       Swal.fire('Delete failed', e?.response?.data?.message || '', 'error');
@@ -193,6 +196,7 @@ export default function AdminOrganizationsPage() {
     const next = !row.active;
     try {
       await api.put(`/admin/tenants/${org.id}`, { active: next, is_active: next });
+      invalidateHttpCache('/admin/tenants');
       fetchOrgs(buildParams());
     } catch (e) {
       Swal.fire('Update failed', e?.response?.data?.message || '', 'error');

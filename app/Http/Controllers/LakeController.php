@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -15,39 +16,59 @@ class LakeController extends Controller
 {
     public function index()
     {
-        $rows = Lake::select(
-            'id','watershed_id','name','alt_name','region','province','municipality',
-            'surface_area_km2','elevation_m','mean_depth_m','class_code','coordinates','created_at','updated_at',
-            'flows_status'
-        )->with(['watershed:id,name','waterQualityClass:code,name'])->orderBy('name')->get();
+        // Lightweight response caching + ETag to speed up initial paint and revalidation
+        $ver = (int) Cache::get('ver:lakes', 1);
+        $etag = 'W/"lakes-v' . $ver . '"';
 
-        return $rows->map(function($lake){
-            $arr = $lake->toArray();
-            // Provide legacy single-value compatibility (region, province, municipality)
-            // but return comma-separated string for forms and keep full list as *_list
-            if (is_array($arr['region'])) {
-                $arr['region_list'] = $arr['region'];
-                $arr['region'] = count($arr['region']) ? implode(', ', $arr['region']) : null;
-            }
-            if (is_array($arr['province'])) {
-                $arr['province_list'] = $arr['province'];
-                $arr['province'] = count($arr['province']) ? implode(', ', $arr['province']) : null;
-            }
-            if (is_array($arr['municipality'])) {
-                $arr['municipality_list'] = $arr['municipality'];
-                $arr['municipality'] = count($arr['municipality']) ? implode(', ', $arr['municipality']) : null;
-            }
-            // Extract lat/lon from coordinates geom
-            $latLon = $lake->lat_lon;
-            if ($latLon) {
-                $arr['lat'] = $latLon[0];
-                $arr['lon'] = $latLon[1];
-            } else {
-                $arr['lat'] = null;
-                $arr['lon'] = null;
-            }
-            return $arr;
+        // Short-circuit 304 when client matches current version
+        $ifNoneMatch = request()->headers->get('If-None-Match');
+        if ($ifNoneMatch && trim($ifNoneMatch) === $etag) {
+            return response('', 304)
+                ->header('ETag', $etag)
+                ->header('Cache-Control', 'public, max-age=300');
+        }
+
+        $cacheKey = 'lakes:list:v' . $ver;
+        $ttl = now()->addMinutes(10);
+        $payload = Cache::remember($cacheKey, $ttl, function () {
+            $rows = Lake::select(
+                'id','watershed_id','name','alt_name','region','province','municipality',
+                'surface_area_km2','elevation_m','mean_depth_m','class_code','coordinates','created_at','updated_at',
+                'flows_status'
+            )->with(['watershed:id,name','waterQualityClass:code,name'])->orderBy('name')->get();
+
+            return $rows->map(function($lake){
+                $arr = $lake->toArray();
+                // Provide legacy single-value compatibility (region, province, municipality)
+                // but return comma-separated string for forms and keep full list as *_list
+                if (is_array($arr['region'])) {
+                    $arr['region_list'] = $arr['region'];
+                    $arr['region'] = count($arr['region']) ? implode(', ', $arr['region']) : null;
+                }
+                if (is_array($arr['province'])) {
+                    $arr['province_list'] = $arr['province'];
+                    $arr['province'] = count($arr['province']) ? implode(', ', $arr['province']) : null;
+                }
+                if (is_array($arr['municipality'])) {
+                    $arr['municipality_list'] = $arr['municipality'];
+                    $arr['municipality'] = count($arr['municipality']) ? implode(', ', $arr['municipality']) : null;
+                }
+                // Extract lat/lon from coordinates geom
+                $latLon = $lake->lat_lon;
+                if ($latLon) {
+                    $arr['lat'] = $latLon[0];
+                    $arr['lon'] = $latLon[1];
+                } else {
+                    $arr['lat'] = null;
+                    $arr['lon'] = null;
+                }
+                return $arr;
+            })->toArray();
         });
+
+        return response()->json($payload)
+            ->header('ETag', $etag)
+            ->header('Cache-Control', 'public, max-age=300');
     }
 
     public function show(Lake $lake)
@@ -118,6 +139,11 @@ class LakeController extends Controller
             $data['coordinates'] = DB::raw("ST_SetSRID(ST_MakePoint($lon,$lat),4326)");
         }
         $lake = Lake::create($data);
+        // Bust public lake caches
+        try {
+            $v = (int) Cache::get('ver:public:lakes', 1); Cache::forever('ver:public:lakes', $v + 1);
+            $va = (int) Cache::get('ver:lakes', 1); Cache::forever('ver:lakes', $va + 1);
+        } catch (\Throwable $e) {}
         return response()->json($lake->load('watershed:id,name','waterQualityClass:code,name'), 201);
     }
 
@@ -155,12 +181,22 @@ class LakeController extends Controller
             $data['coordinates'] = DB::raw("ST_SetSRID(ST_MakePoint($lon,$lat),4326)");
         }
         $lake->update($data);
+        // Bust public lake caches
+        try {
+            $v = (int) Cache::get('ver:public:lakes', 1); Cache::forever('ver:public:lakes', $v + 1);
+            $va = (int) Cache::get('ver:lakes', 1); Cache::forever('ver:lakes', $va + 1);
+        } catch (\Throwable $e) {}
         return $lake->load('watershed:id,name','waterQualityClass:code,name');
     }
 
     public function destroy(Lake $lake)
     {
         $lake->delete();
+        // Bust public lake caches
+        try {
+            $v = (int) Cache::get('ver:public:lakes', 1); Cache::forever('ver:public:lakes', $v + 1);
+            $va = (int) Cache::get('ver:lakes', 1); Cache::forever('ver:lakes', $va + 1);
+        } catch (\Throwable $e) {}
         return response()->json(['message' => 'Lake deleted']);
     }
 
@@ -200,6 +236,14 @@ class LakeController extends Controller
     public function publicGeo()
     {
         try {
+            // Cache heavy public geo listing keyed by filters + a version bump.
+            $ver = (int) Cache::get('ver:public:lakes', 1);
+            $qs = request()->query(); ksort($qs);
+            $cacheKey = 'public:lakes-geo:v'.$ver.':'.md5(json_encode($qs));
+            $ttl = now()->addMinutes(30);
+            $cached = Cache::get($cacheKey);
+            if ($cached) return response()->json($cached);
+
             // Active + public layer geometry preferred; fallback to lake.coordinates (Point)
             $q = DB::table('lakes as l')
                 ->leftJoin('layers as ly', function ($j) {
@@ -347,10 +391,12 @@ class LakeController extends Controller
                 ];
             }
 
-            return response()->json([
+            $payload = [
                 'type' => 'FeatureCollection',
                 'features' => $features,
-            ]);
+            ];
+            Cache::put($cacheKey, $payload, $ttl);
+            return response()->json($payload);
         } catch (\Throwable $e) {
             Log::error('publicGeo failed', ['error' => $e->getMessage()]);
             return response()->json([
@@ -363,6 +409,11 @@ class LakeController extends Controller
     // Public single-lake detail: mirrors show() but intended for unauthenticated clients
     public function publicShow(Lake $lake)
     {
+        // Cache single-lake public detail (includes active layer geom)
+        $ver = (int) Cache::get('ver:public:lakes', 1);
+        $cacheKey = 'public:lake-detail:v'.$ver.':'.$lake->id;
+        if ($hit = Cache::get($cacheKey)) return $hit;
+
         $lake->load('watershed:id,name','waterQualityClass:code,name');
         $active = $lake->activeLayer()
             ->select('id')
@@ -387,7 +438,8 @@ class LakeController extends Controller
         } else {
             $coordGeo = $active->geom_geojson;
         }
-        return array_merge($arr, ['geom_geojson' => $coordGeo]);
+        $res = array_merge($arr, ['geom_geojson' => $coordGeo]);
+        Cache::put($cacheKey, $res, now()->addMinutes(30));
+        return $res;
     }
 }
-

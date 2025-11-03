@@ -16,6 +16,7 @@ export default function TimeBucketRange({
   availableYears = [],
   selectedYears = [],
   setSelectedYears = () => {},
+  includeCustom = true,
 }) {
   const fmtIso = (d) => {
     if (!d) return '';
@@ -174,11 +175,11 @@ export default function TimeBucketRange({
           <option value="3y">3 Yr</option>
           <option value="1y">1 Yr</option>
           <option value="6mo">6 Mo</option>
-          <option value="custom">Custom (year)</option>
+          {includeCustom ? <option value="custom">Custom (year)</option> : null}
         </select>
       )}
 
-      {rangeMode !== 'year-list' && timeRange === 'custom' && (
+      {includeCustom && rangeMode !== 'year-list' && timeRange === 'custom' && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <select
             className="pill-btn"

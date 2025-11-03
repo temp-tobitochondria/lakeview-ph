@@ -69,6 +69,12 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(function () {
     Route::get('/whoami', fn() => ['ok' => true]);
 
+    // Admin KPIs (lightweight counts)
+    Route::get('/kpis/orgs', [\App\Http\Controllers\Api\Admin\KpiController::class, 'orgs']);
+    Route::get('/kpis/users', [\App\Http\Controllers\Api\Admin\KpiController::class, 'users']);
+    Route::get('/kpis/lakes', [\App\Http\Controllers\Api\Admin\KpiController::class, 'lakes']);
+    Route::get('/kpis/tests', [\App\Http\Controllers\Api\Admin\KpiController::class, 'tests']);
+
     // Feedback management
     Route::get('/feedback',         [AdminFeedbackController::class, 'index']);
     Route::get('/feedback/{feedback}', [AdminFeedbackController::class, 'show'])->whereNumber('feedback');
@@ -359,6 +365,8 @@ Route::get('/options/lake-municipalities', [LakeOptionsController::class, 'munic
 Route::get('/stats/depths', [StatsController::class, 'depths']);
 Route::get('/stats/stations', [StatsController::class, 'stations']);
 Route::post('/stats/series', [StatsController::class, 'series']);
+// Lightweight threshold metadata lookup for custom datasets (no lake required)
+Route::post('/stats/thresholds', [StatsController::class, 'thresholds']);
 Route::get('/population/estimate', [PopulationController::class, 'estimate']);
 Route::get('/tiles/pop/{z}/{x}/{y}', [PopulationController::class, 'tile'])
     ->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+']);
@@ -374,7 +382,8 @@ Route::get('/tiles/contours/{z}/{x}/{y}.pbf', [TileController::class, 'contours'
 Route::get('/contours/labels', [TileController::class, 'contourLabels']);
 
 // Elevation profile (public)
-Route::post('/elevation/profile', [ElevationController::class, 'profile']);
+Route::post('/elevation/profile', [ElevationController::class, 'profile'])
+    ->middleware('throttle:10,1');
 
 /*
 |--------------------------------------------------------------------------

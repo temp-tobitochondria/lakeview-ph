@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import TableToolbar from "../../components/table/TableToolbar";
 import TableLayout from "../../layouts/TableLayout";
 import { FiCheck, FiX, FiAlertCircle, FiFileText, FiClipboard } from 'react-icons/fi';
@@ -57,10 +58,10 @@ export default function OrgApplications() {
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const me = await api.get('/auth/me');
+      const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
       if (!me?.tenant_id) throw new Error('No tenant in session');
       const tenantId = me.tenant_id;
-      const res = await api.get(`/org/${tenantId}/applications`, { params: status ? { status } : undefined });
+      const res = await cachedGet(`/org/${tenantId}/applications`, { params: status ? { status } : undefined, ttlMs: 2 * 60 * 1000 });
       setRows(res?.data || []);
     } catch (e) {
       try { const j = JSON.parse(e?.message||''); setError(j?.message || 'Failed to load.'); } catch { setError('Failed to load.'); }
@@ -72,10 +73,11 @@ export default function OrgApplications() {
   // Submit a decision; notes required will be handled by caller for certain actions
   const decide = async (id, action, notes = '') => {
     try {
-      const me = await api.get('/auth/me');
+      const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
       const tenantId = me?.tenant_id;
       if (!tenantId) throw new Error('No tenant in session');
       await api.post(`/org/${tenantId}/applications/${id}/decision`, { action, notes });
+      try { invalidateHttpCache(`/org/${tenantId}/applications`); } catch {}
       load();
     } catch (e) {
       // noop; could show toast

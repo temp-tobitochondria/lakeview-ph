@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Polyline, Marker, Pane, useMap } from "react-leaflet";
+import { Polyline, Marker, Pane, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import { Line } from "react-chartjs-2";
 import LoadingSpinner from "./LoadingSpinner";
@@ -16,7 +16,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 // A lightweight tool to draw a path and request an elevation profile from the backend
-export default function ElevationProfileTool({ active, onClose }) {
+export default function ElevationProfileTool({ active, onClose, initialPoints }) {
   const map = useMap();
   const [animState, setAnimState] = useState(''); // '' | 'enter' | 'exit'
   const [points, setPoints] = useState([]);
@@ -49,6 +49,32 @@ export default function ElevationProfileTool({ active, onClose }) {
       containerCursor.current = "";
     }
   }, [active]);
+
+  // Seed initial points when becoming active
+  useEffect(() => {
+    if (!active) return;
+    if (initialPoints && Array.isArray(initialPoints) && initialPoints.length > 0) {
+      try {
+        const pts = initialPoints.map((p) => L.latLng(Number(p.lat), Number(p.lng)));
+        setPoints(pts);
+        setProfile(null);
+        setError(null);
+      } catch {}
+    }
+  }, [active]);
+
+  // If initialPoints changes while active, update the path
+  useEffect(() => {
+    if (!active) return;
+    if (initialPoints && Array.isArray(initialPoints) && initialPoints.length > 0) {
+      try {
+        const pts = initialPoints.map((p) => L.latLng(Number(p.lat), Number(p.lng)));
+        setPoints(pts);
+        setProfile(null);
+        setError(null);
+      } catch {}
+    }
+  }, [initialPoints]);
 
   // entrance animation when becoming active
   useEffect(() => {
@@ -139,7 +165,8 @@ export default function ElevationProfileTool({ active, onClose }) {
       const res = await fetch("/api/elevation/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ geometry: gj, sampleDistance: 40, maxSamples: 1800 }),
+        // Reduce sampling density to lower DB load in production
+        body: JSON.stringify({ geometry: gj, sampleDistance: 80, maxSamples: 1000 }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const js = await res.json();
@@ -266,7 +293,11 @@ export default function ElevationProfileTool({ active, onClose }) {
             },
           }}
           icon={new L.DivIcon({ className: "", html: '<div style="width:10px;height:10px;background:#1976d2;border:2px solid #fff;border-radius:50%"></div>', iconSize: [12, 12], iconAnchor: [6, 6] })}
-        />
+        >
+          <LeafletTooltip direction="top" opacity={1} className="glass-panel">
+            Drag to move • Right-click to delete • Esc to pause • Esc again to close
+          </LeafletTooltip>
+        </Marker>
       ))}
       {/* Bottom panel with actions and chart, matching WaterQualityTab/LakeInfoPanel styling */}
       <div className="elev-card-wrap" style={cardWrap}>

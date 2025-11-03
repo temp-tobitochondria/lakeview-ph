@@ -3,6 +3,7 @@ import { FiRefreshCw, FiEye, FiXCircle, FiMessageSquare, FiFileText, FiChevronLe
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
 import api from '../../lib/api';
+import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 import TableToolbar from '../../components/table/TableToolbar';
 import DashboardHeader from '../../components/DashboardHeader';
 import { FiMessageSquare as FiMessageIcon } from 'react-icons/fi';
@@ -206,6 +207,7 @@ function FeedbackDetailModal({ open, onClose, item, onSave }) {
     setSaving(true);
     try {
       const res = await api.patch(`/admin/feedback/${item.id}`, { status, admin_response: adminResponse });
+      try { invalidateHttpCache('/admin/feedback'); } catch {}
       onSave?.(res?.data?.data || res?.data || res);
       onClose?.();
     } catch {
@@ -403,7 +405,7 @@ export default function AdminFeedback() {
     if (category) params.set('category', category);
     if (roleFilter) params.set('role', roleFilter);
     try {
-      const res = await api.get(`/admin/feedback?${params.toString()}`);
+      const res = await cachedGet(`/admin/feedback`, { params: Object.fromEntries(params.entries()), ttlMs: 2 * 60 * 1000 });
       const payload = res?.data || res;
       const dataArr = payload?.data ? payload.data : (Array.isArray(payload) ? payload : []);
       setRows(dataArr);
@@ -496,6 +498,7 @@ export default function AdminFeedback() {
       }));
       setSelectedIds([]);
       setBulkStatus('');
+      try { invalidateHttpCache('/admin/feedback'); } catch {}
     } catch (e) { /* ignore */ } finally { setBulkApplying(false); }
   };
 

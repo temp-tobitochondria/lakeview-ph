@@ -1,6 +1,7 @@
 // resources/js/pages/AdminInterface/AdminKycProfiles.jsx
 import React, { useEffect, useState } from 'react';
 import api from '../../lib/api';
+import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All' },
@@ -19,7 +20,7 @@ export default function AdminKycProfiles() {
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await api.get('/admin/kyc-profiles', { params: { status } });
+      const res = await cachedGet('/admin/kyc-profiles', { params: { status }, ttlMs: 5 * 60 * 1000 });
       setRows(res?.data || []);
     } catch (e) {
       try { const j = JSON.parse(e?.message||''); setError(j?.message || 'Failed to load.'); } catch { setError('Failed to load.'); }
@@ -32,6 +33,7 @@ export default function AdminKycProfiles() {
     const notes = action === 'reject' ? window.prompt('Reviewer notes (optional):', '') : '';
     try {
       await api.post(`/admin/kyc-profiles/${id}/decision`, { action, notes });
+      try { invalidateHttpCache('/admin/kyc-profiles'); } catch {}
       await load();
     } catch (e) {
       alert('Decision failed.');

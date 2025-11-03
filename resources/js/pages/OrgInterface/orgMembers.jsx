@@ -6,6 +6,7 @@ import "sweetalert2/dist/sweetalert2.min.css";
 import { FiEdit, FiTrash, FiUsers } from 'react-icons/fi';
 import DashboardHeader from '../../components/DashboardHeader';
 import api from "../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import Modal from "../../components/Modal";
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
@@ -81,7 +82,7 @@ export default function OrgMembers() {
   const fetchContributors = async (tid) => {
     setLoading(true); setError(null);
     try {
-      const res = unwrap(await api.get(`/org/${tid}/users`));
+      const res = unwrap(await cachedGet(`/org/${tid}/users`, { ttlMs: 5 * 60 * 1000 }));
       const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : res?.data?.data || []);
       const contribs = list.filter(u => (u.role_id === CONTRIBUTOR_ROLE_ID) || (u.role === FIXED_ROLE));
       const mapped = contribs.map(u => ({
@@ -101,7 +102,7 @@ export default function OrgMembers() {
   // Resolve tenant then load
   useEffect(() => { (async () => {
     try {
-      const me = unwrap(await api.get('/auth/me'));
+      const me = unwrap(await cachedGet('/auth/me', { ttlMs: 60 * 1000 }));
       const tid = me?.tenant_id || me?.tenant?.id || me?.tenants?.[0]?.id || null;
       setTenantId(tid);
       if (tid) fetchContributors(tid);
@@ -155,6 +156,7 @@ export default function OrgMembers() {
       if (mode === 'edit' && editingId) { await api.put(`/org/${tenantId}/users/${editingId}`, body); toast('Contributor updated'); }
       else { await api.post(`/org/${tenantId}/users`, body); toast('Contributor created'); }
       closeModal(); reload();
+      try { invalidateHttpCache(`/org/${tenantId}/users`); } catch {}
     } catch (e) {
       console.error('Save failed', e);
       const detail = e?.response?.data?.message || Object.values(e?.response?.data?.errors || {})?.flat()?.join(', ') || '';
@@ -173,6 +175,7 @@ export default function OrgMembers() {
     try {
       await api.delete(`/org/${tenantId}/users/${row.id}`);
       toast('Contributor deleted');
+      try { invalidateHttpCache(`/org/${tenantId}/users`); } catch {}
       reload();
     } catch(e) {
       console.error('Delete failed', e);

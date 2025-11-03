@@ -9,8 +9,9 @@ import "leaflet/dist/leaflet.css";
 
 import TableLayout from "../../../layouts/TableLayout";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import LakeForm from "../../../components/LakeForm";
-import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
+import { confirm, alertSuccess, alertError, showLoading, closeLoading } from "../../../lib/alerts";
 import TableToolbar from "../../../components/table/TableToolbar";
 import FilterPanel from "../../../components/table/FilterPanel";
 
@@ -167,11 +168,11 @@ function ManageLakesTab() {
       { id: "municipality", header: "Municipality", accessor: "municipality", width: 180, className: "col-sm-hide" },
       { id: "lat", header: "Lat", accessor: "lat", width: 120, className: "col-md-hide", _optional: true },
       { id: "lon", header: "Lon", accessor: "lon", width: 120, className: "col-md-hide", _optional: true },
-      { id: "classification", header: "DENR Class", accessor: "classification", width: 160, render: (row) => row.class_code || "" },
+      { id: "classification", header: "Water Body Classification", accessor: "classification", width: 200, render: (row) => row.class_code || "" },
   { id: "surface_area_km2", header: "Surface Area (km²)", accessor: "surface_area_km2", width: 170, className: "col-sm-hide" },
-      { id: "elevation_m", header: "Elevation (m)", accessor: "elevation_m", width: 150, className: "col-md-hide", _optional: true },
-      { id: "mean_depth_m", header: "Mean Depth (m)", accessor: "mean_depth_m", width: 160, className: "col-md-hide", _optional: true },
-      { id: "flows_status", header: "Flows", accessor: "flows_status", width: 160, className: "col-md-hide", _optional: true, render: (row) => fmtFlowsStatus(row.flows_status) },
+      { id: "elevation_m", header: "Surface Elevation (m)", accessor: "elevation_m", width: 150, className: "col-md-hide", _optional: true },
+      { id: "mean_depth_m", header: "Average Depth (m)", accessor: "mean_depth_m", width: 160, className: "col-md-hide", _optional: true },
+      { id: "flows_status", header: "Tributaries", accessor: "flows_status", width: 160, className: "col-md-hide", _optional: true, render: (row) => fmtFlowsStatus(row.flows_status) },
       { id: "watershed", header: "Watershed", accessor: "watershed", width: 220, _optional: true },
       { id: "created_at", header: "Created", accessor: "created_at", width: 140, className: "col-md-hide", _optional: true },
       { id: "updated_at", header: "Updated", accessor: "updated_at", width: 140, className: "col-sm-hide", _optional: true },
@@ -256,7 +257,7 @@ function ManageLakesTab() {
 
   const fetchWatersheds = useCallback(async () => {
     try {
-      const ws = await api("/watersheds");
+      const ws = await cachedGet("/watersheds", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(ws) ? ws : ws?.data ?? [];
       setWatersheds(list);
     } catch (err) {
@@ -267,7 +268,7 @@ function ManageLakesTab() {
 
   const fetchClasses = useCallback(async () => {
     try {
-      const res = await api("/options/water-quality-classes");
+      const res = await cachedGet("/options/water-quality-classes", { ttlMs: 60 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setClassOptions(list);
     } catch (err) {
@@ -279,7 +280,7 @@ function ManageLakesTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await api("/lakes");
+      const data = await cachedGet("/lakes", { ttlMs: 10 * 60 * 1000, auth: false });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setAllLakes(normalizeRows(list));
     } catch (err) {
@@ -577,14 +578,16 @@ function ManageLakesTab() {
         const linkedWatershedId = detail?.watershed_id ?? detail?.watershed?.id ?? target?.watershed_id ?? target?.watershed?.id ?? null;
         const linkedWatershedName = detail?.watershed?.name ?? target?.watershed?.name ?? null;
 
-        // Parallel checks for sample-events and lake-flows (request 1 item for speed)
+        // Parallel checks for sample-events, lake-flows (in/out tributaries), and published layers (request 1 item for speed)
         const checks = await Promise.allSettled([
           api(`/admin/sample-events?lake_id=${encodeURIComponent(target.id)}&per_page=1`),
           api(`/lake-flows?lake_id=${encodeURIComponent(target.id)}&per_page=1`),
+          api(`/layers?body_type=lake&body_id=${encodeURIComponent(target.id)}&per_page=1`),
         ]);
 
         let hasEvents = false;
         let hasFlows = false;
+        let hasLayers = false;
 
         // sample-events result
         try {
@@ -602,10 +605,19 @@ function ManageLakesTab() {
           else if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) hasFlows = true;
         } catch (e) {}
 
+        // layers result
+        try {
+          const res = checks[2].status === 'fulfilled' ? checks[2].value : null;
+          const arr = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+          if (Array.isArray(arr) && arr.length > 0) hasLayers = true;
+          else if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) hasLayers = true;
+        } catch (e) {}
+
         // Build confirmation message
         const reasons = [];
-        if (hasEvents) reasons.push('associated water quality test(s)');
-        if (hasFlows) reasons.push('inflow/outflow flow point(s)');
+  if (hasEvents) reasons.push('associated water quality test(s)');
+  if (hasFlows) reasons.push('inlet/outlet tributary point(s)');
+  if (hasLayers) reasons.push('published GIS layer(s)');
         if (linkedWatershedId) reasons.push(linkedWatershedName ? `linked watershed (${linkedWatershedName})` : 'a linked watershed');
 
         if (reasons.length) {
@@ -629,7 +641,9 @@ function ManageLakesTab() {
 
         // Proceed with delete
         try {
+          showLoading('Deleting lake', 'Please wait…');
           await api(`/lakes/${target.id}`, { method: "DELETE" });
+          invalidateHttpCache('/lakes');
           await fetchLakes();
           await alertSuccess('Deleted', `"${target.name}" was deleted.`);
         } catch (err) {
@@ -637,6 +651,7 @@ function ManageLakesTab() {
           setErrorMsg("Delete failed. This lake may be referenced by other records.");
           await alertError('Delete failed', err?.message || 'Could not delete lake');
         } finally {
+          closeLoading();
           setLoading(false);
         }
         checksOk = true;
@@ -649,7 +664,9 @@ function ManageLakesTab() {
           setLoading(true);
           setErrorMsg("");
           try {
+            showLoading('Deleting lake', 'Please wait…');
             await api(`/lakes/${target.id}`, { method: "DELETE" });
+            invalidateHttpCache('/lakes');
             await fetchLakes();
             await alertSuccess('Deleted', `"${target.name}" was deleted.`);
           } catch (err2) {
@@ -657,6 +674,7 @@ function ManageLakesTab() {
             setErrorMsg("Delete failed. This lake may be referenced by other records.");
             await alertError('Delete failed', err2?.message || 'Could not delete lake');
           } finally {
+            closeLoading();
             setLoading(false);
           }
         } catch (e2) {
@@ -697,19 +715,23 @@ function ManageLakesTab() {
       setErrorMsg("");
       try {
         if (formMode === "create") {
+          showLoading('Creating lake', 'Please wait…');
           await api("/lakes", { method: "POST", body: payload });
           await alertSuccess('Created', `"${payload.name}" was created.`);
         } else {
+          showLoading('Saving lake', 'Please wait…');
           await api(`/lakes/${payload.id}`, { method: "PUT", body: payload });
           await alertSuccess('Saved', `"${payload.name}" was updated.`);
         }
         setFormOpen(false);
+        invalidateHttpCache('/lakes');
         await fetchLakes();
       } catch (err) {
         console.error("[ManageLakesTab] Failed to save lake", err);
         setErrorMsg("Save failed. Please verify required fields and that the name is unique.");
         await alertError('Save failed', err?.message || 'Unable to save lake');
       } finally {
+        closeLoading();
         setLoading(false);
       }
     },
@@ -773,7 +795,7 @@ function ManageLakesTab() {
 
   const classFilterOptions = useMemo(
     () => [
-      { value: "", label: "All DENR classes" },
+      { value: "", label: "All Classifications" },
       ...classOptions.map((item) => ({
         value: item.code,
         label: item.name ? `${item.code} - ${item.name}` : item.code,
@@ -817,7 +839,7 @@ function ManageLakesTab() {
         fields={[
           {
             id: "flows_status",
-            label: "Flows Status",
+            label: "Tributaries Status",
             type: "select",
             value: adv.flows_status ?? "",
             onChange: (value) => setAdv((state) => ({ ...state, flows_status: value })),
@@ -854,7 +876,7 @@ function ManageLakesTab() {
           },
           {
             id: "class_code",
-            label: "DENR Class",
+            label: "Water Body Classification",
             type: "select",
             value: adv.class_code ?? "",
             onChange: (value) => setAdv((state) => ({ ...state, class_code: value })),
@@ -869,14 +891,14 @@ function ManageLakesTab() {
           },
           {
             id: "elevation_m",
-            label: "Elevation (m)",
+            label: "Surface Elevation (m)",
             type: "number-range",
             value: adv.elevation_m ?? [null, null],
             onChange: (range) => setAdv((state) => ({ ...state, elevation_m: range })),
           },
           {
             id: "mean_depth_m",
-            label: "Mean Depth (m)",
+            label: "Average Depth (m)",
             type: "number-range",
             value: adv.mean_depth_m ?? [null, null],
             onChange: (range) => setAdv((state) => ({ ...state, mean_depth_m: range })),

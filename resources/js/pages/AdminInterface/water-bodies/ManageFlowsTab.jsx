@@ -7,7 +7,8 @@ import MapViewport from '../../../components/MapViewport';
 import { GeoJSON, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { api } from '../../../lib/api';
-import { confirm, alertError, alertSuccess } from '../../../lib/alerts';
+import { cachedGet, invalidateHttpCache } from '../../../lib/httpCache';
+import { confirm, alertError, alertSuccess, showLoading, closeLoading } from '../../../lib/alerts';
 import TableToolbar from '../../../components/table/TableToolbar';
 import TableLayout from '../../../layouts/TableLayout';
 
@@ -64,7 +65,7 @@ export default function ManageFlowsTab() {
   const fetchLakesOptions = useCallback(async () => {
     setLakesLoading(true);
     try {
-      const res = await api('/options/lakes');
+      const res = await cachedGet('/options/lakes', { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res) ? res : res?.data ?? [];
       setLakes(list);
     } catch (err) {
@@ -79,11 +80,11 @@ export default function ManageFlowsTab() {
     try {
       const params = {};
       if (typeFilter) params.type = typeFilter;
-      const res = await api('/lake-flows', { method: 'GET', params });
+      const res = await cachedGet('/lake-flows', { params, ttlMs: 5 * 60 * 1000 });
       const list = Array.isArray(res) ? res : res?.data ?? [];
       setRows(normalizeRows(list));
     } catch (e) {
-      setRows([]); setErrorMsg(e.message || 'Failed to load flow points');
+      setRows([]); setErrorMsg(e.message || 'Failed to load tributaries');
     } finally { setLoading(false); }
   }, [typeFilter]);
 
@@ -94,14 +95,18 @@ export default function ManageFlowsTab() {
   const openEdit = (row) => { const src = row?._raw ?? row; setFormMode('edit'); setFormInitial(src); setFormOpen(true); };
   const openDelete = async (row) => {
     const src = row?._raw ?? row; if (!src) return;
-    const ok = await confirm({ title: 'Delete flow point?', text: `Delete "${src.name || 'this flow point'}"?`, confirmButtonText: 'Delete' });
+    const ok = await confirm({ title: 'Delete tributary?', text: `Delete "${src.name || 'this tributary'}"?`, confirmButtonText: 'Delete' });
     if (!ok) return;
     try { 
+  showLoading('Deleting tributary', 'Please wait…');
       await api(`/lake-flows/${src.id}`, { method: 'DELETE' }); 
-      await alertSuccess('Deleted', `"${src.name || 'Flow point'}" has been deleted successfully.`);
+      invalidateHttpCache('/lake-flows');
+      await alertSuccess('Deleted', `"${src.name || 'Tributary'}" has been deleted successfully.`);
       fetchRows(); 
     } catch (e) { 
-      await alertError('Delete failed', e.message || 'Failed to delete flow point'); 
+      await alertError('Delete failed', e.message || 'Failed to delete tributary'); 
+    } finally {
+      closeLoading();
     }
   };
 
@@ -163,18 +168,22 @@ export default function ManageFlowsTab() {
     try {
       const path = formMode === 'create' ? '/lake-flows' : `/lake-flows/${formInitial.id}`;
       // Pass plain object; api wrapper will JSON.stringify once. Previously we double-stringified causing 422.
+  showLoading(formMode === 'create' ? 'Creating tributary' : 'Saving tributary', 'Please wait…');
       await api(path, { method, body });
-      await alertSuccess('Success', formMode === 'create' ? `Flow point "${payload.name}" created successfully in ${lakeName}!` : 'Flow point updated successfully!');
+      await alertSuccess('Success', formMode === 'create' ? `Tributary "${payload.name}" created successfully in ${lakeName}!` : 'Tributary updated successfully!');
     } catch (e) {
-      await alertError('Save failed', e.message || 'Failed to save flow point');
+      await alertError('Save failed', e.message || 'Failed to save tributary');
       return;
-    }
-    setFormOpen(false); fetchRows();
+    } finally { closeLoading(); }
+    setFormOpen(false); invalidateHttpCache('/lake-flows'); fetchRows();
   };
 
   const columns = useMemo(()=>[
     { id:'lake', header:'Lake', accessor:'lake', width:200 },
-    { id:'flow_type', header:'Type', accessor:'flow_type', width:110, render:(r)=> <span style={{textTransform:'capitalize'}}>{r.flow_type}</span> },
+    { id:'flow_type', header:'Type', accessor:'flow_type', width:110, render:(r)=> {
+      const t = r.flow_type === 'inflow' ? 'Inlet' : (r.flow_type === 'outflow' ? 'Outlet' : r.flow_type);
+      return <span>{t}</span>;
+    } },
     { id:'name', header:'Name', accessor:'name', width:200 },
     { id:'source', header:'Source', accessor:'source', width:200 },
     { id:'is_primary', header:'Primary', accessor:'is_primary', width:90, render:(r)=> r.is_primary ? 'Yes' : '' },
@@ -215,12 +224,12 @@ export default function ManageFlowsTab() {
     <div className="dashboard-card">
       <TableToolbar
         tableId={TABLE_ID}
-        search={{ value: query, onChange: setQuery, placeholder: 'Search flows by lake, name, or source...' }}
+        search={{ value: query, onChange: setQuery, placeholder: 'Search tributaries by lake, name, or source...' }}
         filters={[{
           id:'flow_type', label:'Type', type:'select', value:typeFilter, onChange:setTypeFilter, options:[
             { value:'', label:'All Types' },
-            { value:'inflow', label:'Inflows' },
-            { value:'outflow', label:'Outflows' },
+            { value:'inflow', label:'Inlets' },
+            { value:'outflow', label:'Outlets' },
           ]
         }]}
         columnPicker={{ columns, visibleMap, onVisibleChange: setVisibleMap }}
@@ -245,7 +254,7 @@ export default function ManageFlowsTab() {
               actions={actions}
               resetSignal={resetSignal}
               loading={loading}
-              loadingLabel={loading ? 'Loading flows…' : null}
+              loadingLabel={loading ? 'Loading tributaries…' : null}
             />
           )}
         </div>

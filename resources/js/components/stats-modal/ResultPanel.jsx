@@ -3,6 +3,7 @@ import ValuesTable from './ValuesTable';
 import buildInterpretation from './interpretation';
 import { fmt, sci } from './formatters';
 import { testLabelFromResult } from './utils/testLabels';
+import { lakeName } from './utils/shared';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 
 export default function ResultPanel({ result, paramCode, paramOptions, classCode, lakes, cl, lakeId, compareValue, showAllValues, setShowAllValues, showExactP, setShowExactP }) {
@@ -30,6 +31,11 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
   };
 
   const fmtYesNo = (b)=> b== null ? '' : (b ? 'Yes' : 'No');
+
+  // Resolve lake names for two-sample displays
+  const primaryLakeName = lakeName(lakes, lakeId) || (lakeId ? `Lake ${lakeId}` : 'Primary Lake');
+  const compareLakeId = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : null;
+  const secondaryLakeName = compareLakeId ? (lakeName(lakes, compareLakeId) || `Lake ${compareLakeId}`) : 'Comparison Lake';
 
   const testKind = (()=>{
     const t = (result.test_used || result.type || '').toLowerCase();
@@ -74,6 +80,27 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if (result.alpha != null) pushTip('Alpha (α)', fmt(result.alpha), 'Your significance cutoff for deciding.');
   };
 
+  // Build a label/value for parameter guideline with operator hints by evaluation type
+  const pushGuidelineIfPresent = (muLabelSource = null) => {
+    const evalType = result.evaluation_type || result.evalType || null;
+    const thrMin = result.threshold_min != null ? result.threshold_min : null;
+    const thrMax = result.threshold_max != null ? result.threshold_max : null;
+    const mu0 = muLabelSource != null ? muLabelSource : (result.mu0 != null ? result.mu0 : null);
+    let value = null;
+    if (evalType === 'min') {
+      const v = mu0 != null ? mu0 : (thrMin != null ? thrMin : null);
+      if (v != null) value = `≥ ${fmt(v)}`;
+    } else if (evalType === 'max') {
+      const v = mu0 != null ? mu0 : (thrMax != null ? thrMax : null);
+      if (v != null) value = `≤ ${fmt(v)}`;
+    } else if (evalType === 'range') {
+      if (thrMin != null && thrMax != null) value = `[${fmt(thrMin)}, ${fmt(thrMax)}]`;
+    } else {
+      if (mu0 != null) value = fmt(mu0);
+    }
+    if (value != null) pushTip('Parameter Guideline', value, 'Guideline used for evaluation based on the selected standard.');
+  };
+
   if (testKind === 'shapiro') {
     const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
     if (n != null) pushTip('N', fmt(n), 'Number of values used in the test.');
@@ -82,17 +109,18 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if ('normal' in result) pushTip('Normal?', fmtYesNo(result.normal), '“Yes” if no non-normality detected at α.');
     addCommonAlpha();
   } else if (testKind === 'levene') {
-    if ('n_total' in result) pushTip('Total N', fmt(result.n_total), 'Total number of observations across groups.');
-    if ('k' in result) pushTip('Groups', fmt(result.k), 'Number of groups compared.');
+    // N per lake
+    const n1 = stats1 ? stats1.n : (Array.isArray(result.sample1_values) ? result.sample1_values.length : null);
+    const n2 = stats2 ? stats2.n : (Array.isArray(result.sample2_values) ? result.sample2_values.length : null);
+    if (n1 != null) pushTip(`N (${primaryLakeName})`, fmt(n1), `Number of values in ${primaryLakeName}.`);
+    if (n2 != null) pushTip(`N (${secondaryLakeName})`, fmt(n2), `Number of values in ${secondaryLakeName}.`);
     if ('equal_variances' in result) pushTip('Variances equal?', fmtYesNo(result.equal_variances), '“Yes” if no variance difference detected at α.');
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing this variance difference if variances were equal.');
     // For two groups, show their variances if available
     const var1 = ('var1' in result) ? result.var1 : (Array.isArray(result.group_variances) && result.group_variances.length===2 ? result.group_variances[0] : null);
     const var2 = ('var2' in result) ? result.var2 : (Array.isArray(result.group_variances) && result.group_variances.length===2 ? result.group_variances[1] : null);
-    if (var1 != null && var2 != null) {
-      pushTip('Variance (Lake 1)', fmt(var1), 'Estimated variance in group 1.');
-      pushTip('Variance (Lake 2)', fmt(var2), 'Estimated variance in group 2.');
-    }
+    if (var1 != null) pushTip(`Variance (${primaryLakeName})`, fmt(var1), `Estimated variance in ${primaryLakeName}.`);
+    if (var2 != null) pushTip(`Variance (${secondaryLakeName})`, fmt(var2), `Estimated variance in ${secondaryLakeName}.`);
     addCommonAlpha();
   } else if (testKind === 't_one') {
     const n = ('n' in result) ? result.n : (oneStats ? oneStats.n : null);
@@ -101,8 +129,8 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if (n != null) pushTip('N', fmt(n), 'Number of values used.');
     if (meanVal != null) pushTip('Sample mean', fmt(meanVal), 'Average of your sample.');
     if (sdVal != null) pushTip('Standard deviation', fmt(sdVal), 'Variability around the mean.');
-    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
-    if (meanVal != null && 'mu0' in result) pushTip('Difference (mean − μ0)', fmt(meanVal - result.mu0), 'How far the mean is from the threshold.');
+    // Parameter guideline replacing threshold label
+    pushGuidelineIfPresent(result.mu0);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing a mean this far from μ0 if there were no real difference.');
     addCommonAlpha();
   } else if (testKind === 't_two') {
@@ -110,11 +138,10 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     const n2 = ('n2' in result) ? result.n2 : (stats2 ? stats2.n : null);
     const m1 = ('mean1' in result) ? result.mean1 : (stats1 ? stats1.mean : null);
     const m2 = ('mean2' in result) ? result.mean2 : (stats2 ? stats2.mean : null);
-    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
-    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
-    if (m1 != null) pushTip('Mean (Lake 1)', fmt(m1), 'Average in Lake 1.');
-    if (m2 != null) pushTip('Mean (Lake 2)', fmt(m2), 'Average in Lake 2.');
-    if (m1 != null && m2 != null) pushTip('Difference (L1 − L2)', fmt(m1 - m2), 'Mean difference between the two groups.');
+    if (n1 != null) pushTip(`N (${primaryLakeName})`, fmt(n1), `Number of values in ${primaryLakeName}.`);
+    if (n2 != null) pushTip(`N (${secondaryLakeName})`, fmt(n2), `Number of values in ${secondaryLakeName}.`);
+    if (m1 != null) pushTip(`Mean (${primaryLakeName})`, fmt(m1), `Average in ${primaryLakeName}.`);
+    if (m2 != null) pushTip(`Mean (${secondaryLakeName})`, fmt(m2), `Average in ${secondaryLakeName}.`);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing a difference this large if the true means were equal.');
     addCommonAlpha();
   } else if (testKind === 'wilcoxon_one') {
@@ -122,7 +149,8 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     const med = ('median' in result) ? result.median : (oneStats ? oneStats.median : null);
     if (n != null) pushTip('N (effective)', fmt(n), 'Number of non-zero differences used in the test.');
     if (med != null) pushTip('Sample median', fmt(med), 'Middle value of your sample.');
-    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
+    // Parameter guideline replacing threshold label
+    pushGuidelineIfPresent(result.mu0);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing ranks this extreme if the true median were μ0.');
     addCommonAlpha();
   } else if (testKind === 'sign') {
@@ -131,7 +159,8 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if ('k_negative' in result) pushTip('Below threshold', fmt(result.k_negative), 'Count of values below the threshold.');
     const med = ('median' in result) ? result.median : (oneStats ? oneStats.median : null);
     if (med != null) pushTip('Sample median', fmt(med), 'Middle value of your sample.');
-    if ('mu0' in result) pushTip('Threshold (μ0)', fmt(result.mu0), 'The standard/target value you’re testing against.');
+    // Parameter guideline replacing threshold label
+    pushGuidelineIfPresent(result.mu0);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of this split if the true median were μ0.');
     addCommonAlpha();
   } else if (testKind === 'mannwhitney') {
@@ -139,10 +168,10 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     const n2 = ('n2' in result) ? result.n2 : (stats2 ? stats2.n : null);
     const med1 = ('median1' in result) ? result.median1 : (stats1 ? stats1.median : null);
     const med2 = ('median2' in result) ? result.median2 : (stats2 ? stats2.median : null);
-    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
-    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
-    if (med1 != null) pushTip('Median (Lake 1)', fmt(med1), 'Median in Lake 1.');
-    if (med2 != null) pushTip('Median (Lake 2)', fmt(med2), 'Median in Lake 2.');
+    if (n1 != null) pushTip(`N (${primaryLakeName})`, fmt(n1), `Number of values in ${primaryLakeName}.`);
+    if (n2 != null) pushTip(`N (${secondaryLakeName})`, fmt(n2), `Number of values in ${secondaryLakeName}.`);
+    if (med1 != null) pushTip(`Median (${primaryLakeName})`, fmt(med1), `Median in ${primaryLakeName}.`);
+    if (med2 != null) pushTip(`Median (${secondaryLakeName})`, fmt(med2), `Median in ${secondaryLakeName}.`);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of seeing rank differences this large if the two populations were the same.');
     addCommonAlpha();
   } else if (testKind === 'mood_median') {
@@ -150,10 +179,10 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     const n2 = stats2 ? stats2.n : (Array.isArray(result.sample2_values) ? result.sample2_values.length : null);
     const med1 = stats1 ? stats1.median : null;
     const med2 = stats2 ? stats2.median : null;
-    if (n1 != null) pushTip('N (Lake 1)', fmt(n1), 'Number of values in Lake 1.');
-    if (n2 != null) pushTip('N (Lake 2)', fmt(n2), 'Number of values in Lake 2.');
-    if (med1 != null) pushTip('Median (Lake 1)', fmt(med1), 'Median in Lake 1.');
-    if (med2 != null) pushTip('Median (Lake 2)', fmt(med2), 'Median in Lake 2.');
+    if (n1 != null) pushTip(`N (${primaryLakeName})`, fmt(n1), `Number of values in ${primaryLakeName}.`);
+    if (n2 != null) pushTip(`N (${secondaryLakeName})`, fmt(n2), `Number of values in ${secondaryLakeName}.`);
+    if (med1 != null) pushTip(`Median (${primaryLakeName})`, fmt(med1), `Median in ${primaryLakeName}.`);
+    if (med2 != null) pushTip(`Median (${secondaryLakeName})`, fmt(med2), `Median in ${secondaryLakeName}.`);
     if ('p_value' in result) pushTip('p-value', renderP(result.p_value), 'Probability of this median split if the two populations had the same median.');
     addCommonAlpha();
   } else if (testKind === 'tost_t') {
@@ -189,6 +218,86 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
   const finalInterpretation = buildInterpretation({ result, paramCode, paramOptions, classCode, lakes, cl, fmt, sci, lakeId, compareValue });
   const ciLine = (r) => (r.ci_lower != null && r.ci_upper != null ? <div>CI ({Math.round((r.ci_level||0)*100)}%): [{fmt(r.ci_lower)}, {fmt(r.ci_upper)}]</div> : null);
 
+  // Add universal summary lines: p vs alpha and statistical decision
+  try {
+    const alpha = (result.alpha != null && Number.isFinite(Number(result.alpha))) ? Number(result.alpha) : null;
+    // Determine which p-value to use for comparison/decision
+    let pForDecision = null;
+    let pDisplayStr = null;
+    let decisionContext = 'standard'; // 'standard' significance or 'tost' equivalence
+    if (typeof result.p_value !== 'undefined' && result.p_value !== null) {
+      const pv = Number(result.p_value);
+      if (Number.isFinite(pv)) {
+        pForDecision = pv;
+        pDisplayStr = pv < 0.001 ? '<0.001' : sci(pv);
+      } else if (alpha != null && typeof result.p_value === 'string') {
+        // Handle strings like "<0.001" conservatively
+        const m = result.p_value.trim().match(/^<\s*([0-9]*\.?[0-9]+)/);
+        if (m) {
+          const thr = Number(m[1]);
+          if (Number.isFinite(thr) && thr <= alpha) {
+            // Safe to conclude p < α even without the exact value
+            pForDecision = alpha - Number.EPSILON; // sentinel just below α
+            pDisplayStr = `<${fmt(thr)}`;
+          }
+        }
+      }
+    } else if (testKind === 'tost_t' || testKind === 'tost_wilcoxon') {
+      // Prefer consolidated TOST p-value when available
+      let pTOST = null;
+      if (result.pTOST != null && Number.isFinite(Number(result.pTOST))) {
+        pTOST = Number(result.pTOST);
+      } else if (result.p1 != null && result.p2 != null) {
+        const p1 = Number(result.p1), p2 = Number(result.p2);
+        if (Number.isFinite(p1) && Number.isFinite(p2)) pTOST = Math.max(p1, p2);
+      } else if (result.p_lower != null && result.p_upper != null) {
+        const pl = Number(result.p_lower), pu = Number(result.p_upper);
+        if (Number.isFinite(pl) && Number.isFinite(pu)) pTOST = Math.max(pl, pu);
+      }
+      if (pTOST != null) {
+        pForDecision = pTOST;
+        pDisplayStr = pTOST < 0.001 ? '<0.001' : sci(pTOST);
+        decisionContext = 'tost';
+      }
+    }
+
+    // p vs alpha comparison row
+    if (alpha != null && pForDecision != null) {
+      const symbol = pForDecision < alpha ? '<' : '≥';
+      const label = decisionContext === 'tost' ? 'Equivalence (p vs α)' : 'Significance (p vs α)';
+      const tip = decisionContext === 'tost'
+        ? 'Compares the TOST p-value against α for equivalence.'
+        : 'Compares the test p-value against α for significance.';
+      const pShown = pDisplayStr ?? ((Number.isFinite(pForDecision) && pForDecision < 0.001) ? '<0.001' : sci(pForDecision));
+      pushTip(label, `p ${symbol} α (${pShown} vs ${fmt(alpha)})`, tip);
+    }
+
+    // Statistical decision row
+    let decision = null;
+    let decisionTip = null;
+    if (decisionContext === 'tost') {
+      if (alpha != null && pForDecision != null) {
+        const eq = pForDecision < alpha;
+        decision = eq ? 'Conclude Equivalent (reject H0 of non-equivalence)' : 'Not Equivalent (fail to reject H0)';
+        decisionTip = 'TOST decision based on pTOST < α.';
+      } else if (typeof result.equivalent === 'boolean') {
+        decision = result.equivalent ? 'Conclude Equivalent' : 'Not Equivalent';
+        decisionTip = 'Reported by the test as overall equivalence.';
+      }
+    } else {
+      if (typeof result.significant === 'boolean') {
+        decision = result.significant ? 'Reject H0' : 'Fail to Reject H0';
+        decisionTip = 'Reported by the test at the chosen α.';
+      } else if (alpha != null && pForDecision != null) {
+        decision = pForDecision < alpha ? 'Reject H0' : 'Fail to Reject H0';
+        decisionTip = 'Decision derived from p-value compared with α.';
+      }
+    }
+    if (decision) pushTip('Statistical Decision', decision, decisionTip);
+  } catch (_) {
+    // No-op: keep panel robust even if fields are missing
+  }
+
   return (
     <div className="stat-box">
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:8 }}>
@@ -204,11 +313,6 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
         <strong>Interpretation:</strong>
         <div style={{ marginTop:6 }}>{finalInterpretation}</div>
-        {result.significant != null && (
-          <div style={{ marginTop:6, fontSize:12, opacity:0.8 }}>
-            Statistical decision: {result.significant ? 'Reject null hypothesis (difference detected).' : 'Fail to reject null hypothesis.'}
-          </div>
-        )}
       </div>
       <ValuesTable result={result} lakes={lakes} lakeId={lakeId} compareValue={compareValue} showAllValues={showAllValues} setShowAllValues={setShowAllValues} fmt={fmt} />
     </div>

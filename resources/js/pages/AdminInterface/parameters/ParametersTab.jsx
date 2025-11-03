@@ -5,7 +5,8 @@ import TableLayout from "../../../layouts/TableLayout";
 import TableToolbar from "../../../components/table/TableToolbar";
 import FilterPanel from "../../../components/table/FilterPanel";
 import { api, buildQuery } from "../../../lib/api";
-import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
+import { confirm, alertSuccess, alertError, showLoading, closeLoading } from "../../../lib/alerts";
 
 const CATEGORY_OPTIONS = [
   { value: "Physico-chemical", label: "Physico-chemical" },
@@ -121,7 +122,7 @@ function ParametersTab() {
     setLoading(true);
     try {
       const qs = buildQuery(opts);
-      const res = await api(`/admin/parameters${qs}`);
+      const res = await cachedGet(`/admin/parameters`, { params: opts, ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       setParams(list);
     } catch (err) {
@@ -188,6 +189,7 @@ function ParametersTab() {
 
     try {
       if (effectiveRow.__id) {
+  showLoading('Saving parameter', 'Please wait…');
         await api(`/admin/parameters/${effectiveRow.__id}`, { method: "PUT", body: payload });
         await alertSuccess("Saved", `Updated ${payload.code}.`);
       } else {
@@ -195,18 +197,38 @@ function ParametersTab() {
           await alertError("Validation", "Code and Name are required for new parameter");
           return;
         }
+  showLoading('Creating parameter', 'Please wait…');
         await api(`/admin/parameters`, { method: "POST", body: payload });
         await alertSuccess("Created", `Created ${payload.code}.`);
       }
 
       setGridEdits((prev) => ({ ...prev, [key]: {} }));
       if (!effectiveRow.__id) setNewRows((prev) => prev.filter((rid) => rid !== key));
+      invalidateHttpCache('/admin/parameters');
       await fetchParameters({ search: query });
     } catch (err) {
       console.error("Failed to save parameter", err);
       await alertError("Save failed", err?.message || "Failed to save parameter");
+    } finally {
+      closeLoading();
     }
   };
+
+  // Threshold-based guards removed by request; only sampling events will be used as reference for deletion rules.
+
+  // Check if any sampling events have results that use this parameter
+  const hasSamplingEventsForParameter = useCallback(async (paramId) => {
+    try {
+      const res = await api(`/admin/sample-events?parameter_id=${encodeURIComponent(paramId)}&per_page=1`);
+      const arr = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      if (Array.isArray(arr) && arr.length > 0) return true;
+      if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) return true;
+      return false;
+    } catch (_) {
+      // Do not block on pre-check errors; backend constraints still apply
+      return false;
+    }
+  }, []);
 
   const deleteGridRow = async (row) => {
     if (!row.__id) {
@@ -216,9 +238,19 @@ function ParametersTab() {
     }
     const ok = await confirm({ title: 'Delete parameter?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
     if (!ok) return;
+    // Guard: prevent deletion when sampling events used this parameter
     try {
+      const used = await hasSamplingEventsForParameter(row.__id);
+      if (used) {
+        await alertError('Delete not allowed', `Cannot delete "${row.code}" because there are sampling events that used this parameter.`);
+        return;
+      }
+    } catch (_) {}
+    try {
+  showLoading('Deleting parameter', 'Please wait…');
       await api(`/admin/parameters/${row.__id}`, { method: "DELETE" });
       setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      invalidateHttpCache('/admin/parameters');
       await fetchParameters({ search: query });
       await alertSuccess('Deleted', `"${row.code}" was deleted.`);
     } catch (err) {
@@ -230,6 +262,8 @@ function ParametersTab() {
       } else {
         await alertError('Delete failed', raw || 'Failed to delete parameter');
       }
+    } finally {
+      closeLoading();
     }
   };
 
@@ -403,7 +437,16 @@ function ParametersTab() {
         onClick: async (row) => {
           const ok = await confirm({ title: 'Delete parameter?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
           if (!ok) return;
+          // Guard: prevent deletion when sampling events used this parameter
           try {
+            const used = await hasSamplingEventsForParameter(row.id);
+            if (used) {
+              await alertError('Delete not allowed', `Cannot delete "${row.code}" because there are sampling events that used this parameter.`);
+              return;
+            }
+          } catch (_) {}
+          try {
+            showLoading('Deleting parameter', 'Please wait…');
             await api(`/admin/parameters/${row.id}`, { method: "DELETE" });
             await fetchParameters();
             await alertSuccess('Deleted', `"${row.code}" was deleted.`);
@@ -415,6 +458,8 @@ function ParametersTab() {
             } else {
               await alertError('Delete failed', raw || 'Failed to delete parameter');
             }
+          } finally {
+            closeLoading();
           }
         },
       },
@@ -444,9 +489,11 @@ function ParametersTab() {
       };
 
       if (form.__id) {
+  showLoading('Saving parameter', 'Please wait…');
         await api(`/admin/parameters/${form.__id}`, { method: "PUT", body: payload });
         await alertSuccess('Saved', `"${payload.code}" was updated.`);
       } else {
+  showLoading('Creating parameter', 'Please wait…');
         await api("/admin/parameters", { method: "POST", body: payload });
         await alertSuccess('Created', `"${payload.code}" was created.`);
       }
@@ -458,6 +505,7 @@ function ParametersTab() {
       console.error("Failed to save parameter", err);
       await alertError('Save failed', err?.message || 'Failed to save parameter');
     } finally {
+      closeLoading();
       setSaving(false);
     }
   };
@@ -471,7 +519,7 @@ function ParametersTab() {
       </div>
 
       <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
-        <TableLayout
+          <TableLayout
           tableId={GRID_TABLE_ID}
           columns={effectiveColumns}
           data={gridRows}
@@ -484,6 +532,12 @@ function ParametersTab() {
           columnPicker={false}
           toolbar={
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minWidth: 0, gap: 8 }}>
+              <div>
+                <button type="button" className="pill-btn primary" onClick={() => setNewRows((prev) => [`__new__-${Date.now()}`, ...prev])}>
+                  <FiPlus />
+                  <span>Add Water Quality Parameter</span>
+                </button>
+              </div>
               <TableToolbar
                 tableId={GRID_TABLE_ID}
                 search={{ value: query, onChange: setQuery, placeholder: 'Search code or name…' }}

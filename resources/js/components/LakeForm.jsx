@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { api } from "../lib/api";
+import { cachedGet } from "../lib/httpCache";
 
 const EMPTY = {
   id: null,
@@ -41,8 +42,8 @@ export default function LakeForm({
   const [municipalityFiltered, setMunicipalityFiltered] = useState([]);
 
   useEffect(() => {
-    // Fetch existing regions, provinces, municipalities from lakes
-    api('/lakes').then(res => {
+    // Fetch existing regions, provinces, municipalities from lakes via shared cache
+    cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false }).then(res => {
       const lakes = res.data || res || [];
       const allRegions = new Set();
       const allProvinces = new Set();
@@ -178,7 +179,6 @@ export default function LakeForm({
             onChange={(e) => setForm({ ...form, flows_status: e.target.value })}
             disabled={form.flows_status === 'present'}
           >
-            <option value="present">Exists</option>
             <option value="none">None</option>
             <option value="unknown">Not yet recorded</option>
           </select>
@@ -319,7 +319,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>DENR Classification</span>
+          <span>Water Body Classification</span>
           <select
             value={form.class_code ?? ""}
             onChange={(e) => setForm({ ...form, class_code: e.target.value })}
@@ -397,6 +397,7 @@ export default function LakeForm({
 function CoordinatePickToggle({ form, setForm }) {
   const [mode, setMode] = React.useState('manual'); // 'manual' | 'map'
   const mapRef = React.useRef(null);
+  const markerRef = React.useRef(null);
 
   React.useEffect(() => {
     if (mode !== 'map') return;
@@ -406,19 +407,37 @@ function CoordinatePickToggle({ form, setForm }) {
       if (mapRef.current && !mapRef.current._leaflet_id) {
         const map = L.map(mapRef.current, { center: [form.lat || 12.8797, form.lon || 121.7740], zoom: 6 });
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
-        let marker = null;
-        const placeMarker = (latlng) => {
-          if (marker) marker.setLatLng(latlng); else marker = L.marker(latlng).addTo(map);
-        };
-        if (form.lat && form.lon) placeMarker([form.lat, form.lon]);
+
+        // initial marker from form
+        if (form.lat && form.lon) {
+          markerRef.current = L.circleMarker([form.lat, form.lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
+          map.setView([form.lat, form.lon], 12);
+        }
+
         map.on('click', (e) => {
           const { lat, lng } = e.latlng;
-            setForm(f => ({ ...f, lat: Number(lat.toFixed(6)), lon: Number(lng.toFixed(6)) }));
-            placeMarker(e.latlng);
+          setForm(f => ({ ...f, lat: Number(lat.toFixed(6)), lon: Number(lng.toFixed(6)) }));
+          if (!markerRef.current) markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
+          else markerRef.current.setLatLng([lat, lng]);
         });
       }
     })();
-  }, [mode, form.lat, form.lon, setForm]);
+  }, [mode]);
+
+  // keep marker in sync if lat/lon change while map is open
+  React.useEffect(() => {
+    if (mode !== 'map') return;
+    if (!mapRef.current || !mapRef.current._leaflet_id) return;
+    const lat = form.lat; const lon = form.lon;
+    if (lat && lon) {
+      (async () => {
+        const L = await import('leaflet');
+        if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(mapRef.current);
+        else markerRef.current.setLatLng([lat, lon]);
+        mapRef.current.setView([lat, lon], 12);
+      })();
+    }
+  }, [mode, form.lat, form.lon]);
 
   return (
     <div style={{flex:'1 1 100%', minWidth:300}}>
@@ -437,4 +456,3 @@ function CoordinatePickToggle({ form, setForm }) {
     </div>
   );
 }
-

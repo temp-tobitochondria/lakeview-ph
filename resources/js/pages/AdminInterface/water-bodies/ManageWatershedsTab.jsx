@@ -8,9 +8,10 @@ import L from "leaflet";
 
 import TableLayout from "../../../layouts/TableLayout";
 import TableToolbar from "../../../components/table/TableToolbar";
-import { confirm, alertSuccess, alertError } from "../../../lib/alerts";
+import { confirm, alertSuccess, alertError, showLoading, closeLoading } from "../../../lib/alerts";
 import WatershedForm from "../../../components/WatershedForm";
 import { api } from "../../../lib/api";
+import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 
 const TABLE_ID = "admin-watercat-watersheds";
 const VIS_KEY = `${TABLE_ID}::visible`;
@@ -101,7 +102,7 @@ export default function ManageWatershedsTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await api("/watersheds");
+      const data = await cachedGet("/watersheds", { ttlMs: 10 * 60 * 1000 });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setRows(normalizeRows(list));
     } catch (err) {
@@ -285,31 +286,57 @@ export default function ManageWatershedsTab() {
     setErrorMsg("");
     try {
       if (formMode === "edit" && data.id) {
+  showLoading('Saving watershed', 'Please wait…');
         await api(`/watersheds/${data.id}`, { method: "PUT", body: payload });
         await alertSuccess('Saved', `"${payload.name}" was updated.`);
       } else {
+  showLoading('Creating watershed', 'Please wait…');
         await api('/watersheds', { method: "POST", body: payload });
         await alertSuccess('Created', `"${payload.name}" was created.`);
       }
       setFormOpen(false);
+      invalidateHttpCache('/watersheds');
       await loadWatersheds();
     } catch (e) {
       console.error(e);
       setErrorMsg(parseError(e, "Failed to save watershed."));
       await alertError('Save failed', parseError(e, 'Failed to save watershed.'));
     } finally {
+      closeLoading();
       setLoading(false);
     }
   };
 
   const handleDelete = async (target) => {
     if (!target?.id) return;
-    const ok = await confirm({ title: 'Delete watershed?', text: `Delete "${target.name}"?`, confirmButtonText: 'Delete' });
-    if (!ok) return;
+    // Pre-check for published layers linked to this watershed
+    let hasLayers = false;
+    try {
+      const res = await api(`/layers?body_type=watershed&body_id=${encodeURIComponent(target.id)}&per_page=1`);
+      const arr = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      if (Array.isArray(arr) && arr.length > 0) hasLayers = true;
+      else if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) hasLayers = true;
+    } catch (_) {
+      // ignore pre-check errors; proceed to normal confirm
+    }
+
+    if (hasLayers) {
+      const okLayers = await confirm({
+        title: 'Related records detected',
+        text: `This watershed has published GIS layer(s). Deleting the watershed may affect related data. Delete anyway?`,
+        confirmButtonText: 'Delete',
+      });
+      if (!okLayers) return;
+    } else {
+      const ok = await confirm({ title: 'Delete watershed?', text: `Delete "${target.name}"?`, confirmButtonText: 'Delete' });
+      if (!ok) return;
+    }
     setLoading(true);
     setErrorMsg("");
     try {
+  showLoading('Deleting watershed', 'Please wait…');
       await api(`/watersheds/${target.id}`, { method: "DELETE" });
+      invalidateHttpCache('/watersheds');
       await loadWatersheds();
       await alertSuccess('Deleted', `"${target.name}" was deleted.`);
     } catch (e) {
@@ -317,6 +344,7 @@ export default function ManageWatershedsTab() {
       setErrorMsg(parseError(e, "Failed to delete watershed."));
       await alertError('Delete failed', parseError(e, 'Failed to delete watershed.'));
     } finally {
+      closeLoading();
       setLoading(false);
     }
   };

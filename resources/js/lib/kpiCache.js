@@ -1,35 +1,31 @@
-// Lightweight in-memory KPI cache with TTL
-const DEFAULT_TTL = 60 * 1000; // 1 minute
-const _cache = new Map();
+// Persistent KPI cache with TTL using localStorage via storageCache,
+// with an in-memory fallback provided by storageCache itself.
+import cache from './storageCache';
+
+// Default to 5 minutes so values persist across quick navigations
+const DEFAULT_TTL = 5 * 60 * 1000;
+const NS = 'kpi:'; // per-key namespace under storageCache
 
 export function setKpi(key, value, ttl = DEFAULT_TTL) {
   try {
-    _cache.set(String(key), { value, ts: Date.now(), ttl: Number(ttl) || DEFAULT_TTL });
+    cache.set(NS + String(key), value, { ttlMs: Number(ttl) || DEFAULT_TTL });
   } catch (_) {}
 }
 
 export function getKpi(key) {
-  const rec = _cache.get(String(key));
-  if (!rec) return null;
-  if (Date.now() - rec.ts > (rec.ttl || DEFAULT_TTL)) {
-    _cache.delete(String(key));
-    return null;
-  }
-  return rec.value;
+  try {
+    const v = cache.get(NS + String(key));
+    return v == null ? null : v;
+  } catch (_) { return null; }
 }
 
 export function clearKpi(key) {
   if (key === undefined) return clearAll();
-  _cache.delete(String(key));
+  try { cache.remove(NS + String(key)); } catch (_) {}
 }
 
 export function clearAll() {
-  _cache.clear();
+  try { cache.clear(NS); } catch (_) {}
 }
 
-export default {
-  getKpi,
-  setKpi,
-  clearKpi,
-  clearAll,
-};
+export default { getKpi, setKpi, clearKpi, clearAll };

@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState } from "react";
 import { FiMap, FiInfo } from 'react-icons/fi';
 import LoadingSpinner from "../LoadingSpinner";
 import { api } from "../../lib/api";
+import cache from "../../lib/storageCache";
 import { normalizeNumStr, shiftDecimalStr } from "../../utils/conversions";
 
 const fmtNum = (v, suffix = "", digits = 2) => {
@@ -31,6 +32,8 @@ function OverviewTab({
   showFlows = false,       // whether markers are shown on map
   onToggleFlows,           // (checked:boolean) => void
   onJumpToFlow,            // (flow) => void (fly map to flow)
+  isLoadingWatershed = false,
+  isLoadingFlows = false,
 }) {
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -103,8 +106,14 @@ function OverviewTab({
           return;
         }
 
-        const res = await api('/options/water-quality-classes');
-        const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        const key = 'options:wq-classes';
+        const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+        let list = cache.get(key, { maxAgeMs: TTL });
+        if (!list) {
+          const res = await api('/options/water-quality-classes');
+          list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+          if (Array.isArray(list)) cache.set(key, list, { ttlMs: TTL });
+        }
         const found = (list || []).find((c) => String(c.code) === String(lake.class_code) || String(c.id) === String(lake.class_code));
         if (!mounted) return;
   if (found) setDenrClassLabel(found.name);
@@ -117,7 +126,7 @@ function OverviewTab({
     return () => { mounted = false; };
   }, [lake?.class_code, lake?.water_quality_class]);
 
-  // Flows tri-state status from API: 'unknown' | 'none' | 'present'
+  // Flows/Tributaries tri-state status from API: 'unknown' | 'none' | 'present'
   const flowsStatus = lake?.flows_status || 'unknown';
   // Separate inflows / outflows, keep stable references (only meaningful when present)
   const inflows = useMemo(() => (flows || []).filter(f => f.flow_type === 'inflow'), [flows]);
@@ -128,7 +137,7 @@ function OverviewTab({
     return (
       <span style={{display:'inline-flex',flexWrap:'wrap',gap:6}}>
         {list.map(f => {
-          const label = f.name || f.source || (f.flow_type === 'inflow' ? 'Inflow' : 'Outflow');
+          const label = f.name || f.source || (f.flow_type === 'inflow' ? 'Inlet' : 'Outlet');
           return (
             <button
               key={f.id}
@@ -182,7 +191,7 @@ function OverviewTab({
         <div><strong>Watershed:</strong></div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{watershedName}</span>
-          {showToggle && (
+          {showToggle && !isLoadingWatershed && (
             <button
               type="button"
               aria-pressed={showWatershed}
@@ -203,6 +212,9 @@ function OverviewTab({
               <FiMap size={16} />
             </button>
           )}
+          {showToggle && isLoadingWatershed && (
+            <LoadingSpinner size={16} color="#fff" inline={true} />
+          )}
         </div>
 
         <div><strong>Region:</strong></div>
@@ -214,7 +226,7 @@ function OverviewTab({
   <div><strong>Municipality/City:</strong></div>
         <div title={municipalityDisplay || ''}>{municipalityDisplay || '–'}</div>
 
-        <div><strong>Lake DENR Classification:</strong></div>
+        <div><strong>Water Body Classification:</strong></div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <div title={denrClassLabel || lake?.denr_classification || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{denrClassLabel || lake?.denr_classification || '–'}</div>
           <a
@@ -242,22 +254,24 @@ function OverviewTab({
         <div><strong>Surface Area:</strong></div>
         <div>{areaStr}</div>
 
-        <div><strong>Elevation:</strong></div>
+        <div><strong>Surface Elevation:</strong></div>
         <div>{elevationStr}</div>
 
-        <div><strong>Mean Depth:</strong></div>
+        <div><strong>Average Depth:</strong></div>
         <div>{meanDepthStr}</div>
 
-        <div><strong>Flows:</strong></div>
+        <div><strong>Tributaries:</strong></div>
         {flowsStatus === 'present' ? (
           <>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-              <span style={{fontSize:12,opacity:0.8}}>Inflows: {inflows.length} • Outflows: {outflows.length}</span>
-              {showFlowToggle && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {renderFlowList([...(inflows||[]), ...(outflows||[])])}
+              </div>
+              {showFlowToggle && !isLoadingFlows && (
                 <button
                   type="button"
                   aria-pressed={showFlows}
-                  title={showFlows ? 'Hide flow markers' : 'Show flow markers'}
+                  title={showFlows ? 'Hide tributary markers' : 'Show tributary markers'}
                   onClick={() => onToggleFlows?.(!showFlows)}
                   style={{
                     border: 'none',
@@ -274,16 +288,14 @@ function OverviewTab({
                   <FiMap size={16} />
                 </button>
               )}
+              {showFlowToggle && isLoadingFlows && (
+                <LoadingSpinner size={16} color="#fff" inline={true} />
+              )}
             </div>
 
             <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#ddd', marginTop: 4 }}>
-              <em>Flows are known inlets/outlets for this lake. 'Primary' marks the main channel.</em>
+              <em>Tributaries are known inlets and outlets for this lake. 'Primary', denoted by a "★", marks the main channel.</em>
             </div>
-
-            <div><strong>Inflows:</strong></div>
-            <div>{renderFlowList(inflows)}</div>
-            <div><strong>Outflows:</strong></div>
-            <div>{renderFlowList(outflows)}</div>
           </>
         ) : flowsStatus === 'none' ? (
           <div style={{opacity:0.8}}>None</div>

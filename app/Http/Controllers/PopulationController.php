@@ -246,7 +246,7 @@ class PopulationController extends Controller
             'year'      => 'integer|min:1900|max:3000',
             'layer_id'  => 'nullable|integer|min:1',
             'bbox'      => 'nullable|string', // minLon,minLat,maxLon,maxLat
-            'max_points'=> 'nullable|integer|min:100|max:20000',
+            'max_points'=> 'nullable|integer|min:100|max:50000',
         ]);
 
         $lakeId   = (int) ($validated['lake_id'] ?? 0);
@@ -292,27 +292,28 @@ class PopulationController extends Controller
                 return response()->json(array_merge($cached, ['cached' => true]));
             }
 
+            // Optimized: clip rasters to ring early, prefilter by optional viewport bbox,
+            // and compute non-NaN pixel count with ST_SummaryStatsAgg instead of COUNT(*)
+            // over enumerated pixels. Then reservoir-sample pixels using a ratio derived
+            // from the aggregated count to avoid generating and counting the full set.
             $sql = "WITH ring AS (
                 SELECT ST_GeomFromEWKT(?::text) AS g
             ), env AS (
                 SELECT " . ($bboxGeomSQL ?: 'NULL::geometry') . " AS g
             ), tiles AS (
-              SELECT ST_Clip(rast, COALESCE((SELECT g FROM env), (SELECT g FROM ring))) rast
+              SELECT ST_Clip(r.rast, (SELECT g FROM ring)) AS rast
               FROM $qname r
               WHERE ST_Intersects(r.rast, (SELECT g FROM ring))
                 AND ( (SELECT g FROM env) IS NULL OR ST_Intersects(r.rast, (SELECT g FROM env)) )
-            ), pts AS (
+            ), stats AS (
+              SELECT COALESCE( (ST_SummaryStatsAgg(rast,1,true)).count, 0) AS n FROM tiles
+            ), sampled AS (
               SELECT (pp).geom::geometry(Point,4326) AS g,
                      NULLIF((pp).val::float8, ST_BandNoDataValue(rast,1)) AS pop
-              FROM tiles CROSS JOIN LATERAL ST_PixelAsPoints(rast,1) pp
+              FROM tiles, stats
+              CROSS JOIN LATERAL ST_PixelAsPoints(rast,1) pp
               WHERE (pp).val IS NOT NULL
-            ), clipped AS (
-              SELECT g, pop FROM pts WHERE pop IS NOT NULL AND ST_Intersects(g, (SELECT g FROM ring))
-            ), cnt AS (
-              SELECT COUNT(*) AS n FROM clipped
-            ), sampled AS (
-              SELECT g, pop FROM clipped, cnt
-              WHERE random() < LEAST(1.0, (?::float / NULLIF(cnt.n,1)))
+                AND random() < LEAST(1.0, (?::float / NULLIF(stats.n,1)))
               LIMIT ?
             )
             SELECT ST_Y(g) AS lat, ST_X(g) AS lon, pop FROM sampled";
@@ -361,9 +362,13 @@ class PopulationController extends Controller
     public function datasetYears()
     {
         try {
+            $key = 'population:dataset-years:v1';
+            if ($hit = Cache::get($key)) return response()->json($hit);
             $rows = DB::select('SELECT DISTINCT year FROM pop_dataset_catalog WHERE is_enabled = TRUE AND is_default = TRUE ORDER BY year DESC');
             $years = array_map(fn($r) => (int)$r->year, $rows);
-            return response()->json(['years' => $years]);
+            $payload = ['years' => $years];
+            Cache::put($key, $payload, now()->addHours(24));
+            return response()->json($payload);
         } catch (\Throwable $e) {
             Log::warning('Failed to list population dataset years', ['error' => $e->getMessage()]);
             return response()->json(['years' => []], 500);
@@ -380,6 +385,8 @@ class PopulationController extends Controller
         $year = (int) ($request->query('year') ?? 0);
         if (!$year) return response()->json(['year' => null, 'notes' => null, 'link' => null], 400);
         try {
+            $key = 'population:dataset-info:v1:'.$year;
+            if ($hit = Cache::get($key)) return response()->json($hit);
             // Find the default enabled catalog entry for this year
             $catalog = DB::selectOne('SELECT id FROM pop_dataset_catalog WHERE year = ? AND is_enabled = TRUE AND is_default = TRUE LIMIT 1', [$year]);
             if (!$catalog) return response()->json(['year' => $year, 'notes' => null, 'link' => null]);
@@ -404,8 +411,9 @@ class PopulationController extends Controller
                     // ignore - return nulls
                 }
             }
-
-            return response()->json(['year' => $year, 'notes' => $notes, 'link' => $link]);
+            $payload = ['year' => $year, 'notes' => $notes, 'link' => $link];
+            Cache::put($key, $payload, now()->addHours(24));
+            return response()->json($payload);
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch dataset info', ['year' => $year, 'error' => $e->getMessage()]);
             return response()->json(['year' => $year, 'notes' => null, 'link' => null], 500);

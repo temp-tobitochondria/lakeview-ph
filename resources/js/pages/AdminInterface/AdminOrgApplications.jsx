@@ -1,6 +1,7 @@
 // resources/js/pages/AdminInterface/AdminOrgApplications.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
+import { cachedGet } from '../../lib/httpCache';
 import TableToolbar from '../../components/table/TableToolbar';
 import TableLayout from '../../layouts/TableLayout';
 import { FiFileText, FiClipboard } from 'react-icons/fi';
@@ -55,7 +56,7 @@ export default function AdminOrgApplications() {
     setLoading(true); setError(null);
     try {
       // Always fetch all applications; status filtering will be applied per-user after grouping.
-      const res = await api.get('/admin/org-applications');
+      const res = await cachedGet('/admin/org-applications', { ttlMs: 5 * 60 * 1000 });
       setApps(res?.data || []);
     } catch (e) {
       try { const j = JSON.parse(e?.message||''); setError(j?.message || 'Failed to load.'); } catch { setError('Failed to load.'); }
