@@ -87,15 +87,17 @@ class PopulationRasterController extends Controller
         if (!$ext) $ext = 'tif';
         $finalName = $safeName . '-' . now()->format('YmdHis') . '.' . $ext;
         $dir = "population_rasters/$year";
-        $path = $file->storeAs($dir, $finalName, ['disk' => 'local']);
+    // Use the configured default filesystem disk so production can use S3/compatible storage
+    $disk = config('filesystems.default', 'local');
+    $path = $file->storeAs($dir, $finalName, ['disk' => $disk]);
 
         // Basic placeholder for pixel metadata; real ingestion can update later
         $record = null;
-        DB::transaction(function () use (&$record, $validated, $user, $origName, $path, $finalName) {
+        DB::transaction(function () use (&$record, $validated, $user, $origName, $path, $finalName, $disk) {
             $record = PopulationRaster::create([
                 'year' => (int)$validated['year'],
                 'filename' => $origName,
-                'disk' => 'local',
+                'disk' => $disk,
                 'path' => $path,
                 'srid' => $validated['srid'] ?? 4326,
                 'pixel_size_x' => null,

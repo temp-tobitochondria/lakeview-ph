@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class PopulationController extends Controller
@@ -171,7 +172,22 @@ class PopulationController extends Controller
         $year     = isset($validated['year']) ? (int) $validated['year'] : 2025;
         $layerId  = $validated['layer_id'] ?? null;
 
+        // Initialize for static analyzers
+        $cacheKey = null;
         try {
+            // Cache key includes all request-affecting params
+            $cacheKey = sprintf(
+                'mvt:pop:v1:%d:%d:%d:l%d:r%.3f:y%d:%s',
+                (int)$z, (int)$x, (int)$y, $lakeId, $radiusKm, $year, $layerId !== null ? (int)$layerId : 0
+            );
+            if ($cached = Cache::get($cacheKey)) {
+                return response($cached, Response::HTTP_OK, [
+                    'Content-Type' => 'application/vnd.mapbox-vector-tile',
+                    'Content-Encoding' => 'identity',
+                    'Cache-Control' => 'public, max-age=7200',
+                    'ETag' => 'W/"' . sha1($cached) . '"',
+                ]);
+            }
             $sql = 'SELECT public.pop_mvt_tile_by_year(?, ?, ?, ?, ?, ?, ?) AS tile';
             $bindings = [
                 (int) $z,
@@ -189,14 +205,15 @@ class PopulationController extends Controller
                 return response('', Response::HTTP_NO_CONTENT, [
                     'Content-Type' => 'application/vnd.mapbox-vector-tile',
                     'Content-Encoding' => 'identity',
-                    'Cache-Control' => 'public, max-age=60',
+                    'Cache-Control' => 'public, max-age=120',
                 ]);
             }
-
+            Cache::put($cacheKey, $tile, 7200); // 2h TTL
             return response($tile, Response::HTTP_OK, [
                 'Content-Type' => 'application/vnd.mapbox-vector-tile',
                 'Content-Encoding' => 'identity',
-                'Cache-Control' => 'public, max-age=3600',
+                'Cache-Control' => 'public, max-age=7200',
+                'ETag' => 'W/"' . sha1($tile) . '"',
             ]);
         } catch (\Throwable $e) {
             Log::warning('Population tile failed', [

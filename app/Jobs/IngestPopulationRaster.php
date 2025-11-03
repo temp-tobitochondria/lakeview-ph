@@ -20,6 +20,8 @@ class IngestPopulationRaster implements ShouldQueue
 
     public $timeout = 1800;
     public $tries = 1;
+    /** Route this job to the dedicated 'ingest' queue */
+    public $queue = 'ingest';
 
     public function __construct(public int $rasterId, public bool $makeDefault = false) {}
 
@@ -76,7 +78,30 @@ class IngestPopulationRaster implements ShouldQueue
 
             $fallbackReason = null;
             if ($allowShell && $database && $username) {
-                $localPath = Storage::disk($disk)->path($r->path);
+                // Resolve a local path for import. If disk is remote (e.g., s3), stream to a temp file.
+                $localPath = null;
+                $cleanupLocal = false;
+                try {
+                    $localPath = Storage::disk($disk)->path($r->path);
+                } catch (\Throwable $e) {
+                    // Not a local disk; download to a temp file
+                    $tmpExt = strtolower(pathinfo($r->path, PATHINFO_EXTENSION) ?: 'bin');
+                    $tmpFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'pop_ingest_file_' . $r->id . '_' . uniqid() . '.' . $tmpExt;
+                    $in = Storage::disk($disk)->readStream($r->path);
+                    if ($in === false || $in === null) {
+                        throw new \RuntimeException('Unable to open read stream for remote file');
+                    }
+                    $out = fopen($tmpFile, 'w');
+                    if ($out === false) {
+                        if (is_resource($in)) fclose($in);
+                        throw new \RuntimeException('Unable to open temp file for writing');
+                    }
+                    stream_copy_to_stream($in, $out);
+                    if (is_resource($in)) fclose($in);
+                    fclose($out);
+                    $localPath = $tmpFile;
+                    $cleanupLocal = true;
+                }
                 $importFiles = [$localPath];
                 if (strtolower(pathinfo($localPath, PATHINFO_EXTENSION)) === 'zip') {
                     $r->ingestion_step = 'unzipping'; $r->save();
@@ -164,6 +189,7 @@ class IngestPopulationRaster implements ShouldQueue
                         throw new \RuntimeException('psql import failed: ' . $err);
                     }
                     @unlink($tmpSql);
+                    if ($cleanupLocal && is_file($localPath)) { @unlink($localPath); }
                     try {
                         $count = DB::selectOne("SELECT COUNT(*) AS c FROM \"$tableName\"")->c ?? 0;
                         $cols = DB::select("SELECT column_name FROM information_schema.columns WHERE table_name = ?", [$tableName]);
@@ -183,6 +209,7 @@ class IngestPopulationRaster implements ShouldQueue
                         Log::warning('IngestPopulationRaster: count check failed', ['id' => $r->id, 'error' => $e->getMessage()]);
                     }
                 }
+                if ($cleanupLocal && is_file($localPath)) { @unlink($localPath); }
                 if ($fallbackReason) {
                     DB::statement("CREATE TABLE IF NOT EXISTS \"$tableName\" (id serial primary key, rast raster)");
                 }

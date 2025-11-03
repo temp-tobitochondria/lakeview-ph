@@ -91,7 +91,7 @@ You can configure via UI or a `render.yaml`. Below covers both.
   - This runs `php artisan queue:work` on the `ingest` queue with safe defaults.
 - Instance type: start with Standard (2 GB, 1 CPU); upgrade to Pro (4 GB, 2 CPU) if jobs are memory/CPU heavy.
 - Concurrency: keep to 1 (or 2 max) to avoid memory contention.
-- Disk: attach 10–20 GB SSD only if staging large archives locally; otherwise skip.
+- Storage/disk: IMPORTANT — persistent disks are NOT shared across services on most PaaS (including Render). If uploads are stored on the Web service's local disk, the Worker won't see them. For multi-service setups, set `FILESYSTEM_DISK=s3` (or S3-compatible), and the app will upload to shared object storage that the Worker can also access. Only attach a disk to the Worker if it needs local scratch space.
 - Ensure queue tables exist if using database queues (see “First deploy checklist”).
 
 ### Cron job (only if you add schedules)
