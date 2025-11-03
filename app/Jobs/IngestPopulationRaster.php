@@ -74,12 +74,36 @@ class IngestPopulationRaster implements ShouldQueue
             $allowShell = env('POP_IMPORT_ENABLE_SHELL', true);
             $r2p = env('POP_RASTER2PGSQL_PATH', 'raster2pgsql');
             $psql = env('POP_PSQL_PATH', 'psql');
+            // Resolve DB connection details for psql. When Laravel uses DB_URL, the
+            // parsed values are NOT reflected in config([...]['host']), so we must
+            // parse the URL ourselves to avoid defaulting to 127.0.0.1.
             $connection = config('database.connections.' . config('database.default'));
             $database = $connection['database'] ?? null;
             $username = $connection['username'] ?? null;
             $password = $connection['password'] ?? null;
             $host = $connection['host'] ?? null;
             $port = $connection['port'] ?? null;
+            $sslmode = $connection['sslmode'] ?? null;
+            // Prefer URL from config/env if present
+            $dbUrl = $connection['url'] ?? (env('DB_URL') ?: env('DATABASE_URL'));
+            if (is_string($dbUrl) && $dbUrl !== '') {
+                try {
+                    $parts = parse_url($dbUrl);
+                    if ($parts !== false) {
+                        if (!empty($parts['user'])) { $username = $parts['user']; }
+                        if (!empty($parts['pass'])) { $password = $parts['pass']; }
+                        if (!empty($parts['host'])) { $host = $parts['host']; }
+                        if (!empty($parts['port'])) { $port = (string)$parts['port']; }
+                        if (!empty($parts['path'])) { $database = ltrim($parts['path'], '/'); }
+                        if (!empty($parts['query'])) {
+                            parse_str($parts['query'], $q);
+                            if (!empty($q['sslmode'])) { $sslmode = (string)$q['sslmode']; }
+                        }
+                    }
+                } catch (\Throwable $e){ /* ignore parse failures; fall back */ }
+            }
+            // Final sane defaults
+            if (!$port) { $port = '5432'; }
 
             $fallbackReason = null;
             if ($allowShell && $database && $username) {
@@ -166,7 +190,8 @@ class IngestPopulationRaster implements ShouldQueue
                     Log::warning('IngestPopulationRaster: file path normalization failed', ['id' => $r->id, 'error' => $e->getMessage(), 'files' => $importFiles]);
                 }
 
-                $envVars = [ 'PGPASSWORD' => $password ];
+                $envVars = [ 'PGPASSWORD' => (string)$password ];
+                if ($sslmode) { $envVars['PGSSLMODE'] = (string)$sslmode; }
                 $tmpSql = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'pop_ingest_' . $r->id . '_' . uniqid() . '.sql';
                 $r2pPath = $r2p;
                 $psqlPath = $psql;
@@ -229,7 +254,8 @@ class IngestPopulationRaster implements ShouldQueue
                         ]);
                     }
 
-                    $cmdPsql = [$psqlPath, '-h', $host, '-p', (string)$port, '-U', $username, '-d', $database, '-f', $tmpSql];
+                    // Prefer explicit flags to avoid relying on local defaults
+                    $cmdPsql = [$psqlPath, '-h', (string)$host, '-p', (string)$port, '-U', (string)$username, '-d', (string)$database, '-v', 'ON_ERROR_STOP=1', '-f', $tmpSql];
                     Log::info('IngestPopulationRaster: running psql import', [
                         'id' => $r->id,
                         'cmd' => $cmdPsql,
