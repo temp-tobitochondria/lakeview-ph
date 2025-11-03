@@ -22,7 +22,9 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Leverage build cache for composer deps
 COPY composer.json composer.lock* ./
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
+RUN set -e; \
+    composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts \
+    || composer update --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
 
 # Copy application source
 COPY . .

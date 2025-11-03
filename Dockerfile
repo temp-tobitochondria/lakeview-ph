@@ -50,8 +50,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Leverage build cache for composer deps
 COPY composer.json composer.lock* ./
-# Skip composer scripts during build to avoid running artisan before code is copied
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
+# Install PHP deps. If lock is out-of-date (e.g., package added), fall back to update to unblock build.
+RUN set -e; \
+   composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts \
+   || composer update --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
 
 # Copy application source
 COPY . .
