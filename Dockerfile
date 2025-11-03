@@ -1,8 +1,7 @@
-# Minimal Dockerfile for smoke testing on Render (Web service only)
+# Web service Dockerfile (supports in-process queue worker)
 # - Builds Vite assets (Node 20)
 # - Serves Laravel via Apache (PHP 8.2)
-# - Includes pdo_pgsql, zip, and common PHP extensions
-# NOTE: This image does NOT include raster2pgsql/psql. Use a production Dockerfile later for ingestion jobs.
+# - Includes pdo_pgsql and geospatial tools (postgresql-client, postgis/raster2pgsql, gdal)
 
 # ---------- Stage 1: Frontend build ----------
 FROM node:20-bullseye-slim AS nodebuild
@@ -31,6 +30,9 @@ RUN apt-get update \
     git \
     unzip \
     libpq-dev \
+    postgresql-client \
+    postgis \
+    gdal-bin \
  && docker-php-ext-install pdo_pgsql pgsql \
  && docker-php-ext-enable opcache \
  && rm -rf /var/lib/apt/lists/*
