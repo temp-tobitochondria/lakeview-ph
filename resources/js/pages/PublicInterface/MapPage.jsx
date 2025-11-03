@@ -25,7 +25,6 @@ import HeatmapLegend from "../../components/HeatmapLegend";
 import BaseLakesLayer from "../../components/BaseLakesLayer";
 import ElevationProfileTool from "../../components/ElevationProfileTool";
 import SelectedLakeOverlays from "../../components/SelectedLakeOverlays";
-import GlobalWatershedsLayer from "../../components/GlobalWatershedsLayer";
 import FlowsLayer from "../../components/FlowsLayer";
 import { useAuthRole } from "./hooks/useAuthRole";
 import { usePublicLakes } from "./hooks/usePublicLakes";
@@ -34,7 +33,6 @@ import { usePopulationHeatmap } from "./hooks/usePopulationHeatmap";
 import { useWaterQualityMarkers } from "./hooks/useWaterQualityMarkers";
 import usePublicSearch from "./hooks/usePublicSearch";
 import { alertError, alertInfo, showLoading, closeLoading } from "../../lib/alerts";
-import { getFlowpath, getWatershed } from "../../lib/globalWatersheds";
 import DataPrivacyDisclaimer from "./DataPrivacyDisclaimer";
 import AboutData from "./AboutData";
 import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
@@ -85,15 +83,8 @@ function MapPage() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  // Global Watersheds API overlays
-  const [gwWatershedFC, setGwWatershedFC] = useState(null);
-  const [gwRiversFC, setGwRiversFC] = useState(null);
-  const [gwFlowpathFC, setGwFlowpathFC] = useState(null);
-  // Click points for Global Watersheds actions
-  const [gwFlowClickPoint, setGwFlowClickPoint] = useState(null);
-  const [gwWsClickPoint, setGwWsClickPoint] = useState(null);
-  // Pinning mode for next map click ('flow' | 'watershed' | null)
-  const [gwPinMode, setGwPinMode] = useState(null); // extended to include 'elev'
+  // Pinning mode for map interactions (used for elevation point picking)
+  const [gwPinMode, setGwPinMode] = useState(null);
   // Elevation profile seeding
   const [elevInitialPoints, setElevInitialPoints] = useState([]);
 
@@ -295,78 +286,7 @@ function MapPage() {
   };
 
 
-  const handleTraceFlowPath = async (latlng) => {
-    if (!latlng) return;
-    const zoom = mapRef.current?.getZoom?.() ?? 2;
-    try {
-      setGwFlowpathFC(null);
-      setGwWatershedFC(null);
-      setGwRiversFC(null);
-      setGwWsClickPoint(null);
-      showLoading('Tracing flow path…', ' Getting flow path data');
-      setGwFlowClickPoint({ lat: Number(latlng.lat), lng: Number(latlng.lng) });
-      const fc = await getFlowpath({ lat: latlng.lat, lng: latlng.lng, zoom });
-      setGwFlowpathFC(fc); 
-      fitToGeoJSON(fc);
-    } catch (e) {
-      const errorMessage = e?.message || 'Unable to fetch flow path.';
-      let userFriendlyMessage = errorMessage;
-      
-      // Provide more user-friendly messages for common external API errors
-      if (errorMessage.toLowerCase().includes('ocean') || errorMessage.toLowerCase().includes('coast')) {
-        userFriendlyMessage = 'Please select a point on land to trace a flow path. Points over water or near the coast cannot be processed.';
-      }
-      
-      await alertError('Flow path error', userFriendlyMessage);
-    } finally {
-      closeLoading();
-    }
-  };
-
-  const handleDelineateWatershed = async (latlng) => {
-    if (!latlng) return;
-    const zoom = mapRef.current?.getZoom?.() ?? 2;
-    try {
-      setGwFlowpathFC(null);
-      setGwWatershedFC(null);
-      setGwRiversFC(null);
-      setGwFlowClickPoint(null);
-      showLoading('Delineating watershed…', 'Getting watershed data');
-      setGwWsClickPoint({ lat: Number(latlng.lat), lng: Number(latlng.lng) });
-      const { watershed, rivers } = await getWatershed({ lat: latlng.lat, lng: latlng.lng, zoom, includeRivers: true });
-      setGwWatershedFC(watershed);
-      setGwRiversFC(rivers || null);
-      fitToGeoJSON(watershed);
-    } catch (e) {
-      const errorMessage = e?.message || 'Unable to delineate watershed.';
-      let userFriendlyMessage = errorMessage;
-      
-      // Provide more user-friendly messages for common external API errors
-      if (errorMessage.toLowerCase().includes('ocean') || errorMessage.toLowerCase().includes('coast')) {
-        userFriendlyMessage = 'Please select a point on land to delineate a watershed. Points over water or near the coast cannot be processed.';
-      }
-      
-      await alertError('Watershed error', userFriendlyMessage);
-    } finally {
-      closeLoading();
-    }
-  };
-
-  const startFlowPathMode = async () => {
-    await alertInfo('Trace Flow Path', 'Click a point on the map to trace the downstream path from that location.');
-    setGwPinMode('flow');
-    const latlng = await waitForNextMapClick();
-    setGwPinMode(null);
-    if (latlng) await handleTraceFlowPath(latlng);
-  };
-
-  const startWatershedMode = async () => {
-    await alertInfo('Delineate Watershed', 'Click a point on the map to delineate its contributing watershed.');
-    setGwPinMode('watershed');
-    const latlng = await waitForNextMapClick();
-    setGwPinMode(null);
-    if (latlng) await handleDelineateWatershed(latlng);
-  };
+  // (Removed Global Watersheds actions)
 
   const startElevationMode = async () => {
     await alertInfo('Elevation Profile', 'Click a start point on the map. Then add more points and press Compute (or Enter). Esc to pause, Esc again to close.');
@@ -385,12 +305,7 @@ function MapPage() {
       if (typeof handlePanelToggleWatershed === 'function') {
         try { handlePanelToggleWatershed(false); } catch {}
       }
-      setGwFlowpathFC(null);
-      setGwWatershedFC(null);
-      setGwRiversFC(null);
-      setGwFlowClickPoint(null);
-      setGwWsClickPoint(null);
-      setGwPinMode(null);
+  setGwPinMode(null);
       setShowFlows(false);
       try { window.dispatchEvent(new CustomEvent('lv-wq-active', { detail: { active: false } })); } catch {}
       setMeasureActive(false);
@@ -412,8 +327,7 @@ function MapPage() {
             onFeatureClick={selectLakeFeature}
           />
         )}
-        <SelectedLakeOverlays watershedOverlayFeature={watershedOverlayFeature} lakeOverlayFeature={lakeOverlayFeature} />
-        <GlobalWatershedsLayer watershedFC={gwWatershedFC} riversFC={gwRiversFC} flowpathFC={gwFlowpathFC} flowClickPoint={gwFlowClickPoint} wsClickPoint={gwWsClickPoint} />
+  <SelectedLakeOverlays watershedOverlayFeature={watershedOverlayFeature} lakeOverlayFeature={lakeOverlayFeature} />
         <FlowsLayer show={showFlows} flows={flows} flowsRef={flowsRef} />
 
         <Sidebar
@@ -434,8 +348,6 @@ function MapPage() {
               onMeasureDistance={() => { setMeasureMode("distance"); setMeasureActive(true); }}
               onMeasureArea={() => { setMeasureMode("area"); setMeasureActive(true); }}
               onElevationProfile={startElevationMode}
-              onTraceFlowPath={startFlowPathMode}
-              onDelineateWatershed={startWatershedMode}
             />
           )}
         </MapWithContextMenu>

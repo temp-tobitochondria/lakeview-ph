@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Marker, Tooltip } from "react-leaflet";
-import { FaRuler, FaDrawPolygon, FaMapMarkerAlt, FaCopy, FaMountain, FaRoute, FaWater } from "react-icons/fa";
+import { FaRuler, FaDrawPolygon, FaMapMarkerAlt, FaCopy, FaMountain } from "react-icons/fa";
 import L from "leaflet";
 import ReactDOMServer from "react-dom/server";
 import { alertError, alertSuccess } from "../lib/alerts";
@@ -16,7 +16,7 @@ const bluePinIcon = new L.DivIcon({
   popupAnchor: [0, -25],
 });
 
-const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile, onTraceFlowPath, onDelineateWatershed }) => {
+const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile }) => {
   const [position, setPosition] = useState(null);
   const [latlng, setLatlng] = useState(null);
   const [pins, setPins] = useState([]);
@@ -133,24 +133,7 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile
           >
             <FaDrawPolygon className="context-icon" /> Measure Area
           </li>
-          <li
-            className="context-item"
-            onClick={() => {
-              if (onTraceFlowPath && latlng) onTraceFlowPath(latlng);
-              setPosition(null);
-            }}
-          >
-            <FaRoute className="context-icon" /> Trace flow path
-          </li>
-          <li
-            className="context-item"
-            onClick={() => {
-              if (onDelineateWatershed && latlng) onDelineateWatershed(latlng);
-              setPosition(null);
-            }}
-          >
-            <FaWater className="context-icon" /> Delineate watershed
-          </li>
+          
           <li
             className="context-item"
             onClick={() => {
