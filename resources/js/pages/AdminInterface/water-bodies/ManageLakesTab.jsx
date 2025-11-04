@@ -903,7 +903,7 @@ function ManageLakesTab() {
                 )}
 
                 {lakeFeature && (
-                  <GeoJSON data={lakeFeature} style={{ weight: 2, color: '#2563eb', fillOpacity: 0.1 }} />
+                  <GeoJSON data={lakeFeature} style={{ weight: 2, color: '#2563eb', fillOpacity: 0.1 }} pointToLayer={(feature, latlng) => L.circleMarker(latlng, { color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.5, radius: 8 })} />
                 )}
 
                 {mapViewport.bounds ? (

@@ -171,7 +171,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Flows data</span>
+          <span>Tributaries</span>
           <select
             // Force default to 'unknown' when no value is set so the UI shows
             // "Not yet recorded" by default.
@@ -179,6 +179,7 @@ export default function LakeForm({
             onChange={(e) => setForm({ ...form, flows_status: e.target.value })}
             disabled={form.flows_status === 'present'}
           >
+            {form.flows_status === 'present' && <option value="present">Exists</option>}
             <option value="none">None</option>
             <option value="unknown">Not yet recorded</option>
           </select>
