@@ -303,8 +303,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // User self settings (name/password)
     Route::patch('/user/settings', [UserSettingsController::class, 'update']);
 
-    // Creation & modifications restricted to superadmin (controller also validates)
-    Route::post('/layers',            [ApiLayerController::class, 'store'])->middleware('role:superadmin,org_admin');
+    // Creation restricted to superadmin (controller also validates)
+    Route::post('/layers',            [ApiLayerController::class, 'store'])->middleware('role:superadmin');
     Route::patch('/layers/{layer}',   [ApiLayerController::class, 'update'])->middleware('role:superadmin,org_admin')->whereNumber('layer');
     Route::delete('/layers/{layer}',  [ApiLayerController::class, 'destroy'])->middleware('role:superadmin,org_admin')->whereNumber('layer');
 

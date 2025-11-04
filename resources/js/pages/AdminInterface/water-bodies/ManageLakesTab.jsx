@@ -643,7 +643,8 @@ function ManageLakesTab() {
         try {
           showLoading('Deleting lake', 'Please wait…');
           await api(`/lakes/${target.id}`, { method: "DELETE" });
-          invalidateHttpCache('/lakes');
+          // Invalidate all related caches where lake data/name appears
+          invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
           await fetchLakes();
           await alertSuccess('Deleted', `"${target.name}" was deleted.`);
         } catch (err) {
@@ -666,7 +667,7 @@ function ManageLakesTab() {
           try {
             showLoading('Deleting lake', 'Please wait…');
             await api(`/lakes/${target.id}`, { method: "DELETE" });
-            invalidateHttpCache('/lakes');
+            invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
             await fetchLakes();
             await alertSuccess('Deleted', `"${target.name}" was deleted.`);
           } catch (err2) {
@@ -723,9 +724,10 @@ function ManageLakesTab() {
           await api(`/lakes/${payload.id}`, { method: "PUT", body: payload });
           await alertSuccess('Saved', `"${payload.name}" was updated.`);
         }
-        setFormOpen(false);
-        invalidateHttpCache('/lakes');
-        await fetchLakes();
+  setFormOpen(false);
+  // Invalidate caches used across tabs (lists, options, and flows list which may display lake name)
+  invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
+  await fetchLakes();
       } catch (err) {
         console.error("[ManageLakesTab] Failed to save lake", err);
         setErrorMsg("Save failed. Please verify required fields and that the name is unique.");
@@ -740,39 +742,7 @@ function ManageLakesTab() {
 
   // delete flow now handled inline in openDelete
 
-  const exportCsv = useCallback(() => {
-    // Always append *_list columns for region/province/municipality for richer export context
-    const extraCols = [
-      { id: 'region_list', header: 'Region List', accessor: 'region_list' },
-      { id: 'province_list', header: 'Province List', accessor: 'province_list' },
-      { id: 'municipality_list', header: 'Municipality List', accessor: 'municipality_list' },
-    ];
-    const exportCols = [...visibleColumns, ...extraCols];
-    const headers = exportCols.map((col) => (typeof col.header === "string" ? col.header : col.id));
-    const csvRows = lakes.map((row) =>
-      exportCols
-        .map((col) => {
-          let value = row[col.accessor];
-          if (Array.isArray(value)) value = value.join('; '); // avoid conflict with comma CSV delimiter
-            if (value == null) value = '';
-          const text = String(value);
-          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        })
-        .join(",")
-    );
-
-    const blob = new Blob([[headers.join(","), ...csvRows].join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "lakes.csv";
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 0);
-  }, [lakes, visibleColumns]);
+  
 
   const regionOptions = useMemo(
     () => ["", ...new Set(allLakes.map((row) => row.region).filter(Boolean))].map((value) => ({ value, label: value || "All Regions" })),
@@ -826,7 +796,6 @@ function ManageLakesTab() {
         columnPicker={{ columns: baseColumns, visibleMap, onVisibleChange: setVisibleMap }}
   onResetWidths={() => { triggerResetWidths(); restoreDefaults(); }}
         onRefresh={fetchLakes}
-        onExport={exportCsv}
         onAdd={openCreate}
         onToggleFilters={() => setFiltersOpen((value) => !value)}
         onRestoreDefaults={restoreDefaults}

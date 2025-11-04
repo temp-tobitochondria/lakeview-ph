@@ -3,7 +3,7 @@ import { FiLayers, FiLoader, FiEye, FiTrash2, FiEdit2 } from "react-icons/fi";
 
 import Modal from "../Modal";
 import { confirm, alertError, alertSuccess, alertWarning, showLoading, closeLoading } from "../../lib/alerts";
-import { fetchAllLayers, toggleLayerVisibility, deleteLayer, updateLayer, computeNextVisibility } from "../../lib/layers";
+import { fetchAllLayers, toggleLayerVisibility, deleteLayer, updateLayer } from "../../lib/layers";
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../table/TableToolbar";
 import FilterPanel from "../table/FilterPanel";
@@ -56,7 +56,7 @@ function LayerList({
   const [fCreatedBy, setFCreatedBy] = useState(""); // '' or specific creator
 
   // Column visibility management
-  const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, default: true, creator: true, area: false, updated: false }), []);
+  const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, default: true, creator: false, area: false, updated: false }), []);
   const [visibleMap, setVisibleMap] = useState(defaultVisible);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -72,21 +72,17 @@ function LayerList({
     return mapped.length ? mapped : DEFAULT_VISIBILITY_OPTIONS;
   }, [visibilityOptions]);
 
-  // Role-based allowed cycles:
-  // superadmin: whatever provided (both public/admin)
-  // org_admin: can see both public & admin but cannot toggle if not uploader's tenant? (API already filters list server-side)
-  // contributors/public: should not be able to toggle at UI level
+
   const allowedVisibilityValues = useMemo(() => {
     const base = normalizedVisibilityOptions.map((opt) => opt.value);
-    if (!currentUserRole) return base;
     if (currentUserRole === 'superadmin') return base;
-    if (currentUserRole === 'org_admin') return base; // server restricts rows to tenant uploads
     // read-only roles
     return [base[0]]; // only show first (likely 'public') so toggle disabled
   }, [normalizedVisibilityOptions, currentUserRole]);
 
   const formatCreator = (row) => {
-    if (row?.uploaded_by_org) return row.uploaded_by_org;
+    // Prefer the uploader's user name; avoid falling back to organization labels like "LakeView".
+    if (row?.uploaded_by_name) return row.uploaded_by_name;
     return 'System Administrator';
   };
 
@@ -227,8 +223,8 @@ function LayerList({
   // No body options needed; table shows all layers by default
 
   const doToggleVisibility = async (row) => {
-    if (allowedVisibilityValues.length < 2) return; // read-only context
-    if (currentUserRole && !['superadmin','org_admin'].includes(currentUserRole)) return; // guard
+  if (allowedVisibilityValues.length < 2) return; // read-only context
+  if (currentUserRole && currentUserRole !== 'superadmin') return; // guard
     try {
   showLoading('Updating visibility', 'Please wait…');
       await toggleLayerVisibility(row, allowedVisibilityValues);
@@ -242,7 +238,7 @@ function LayerList({
   };
 
   const doDelete = async (target) => {
-    if (!['superadmin','org_admin'].includes(currentUserRole)) return; // reflect backend permissions
+  if (currentUserRole !== 'superadmin') return; // reflect backend permissions
     const id = target && typeof target === 'object' ? target.id : target;
     const name = target && typeof target === 'object' ? target.name : null;
     if (!(await confirm({ title: 'Delete this layer?', text: 'This cannot be undone.', confirmButtonText: 'Delete' }))) return;
@@ -296,7 +292,7 @@ function LayerList({
       if (fDefaultOnly === 'no' && row.is_active) return false;
       if (fCreatedBy && formatCreator(row) !== fCreatedBy) return false;
       if (q) {
-        const hay = [row.name, row.notes, row.uploaded_by_org, row.body_type, row.visibility].map((v) => (v || "").toString().toLowerCase()).join(" ");
+        const hay = [row.name, row.notes, row.uploaded_by_name, row.body_type, row.visibility].map((v) => (v || "").toString().toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -331,10 +327,10 @@ function LayerList({
         })();
         setEditRow(row);
         setEditOpen(true);
-      }, visible: () => ['superadmin','org_admin'].includes(currentUserRole)
+      }, visible: () => currentUserRole === 'superadmin'
     },
     {
-      label: 'Delete', title: 'Delete', icon: <FiTrash2 />, type: 'delete', onClick: (row) => doDelete(row.id), visible: () => allowDelete && ['superadmin','org_admin'].includes(currentUserRole)
+      label: 'Delete', title: 'Delete', icon: <FiTrash2 />, type: 'delete', onClick: (row) => doDelete(row.id), visible: () => allowDelete && currentUserRole === 'superadmin'
     }
   ], [allowedVisibilityValues, normalizedVisibilityOptions, currentUserRole, allowDelete]);
 

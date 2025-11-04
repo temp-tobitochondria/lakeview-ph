@@ -6,7 +6,6 @@ import {
   FiUsers,
   FiPlusCircle,
   FiClipboard,
-  FiLayers,
   FiActivity,
   FiSettings,
 } from "react-icons/fi";
@@ -14,7 +13,6 @@ import {
 import DashboardLayout from "../../layouts/DashboardLayout";
 import OrgOverview from "./orgOverview";
 import OrgMembers from "./orgMembers";
-import OrgLayers from "./orgLayers";
 import OrgAddWQTest from "./orgAddWQTest";
 import OrgWQTests from "./orgWQTests";
 import OrgSettingsPage from "./orgSettings.jsx";
@@ -35,8 +33,7 @@ export default function OrgDashboard() {
     { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Test", icon: <FiPlusCircle /> },
     // View Water Quality Tests
     { path: "/org-dashboard/wq-tests", label: "View Water Quality Tests", icon: <FiClipboard /> },
-    // Add Organization-created Layers
-    { path: "/org-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
+  // Base Layers page removed for Org Admin
     // Organization-wide Audit Logs
     { path: "/org-dashboard/org-audit", label: "Audit Logs", icon: <FiActivity /> },
     // Settings
@@ -50,7 +47,7 @@ export default function OrgDashboard() {
         <Route path="members" element={<OrgMembers />} />
         <Route path="add-wq-tests" element={<OrgAddWQTest  />} />
         <Route path="wq-tests" element={<OrgWQTests  />} />
-        <Route path="layers" element={<OrgLayers />} />
+  {/* Base Layers route removed */}
         {/* Organization Audit Logs (was missing causing blank page) */}
         <Route path="org-audit" element={<OrgAuditLogsPage />} />
   <Route path="settings" element={<OrgSettingsPage />} />

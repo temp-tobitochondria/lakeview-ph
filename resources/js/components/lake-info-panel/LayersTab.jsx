@@ -7,10 +7,6 @@ import { fetchPublicLayers } from "../../lib/layers";
 
 
 const fmtText = (v) => (v && String(v).trim() ? String(v).trim() : "–");
-const getOrgName = (layer) => {
-  const org = (layer?.uploaded_by_org ?? "").trim();
-  return org ? org : "LakeView";
-};
 
 /**
  * Props
@@ -216,10 +212,6 @@ function LayersTab({
                   </div>
 
                   <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    <strong>Organization:</strong> {fmtText(getOrgName(layer))}
-                  </div>
-
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
                     <strong>Notes:</strong> {fmtText(layer.notes)}
                   </div>
 
@@ -302,10 +294,6 @@ function LayersTab({
                             Default
                           </span>
                         ) : null}
-                      </div>
-
-                      <div style={{ fontSize: 13, opacity: 0.9 }}>
-                        <strong>Organization:</strong> {fmtText(getOrgName(layer))}
                       </div>
 
                       <div style={{ fontSize: 13, opacity: 0.9 }}>

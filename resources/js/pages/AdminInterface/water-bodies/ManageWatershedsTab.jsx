@@ -285,7 +285,7 @@ export default function ManageWatershedsTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      if (formMode === "edit" && data.id) {
+  if (formMode === "edit" && data.id) {
   showLoading('Saving watershed', 'Please wait…');
         await api(`/watersheds/${data.id}`, { method: "PUT", body: payload });
         await alertSuccess('Saved', `"${payload.name}" was updated.`);
@@ -295,7 +295,8 @@ export default function ManageWatershedsTab() {
         await alertSuccess('Created', `"${payload.name}" was created.`);
       }
       setFormOpen(false);
-      invalidateHttpCache('/watersheds');
+  // Watershed name appears in lakes list; invalidate both
+  invalidateHttpCache(['/watersheds', '/lakes']);
       await loadWatersheds();
     } catch (e) {
       console.error(e);
@@ -335,8 +336,8 @@ export default function ManageWatershedsTab() {
     setErrorMsg("");
     try {
   showLoading('Deleting watershed', 'Please wait…');
-      await api(`/watersheds/${target.id}`, { method: "DELETE" });
-      invalidateHttpCache('/watersheds');
+  await api(`/watersheds/${target.id}`, { method: "DELETE" });
+  invalidateHttpCache(['/watersheds', '/lakes']);
       await loadWatersheds();
       await alertSuccess('Deleted', `"${target.name}" was deleted.`);
     } catch (e) {
@@ -359,30 +360,6 @@ export default function ManageWatershedsTab() {
     setViewOpen(true);
   }, [loadPreview]);
 
-  const exportCsv = () => {
-    const headers = visibleColumns.map((c) => (typeof c.header === "string" ? c.header : c.id));
-    const csvRows = filteredRows.map((row) =>
-      visibleColumns
-        .map((col) => {
-          const value = row[col.accessor] ?? "";
-          const str = String(value);
-          return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-        })
-        .join(",")
-    );
-    const blob = new Blob([[headers.join(","), ...csvRows].join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "watersheds.csv";
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 0);
-  };
-
   const actions = [
     { label: "View", title: "View", icon: <FiEye />, onClick: handleView },
     { label: "Edit", title: "Edit", icon: <FiEdit2 />, onClick: openEdit, type: "edit" },
@@ -402,7 +379,6 @@ export default function ManageWatershedsTab() {
         columnPicker={{ columns, visibleMap, onVisibleChange: setVisibleMap }}
         onResetWidths={triggerResetWidths}
         onRefresh={handleRefresh}
-        onExport={exportCsv}
         onAdd={openCreate}
         onToggleFilters={undefined}
         filtersBadgeCount={0}

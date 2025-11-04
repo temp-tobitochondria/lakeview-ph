@@ -64,8 +64,6 @@ class LayerController extends Controller
 
         $query = Layer::query()
             ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
-            ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-            ->leftJoin('tenants', 'tenants.id', '=', 'users.tenant_id')
             ->orderByDesc('is_active')
             ->orderByDesc('layers.created_at');
 
@@ -79,23 +77,10 @@ class LayerController extends Controller
             $query->where('layers.body_id', (int) $bid);
         }
 
-        $role = $this->resolveRole($request->user());
-        if ($role === Role::ORG_ADMIN) {
-            // Show all layers uploaded by users in same tenant
-            $tenantId = $request->user()->tenant_id;
-            if ($tenantId) {
-                $query->where(function($w) use ($tenantId) {
-                    $w->where('users.tenant_id', $tenantId);
-                });
-            } else {
-                // Fallback: if somehow org_admin lacks tenant, restrict to own uploads
-                $query->where('layers.uploaded_by', $request->user()->id);
-            }
-        }
+        // Note: tenant-based scoping has been removed. Org Admins no longer create/manage layers.
 
     $query->select('layers.*'); // includes is_downloadable
         $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
-        $query->addSelect(DB::raw("COALESCE(CASE WHEN roles.scope = 'tenant' THEN tenants.name END, 'LakeView') AS uploaded_by_org"));
 
         if ($include->contains('geom'))   $query->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
         if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
@@ -116,8 +101,6 @@ class LayerController extends Controller
 
         $query = Layer::query()
             ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
-            ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-            ->leftJoin('tenants', 'tenants.id', '=', 'users.tenant_id')
             ->whereRaw("LOWER(TRIM(layers.visibility)) = 'public'")
             ->whereRaw("LOWER(TRIM(layers.body_type)) = ?", [strtolower($request->query('body_type'))])
             ->where('layers.body_id', (int)$request->query('body_id'))
@@ -125,7 +108,7 @@ class LayerController extends Controller
             ->orderByDesc('layers.created_at');
 
     $query->select(['layers.id','layers.name','layers.notes','layers.is_active','layers.is_downloadable','layers.created_at','layers.updated_at']);
-        $query->addSelect(DB::raw("COALESCE(CASE WHEN roles.scope = 'tenant' THEN tenants.name END, 'LakeView') AS uploaded_by_org"));
+        $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
 
         if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox) AS bbox_geojson');
         // Cache list per body + include with version bump
@@ -147,13 +130,11 @@ class LayerController extends Controller
             ->map(fn($s)=>trim($s))->filter()->values();
         $q = Layer::query()
             ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
-            ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-            ->leftJoin('tenants', 'tenants.id', '=', 'users.tenant_id')
             ->where('layers.id', $id)
             ->where('layers.visibility', 'public');
 
     $q->select(['layers.id','layers.body_type','layers.body_id','layers.name','layers.notes','layers.is_active','layers.is_downloadable','layers.created_at','layers.updated_at']);
-        $q->addSelect(DB::raw("COALESCE(CASE WHEN roles.scope = 'tenant' THEN tenants.name END, 'LakeView') AS uploaded_by_org"));
+        $q->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
         if ($include->contains('geom'))   $q->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
         if ($include->contains('bounds')) $q->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
         $ver = (int) Cache::get('ver:public:layers', 1);
@@ -183,8 +164,8 @@ class LayerController extends Controller
     {
         $user = $request->user();
         $role = $this->resolveRole($user);
-        if (!in_array($role, [Role::SUPERADMIN, Role::ORG_ADMIN], true)) {
-            abort(403, 'Only Super Administrators or Organization Administrators may create layers.');
+        if ($role !== Role::SUPERADMIN) {
+            abort(403, 'Only Super Administrators may create layers.');
         }
                 $data = $request->validated();
                 $visibility = $data['visibility'] ?? 'public';
@@ -279,35 +260,19 @@ class LayerController extends Controller
     {
         $user = $request->user();
         $role = $this->resolveRole($user);
+        if ($role !== Role::SUPERADMIN) {
+            abort(403, 'Only Super Administrators may update layers.');
+        }
         $data = $request->validated();
-
-        // Enforce field-level permissions
-        $super = ($role === Role::SUPERADMIN);
-        if (!$super) {
-            // Org admin can only modify a subset of fields
-            $allowed = collect($data)->only(['name','srid','notes','source_type','is_downloadable'])->toArray();
-            $data = $allowed;
-
-            // Also restrict scope: org_admin can only edit layers uploaded by their tenant or themselves
-            $tenantId = $user->tenant_id ?? null;
-            if (!$tenantId || !$layer->uploaded_by) {
-                abort(403, 'Forbidden');
-            }
-            $uploader = \App\Models\User::query()->select(['tenant_id'])->where('id', $layer->uploaded_by)->first();
-            if (!$uploader || (int)$uploader->tenant_id !== (int)$tenantId) {
-                abort(403, 'Forbidden');
-            }
-        } else {
-            // Superadmin normalization for visibility
-            $visibility = $data['visibility'] ?? $layer->visibility;
-            if (in_array($visibility, ['organization','organization_admin'], true)) $visibility = 'admin';
-            if (!in_array($visibility, ['public','admin'], true)) {
-                throw ValidationException::withMessages(['visibility' => ['Visibility must be Public or Admin.']]);
-            }
-            $data['visibility'] = $visibility;
-            if (array_key_exists('is_downloadable', $data)) {
-                $data['is_downloadable'] = (bool)$data['is_downloadable'];
-            }
+        // Superadmin normalization for visibility
+        $visibility = $data['visibility'] ?? $layer->visibility;
+        if (in_array($visibility, ['organization','organization_admin'], true)) $visibility = 'admin';
+        if (!in_array($visibility, ['public','admin'], true)) {
+            throw ValidationException::withMessages(['visibility' => ['Visibility must be Public or Admin.']]);
+        }
+        $data['visibility'] = $visibility;
+        if (array_key_exists('is_downloadable', $data)) {
+            $data['is_downloadable'] = (bool)$data['is_downloadable'];
         }
 
                 // Save basic fields first
@@ -381,27 +346,13 @@ class LayerController extends Controller
     {
         $user = $request->user();
         $role = $this->resolveRole($user);
-        if ($role === Role::SUPERADMIN) {
-            $layer->delete();
-            try {
-                $v1 = (int) Cache::get('ver:public:layers', 1); Cache::forever('ver:public:layers', $v1 + 1);
-                $v2 = (int) Cache::get('ver:public:lakes', 1);  Cache::forever('ver:public:lakes',  $v2 + 1);
-            } catch (\Throwable $e) {}
-            return response()->json([], 204);
-        }
-        if ($role === Role::ORG_ADMIN) {
-            $tenantId = $user->tenant_id ?? null;
-            if (!$tenantId || !$layer->uploaded_by) abort(403);
-            $uploader = \App\Models\User::query()->select(['tenant_id'])->where('id', $layer->uploaded_by)->first();
-            if (!$uploader || (int)$uploader->tenant_id !== (int)$tenantId) abort(403);
-            $layer->delete();
-            try {
-                $v1 = (int) Cache::get('ver:public:layers', 1); Cache::forever('ver:public:layers', $v1 + 1);
-                $v2 = (int) Cache::get('ver:public:lakes', 1);  Cache::forever('ver:public:lakes',  $v2 + 1);
-            } catch (\Throwable $e) {}
-            return response()->json([], 204);
-        }
-        abort(403);
+        if ($role !== Role::SUPERADMIN) abort(403);
+        $layer->delete();
+        try {
+            $v1 = (int) Cache::get('ver:public:layers', 1); Cache::forever('ver:public:layers', $v1 + 1);
+            $v2 = (int) Cache::get('ver:public:lakes', 1);  Cache::forever('ver:public:lakes',  $v2 + 1);
+        } catch (\Throwable $e) {}
+        return response()->json([], 204);
     }
 
     /**
@@ -427,14 +378,6 @@ class LayerController extends Controller
         if ($layer->visibility !== Layer::VIS_PUBLIC) {
             if (!in_array($role, [Role::SUPERADMIN, Role::ORG_ADMIN], true)) {
                 abort(403, 'Forbidden');
-            }
-            if ($role === Role::ORG_ADMIN) {
-                // Ensure tenant match when org_admin and layer uploaded by tenant user.
-                $tenantId = $user->tenant_id ?? null;
-                if ($layer->uploaded_by) {
-                    $uploader = \App\Models\User::query()->select(['tenant_id'])->where('id', $layer->uploaded_by)->first();
-                    if (!$uploader || (int)$uploader->tenant_id !== (int)$tenantId) abort(403, 'Forbidden');
-                }
             }
         }
 
@@ -473,17 +416,17 @@ class LayerController extends Controller
                         $name = htmlspecialchars($row->name ?? ('Layer '.$row->id), ENT_XML1 | ENT_COMPAT, 'UTF-8');
                         // Build well‑formed KML (no stray literal \n sequences)
                         $kmlDoc = <<<KML
-<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-    <Document>
-        <name>{$name}</name>
-        <Placemark>
-            <name>{$name}</name>
-            {$kmlGeom}
-        </Placemark>
-    </Document>
-</kml>
-KML;
+                                    <?xml version="1.0" encoding="UTF-8"?>
+                                    <kml xmlns="http://www.opengis.net/kml/2.2">
+                                        <Document>
+                                            <name>{$name}</name>
+                                            <Placemark>
+                                                <name>{$name}</name>
+                                                {$kmlGeom}
+                                            </Placemark>
+                                        </Document>
+                                    </kml>
+                                    KML;
                         return response($kmlDoc, 200, [
                                 'Content-Type' => 'application/vnd.google-earth.kml+xml; charset=UTF-8',
                                 'Content-Disposition' => 'attachment; filename="layer-'.$row->id.'.kml"'
