@@ -412,9 +412,9 @@ export default function LayerWizard({
         body_id: Number(form.bodyId),
         name: form.name,
         srid: Number(form.sourceSrid) || 4326,
-  visibility: form.visibility,          // e.g. public, organization
+        visibility: form.visibility, 
         is_active: allowSetActive ? !!form.isActive : false,
-  is_downloadable: !!form.isDownloadable,
+        is_downloadable: !!form.isDownloadable,
         status: "ready",
         notes: form.notes || null,
         source_type: sourceType,
