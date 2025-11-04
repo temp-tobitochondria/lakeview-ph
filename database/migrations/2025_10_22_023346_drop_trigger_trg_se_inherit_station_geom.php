@@ -10,6 +10,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
         DB::statement('DROP TRIGGER IF EXISTS trg_se_inherit_station_geom ON sampling_events');
         DB::statement('DROP FUNCTION IF EXISTS trg_se_inherit_station_geom() CASCADE');
     }

@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateFeedbackRequest;
 use App\Models\Feedback;
+use App\Events\FeedbackStatusChanged;
+use App\Events\FeedbackAdminReplied;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -76,6 +78,8 @@ class FeedbackController extends Controller
     public function update(UpdateFeedbackRequest $request, Feedback $feedback)
     {
         $data = $request->validated();
+        $oldStatus = $feedback->status;
+        $oldResponse = $feedback->admin_response;
         if (isset($data['status'])) {
             $feedback->status = $data['status'];
             if (in_array($feedback->status, [Feedback::STATUS_RESOLVED, Feedback::STATUS_WONT_FIX])) {
@@ -88,6 +92,14 @@ class FeedbackController extends Controller
             $feedback->admin_response = $data['admin_response'];
         }
         $feedback->save();
+
+        // Dispatch events after save
+        if (isset($data['status']) && $oldStatus !== $feedback->status) {
+            event(new FeedbackStatusChanged($feedback, $oldStatus, $feedback->status, $request->user()?->id));
+        }
+        if (array_key_exists('admin_response', $data) && $oldResponse !== $feedback->admin_response) {
+            event(new FeedbackAdminReplied($feedback, $oldResponse, (string) $feedback->admin_response, $request->user()?->id));
+        }
         return response()->json(['data' => $feedback]);
     }
 
@@ -112,19 +124,31 @@ class FeedbackController extends Controller
         // Determine resolved_at value based on status
         $resolvedAt = in_array($data['status'], [Feedback::STATUS_RESOLVED, Feedback::STATUS_WONT_FIX]) ? $now : null;
 
-        $updatePayload = [
-            'status' => $data['status'],
-            'resolved_at' => $resolvedAt,
-            'updated_at' => $now,
-        ];
-        if (array_key_exists('admin_response', $data)) {
-            $updatePayload['admin_response'] = $data['admin_response'];
-        }
-
-        Feedback::whereIn('id', $data['ids'])->update($updatePayload);
         $rows = Feedback::query()->with(['user:id,name,email','tenant:id,name'])
             ->whereIn('id', $data['ids'])->get();
-        return response()->json(['data' => $rows]);
+
+        $updated = [];
+        foreach ($rows as $row) {
+            $oldStatus = $row->status;
+            $oldResponse = $row->admin_response;
+            $row->status = $data['status'];
+            $row->resolved_at = $resolvedAt;
+            if (array_key_exists('admin_response', $data)) {
+                $row->admin_response = $data['admin_response'];
+            }
+            $row->updated_at = $now;
+            $row->save();
+
+            if ($oldStatus !== $row->status) {
+                event(new FeedbackStatusChanged($row, $oldStatus, $row->status, $request->user()?->id));
+            }
+            if (array_key_exists('admin_response', $data) && $oldResponse !== $row->admin_response) {
+                event(new FeedbackAdminReplied($row, $oldResponse, (string) $row->admin_response, $request->user()?->id));
+            }
+            $updated[] = $row;
+        }
+
+        return response()->json(['data' => $updated]);
     }
 
 }

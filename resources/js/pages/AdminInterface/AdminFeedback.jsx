@@ -687,15 +687,25 @@ export default function AdminFeedback() {
                       );
                     }
                     if (col === 'docs') {
+                      const fromLakePanel = !!r.lake?.id;
+                      const hasDocs = Array.isArray(r.images) && r.images.length > 0;
+                      // Requirement:
+                      // - Remove button if feedback is from the sidebar (i.e., not from lake panel)
+                      // - In lake info panel, show button only if there are attachments; otherwise show nothing
+                      if (!fromLakePanel) {
+                        return (<td key={col} className="lv-td" style={{ fontSize:12 }}>—</td>);
+                      }
+                      if (!hasDocs) {
+                        return (<td key={col} className="lv-td" style={{ fontSize:12 }}>—</td>);
+                      }
                       return (
                         <td key={col} className="lv-td" style={{ fontSize:12 }}>
                           <button
                             className="pill-btn ghost sm"
                             onClick={() => { setDocsItem(r); setDocsOpen(true); }}
-                            disabled={!Array.isArray(r.images) || r.images.length === 0}
-                            title={Array.isArray(r.images) && r.images.length > 0 ? 'View attachments' : 'No attachments'}
+                            title={`View attachments (${r.images.length})`}
                           >
-                            <FiFileText /> View{Array.isArray(r.images) && r.images.length > 0 ? ` (${r.images.length})` : ''}
+                            <FiFileText /> View ({r.images.length})
                           </button>
                         </td>
                       );

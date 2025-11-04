@@ -32,11 +32,14 @@ return new class extends Migration {
             $table->index(['created_by']);
         });
 
-        // Enforce allowed values for flow_type (PostgreSQL CHECK)
-    DB::statement("ALTER TABLE lake_flows ADD CONSTRAINT lake_flows_flow_type_check CHECK (flow_type IN ('inflow','outflow'))");
-    // Convert geometry column to POINT with SRID 4326
-    try { DB::statement('ALTER TABLE lake_flows ALTER COLUMN coordinates TYPE geometry(Point,4326) USING ST_SetSRID(coordinates::geometry,4326)'); } catch (Throwable $e) { /* ignore */ }
-    try { DB::statement('CREATE INDEX lake_flows_coordinates_gist ON lake_flows USING GIST (coordinates)'); } catch (Throwable $e) { /* ignore */ }
+        // Postgres-specific constraints and spatial adjustments
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+            // Enforce allowed values for flow_type (PostgreSQL CHECK)
+            DB::statement("ALTER TABLE lake_flows ADD CONSTRAINT lake_flows_flow_type_check CHECK (flow_type IN ('inflow','outflow'))");
+            // Convert geometry column to POINT with SRID 4326 and create GiST index
+            try { DB::statement('ALTER TABLE lake_flows ALTER COLUMN coordinates TYPE geometry(Point,4326) USING ST_SetSRID(coordinates::geometry,4326)'); } catch (Throwable $e) { /* ignore */ }
+            try { DB::statement('CREATE INDEX lake_flows_coordinates_gist ON lake_flows USING GIST (coordinates)'); } catch (Throwable $e) { /* ignore */ }
+        }
     }
 
     public function down(): void

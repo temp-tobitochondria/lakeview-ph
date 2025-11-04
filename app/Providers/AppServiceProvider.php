@@ -3,6 +3,11 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Event;
+use App\Events\FeedbackStatusChanged;
+use App\Events\FeedbackAdminReplied;
+use App\Listeners\SendFeedbackStatusChangedEmail;
+use App\Listeners\SendFeedbackAdminReplyEmail;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\URL;
 use App\Models\Lake;
@@ -36,5 +41,9 @@ class AppServiceProvider extends ServiceProvider
         'user' => User::class
         // add more when you support other bodies
     ]);
+
+        // Register event listeners
+        Event::listen(FeedbackStatusChanged::class, [SendFeedbackStatusChangedEmail::class, 'handle']);
+        Event::listen(FeedbackAdminReplied::class, [SendFeedbackAdminReplyEmail::class, 'handle']);
     }
 }

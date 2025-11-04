@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        $driver = DB::getDriverName();
+        if ($driver !== 'pgsql') {
+            // All statements below are PostgreSQL/PostGIS specific; skip on other drivers (e.g., sqlite for tests).
+            return;
+        }
+
         // GiST index on geometry for layers (only if column exists)
         if (Schema::hasColumn('layers', 'geom')) {
             DB::statement("CREATE INDEX IF NOT EXISTS idx_layers_geom_gist ON layers USING GIST (geom);");
@@ -59,17 +65,22 @@ return new class extends Migration {
 
     public function down(): void
     {
-    DB::statement("DROP INDEX IF EXISTS idx_layers_geom_gist;");
-    DB::statement("DROP INDEX IF EXISTS idx_lakes_name_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_lakes_alt_name_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_lakes_region_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_lakes_province_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_watersheds_name_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_watersheds_desc_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_layers_name_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_layers_layer_name_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_layers_category_trgm;");
-    DB::statement("DROP INDEX IF EXISTS idx_layers_source_trgm;");
+        $driver = DB::getDriverName();
+        if ($driver !== 'pgsql') {
+            return;
+        }
+
+        DB::statement("DROP INDEX IF EXISTS idx_layers_geom_gist;");
+        DB::statement("DROP INDEX IF EXISTS idx_lakes_name_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_lakes_alt_name_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_lakes_region_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_lakes_province_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_watersheds_name_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_watersheds_desc_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_layers_name_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_layers_layer_name_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_layers_category_trgm;");
+        DB::statement("DROP INDEX IF EXISTS idx_layers_source_trgm;");
         // Note: don't drop extension in down to avoid impacting other uses
     }
 };

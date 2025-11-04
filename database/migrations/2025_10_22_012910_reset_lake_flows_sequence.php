@@ -10,6 +10,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+                if (DB::getDriverName() !== 'pgsql') {
+                    // Sequence reset DO $$ block is PostgreSQL-specific; skip on other drivers (e.g., sqlite in tests)
+                    return;
+                }
                 // Safely reset sequence so nextval yields MAX(id)+1 when rows exist, or 1 when table is empty
                 DB::statement(<<<SQL
                         DO $$
