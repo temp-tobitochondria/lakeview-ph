@@ -204,17 +204,6 @@ export default function ManageFlowsTab() {
     ));
   }, [rows, query, typeFilter]);
 
-  const exportCsv = () => {
-    const headers = visibleColumns.map(c => typeof c.header === 'string' ? c.header : c.id);
-    const csvRows = filteredRows.map(row => visibleColumns.map(col => {
-      const value = row[col.accessor];
-      const str = value == null ? '' : String(value);
-      return /[",\n]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
-    }).join(','));
-    const blob = new Blob([[headers.join(','), ...csvRows].join('\n')], { type:'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'lake_flows.csv'; document.body.appendChild(a); a.click(); setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },0);
-  };
-
   const actions = useMemo(()=>[
     { label:'View', title:'View', icon:<FiEye />, onClick: (row) => viewFlow(row), type:'view' },
     { label:'Edit', title:'Edit', icon:<FiEdit2 />, onClick: openEdit, type:'edit' },
@@ -236,7 +225,6 @@ export default function ManageFlowsTab() {
         columnPicker={{ columns, visibleMap, onVisibleChange: setVisibleMap }}
         onResetWidths={triggerResetWidths}
         onRefresh={fetchRows}
-        onExport={exportCsv}
         onAdd={openCreate}
         onToggleFilters={undefined}
         filtersBadgeCount={0}
