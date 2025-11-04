@@ -285,7 +285,7 @@ export default function ManageWatershedsTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      if (formMode === "edit" && data.id) {
+  if (formMode === "edit" && data.id) {
   showLoading('Saving watershed', 'Please wait…');
         await api(`/watersheds/${data.id}`, { method: "PUT", body: payload });
         await alertSuccess('Saved', `"${payload.name}" was updated.`);
@@ -295,7 +295,8 @@ export default function ManageWatershedsTab() {
         await alertSuccess('Created', `"${payload.name}" was created.`);
       }
       setFormOpen(false);
-      invalidateHttpCache('/watersheds');
+  // Watershed name appears in lakes list; invalidate both
+  invalidateHttpCache(['/watersheds', '/lakes']);
       await loadWatersheds();
     } catch (e) {
       console.error(e);
@@ -335,8 +336,8 @@ export default function ManageWatershedsTab() {
     setErrorMsg("");
     try {
   showLoading('Deleting watershed', 'Please wait…');
-      await api(`/watersheds/${target.id}`, { method: "DELETE" });
-      invalidateHttpCache('/watersheds');
+  await api(`/watersheds/${target.id}`, { method: "DELETE" });
+  invalidateHttpCache(['/watersheds', '/lakes']);
       await loadWatersheds();
       await alertSuccess('Deleted', `"${target.name}" was deleted.`);
     } catch (e) {

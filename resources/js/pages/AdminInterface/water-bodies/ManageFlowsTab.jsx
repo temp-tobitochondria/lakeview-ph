@@ -100,7 +100,8 @@ export default function ManageFlowsTab() {
     try { 
   showLoading('Deleting tributary', 'Please wait…');
       await api(`/lake-flows/${src.id}`, { method: 'DELETE' }); 
-      invalidateHttpCache('/lake-flows');
+      // Flows impact lakes' derived fields (e.g., flows_status) and listings
+      invalidateHttpCache(['/lake-flows', '/lakes']);
       await alertSuccess('Deleted', `"${src.name || 'Tributary'}" has been deleted successfully.`);
       fetchRows(); 
     } catch (e) { 
@@ -175,7 +176,7 @@ export default function ManageFlowsTab() {
       await alertError('Save failed', e.message || 'Failed to save tributary');
       return;
     } finally { closeLoading(); }
-    setFormOpen(false); invalidateHttpCache('/lake-flows'); fetchRows();
+    setFormOpen(false); invalidateHttpCache(['/lake-flows', '/lakes']); fetchRows();
   };
 
   const columns = useMemo(()=>[

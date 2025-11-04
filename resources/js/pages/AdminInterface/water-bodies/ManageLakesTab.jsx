@@ -643,7 +643,8 @@ function ManageLakesTab() {
         try {
           showLoading('Deleting lake', 'Please wait…');
           await api(`/lakes/${target.id}`, { method: "DELETE" });
-          invalidateHttpCache('/lakes');
+          // Invalidate all related caches where lake data/name appears
+          invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
           await fetchLakes();
           await alertSuccess('Deleted', `"${target.name}" was deleted.`);
         } catch (err) {
@@ -666,7 +667,7 @@ function ManageLakesTab() {
           try {
             showLoading('Deleting lake', 'Please wait…');
             await api(`/lakes/${target.id}`, { method: "DELETE" });
-            invalidateHttpCache('/lakes');
+            invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
             await fetchLakes();
             await alertSuccess('Deleted', `"${target.name}" was deleted.`);
           } catch (err2) {
@@ -723,9 +724,10 @@ function ManageLakesTab() {
           await api(`/lakes/${payload.id}`, { method: "PUT", body: payload });
           await alertSuccess('Saved', `"${payload.name}" was updated.`);
         }
-        setFormOpen(false);
-        invalidateHttpCache('/lakes');
-        await fetchLakes();
+  setFormOpen(false);
+  // Invalidate caches used across tabs (lists, options, and flows list which may display lake name)
+  invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
+  await fetchLakes();
       } catch (err) {
         console.error("[ManageLakesTab] Failed to save lake", err);
         setErrorMsg("Save failed. Please verify required fields and that the name is unique.");
