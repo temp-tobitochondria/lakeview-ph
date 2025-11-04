@@ -280,7 +280,7 @@ function ManageLakesTab() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const data = await cachedGet("/lakes", { ttlMs: 10 * 60 * 1000, auth: false });
+      const data = await api("/lakes", { auth: false });
       const list = Array.isArray(data) ? data : data?.data ?? [];
       setAllLakes(normalizeRows(list));
     } catch (err) {
@@ -532,27 +532,38 @@ function ManageLakesTab() {
     setFormOpen(true);
   }, []);
 
-  const openEdit = useCallback((row) => {
+  const openEdit = useCallback(async (row) => {
     const source = row?._raw ?? row;
-    if (!source) return;
-    setFormMode("edit");
-    setFormInitial({
-      id: source.id,
-      name: source.name ?? "",
-      alt_name: source.alt_name ?? "",
-      region: source.region ?? "",
-      province: source.province ?? "",
-      municipality: source.municipality ?? "",
-      watershed_id: source.watershed_id ?? source.watershed?.id ?? "",
-      surface_area_km2: source.surface_area_km2 ?? "",
-      elevation_m: source.elevation_m ?? "",
-      mean_depth_m: source.mean_depth_m ?? "",
-      lat: source.lat ?? "",
-      lon: source.lon ?? "",
-      class_code: source.class_code ?? "",
-      flows_status: source.flows_status ?? 'unknown',
-    });
-    setFormOpen(true);
+    if (!source?.id) return;
+
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const detail = await api(`/lakes/${source.id}`);
+      setFormMode("edit");
+      setFormInitial({
+        id: detail.id,
+        name: detail.name ?? "",
+        alt_name: detail.alt_name ?? "",
+        region: detail.region ?? "",
+        province: detail.province ?? "",
+        municipality: detail.municipality ?? "",
+        watershed_id: detail.watershed_id ?? detail.watershed?.id ?? "",
+        surface_area_km2: detail.surface_area_km2 ?? "",
+        elevation_m: detail.elevation_m ?? "",
+        mean_depth_m: detail.mean_depth_m ?? "",
+        lat: detail.lat ?? "",
+        lon: detail.lon ?? "",
+        class_code: detail.class_code ?? "",
+        flows_status: detail.flows_status ?? 'unknown',
+      });
+      setFormOpen(true);
+    } catch (err) {
+      console.error("[ManageLakesTab] Failed to load lake for edit", err);
+      setErrorMsg("Failed to load lake details for editing.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const openDelete = useCallback((row) => {
@@ -715,19 +726,21 @@ function ManageLakesTab() {
       setLoading(true);
       setErrorMsg("");
       try {
+        let updatedLake;
         if (formMode === "create") {
           showLoading('Creating lake', 'Please wait…');
-          await api("/lakes", { method: "POST", body: payload });
-          await alertSuccess('Created', `"${payload.name}" was created.`);
+          updatedLake = await api("/lakes", { method: "POST", body: payload });
+          setAllLakes((prev) => [...prev, normalizeRows([updatedLake])[0]]);
+          await alertSuccess('Created', `"${updatedLake.name || payload.name}" was created.`);
         } else {
           showLoading('Saving lake', 'Please wait…');
-          await api(`/lakes/${payload.id}`, { method: "PUT", body: payload });
-          await alertSuccess('Saved', `"${payload.name}" was updated.`);
+          updatedLake = await api(`/lakes/${payload.id}`, { method: "PUT", body: payload });
+          setAllLakes((prev) => prev.map((lake) => (lake.id === updatedLake.id ? normalizeRows([updatedLake])[0] : lake)));
+          await alertSuccess('Saved', `"${updatedLake.name || payload.name}" was updated.`);
         }
-  setFormOpen(false);
-  // Invalidate caches used across tabs (lists, options, and flows list which may display lake name)
-  invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
-  await fetchLakes();
+        setFormOpen(false);
+        // Invalidate caches used across tabs (lists, options, and flows list which may display lake name)
+        invalidateHttpCache(['/lakes', '/options/lakes', '/lake-flows']);
       } catch (err) {
         console.error("[ManageLakesTab] Failed to save lake", err);
         setErrorMsg("Save failed. Please verify required fields and that the name is unique.");
@@ -737,7 +750,7 @@ function ManageLakesTab() {
         setLoading(false);
       }
     },
-    [fetchLakes, formMode]
+    [formMode]
   );
 
   // delete flow now handled inline in openDelete
