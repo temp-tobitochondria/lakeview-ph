@@ -323,7 +323,7 @@ export default function SingleLake({
             const pMeta = (() => {
               const sel = String(selectedParam || '');
               const opt = (paramOptions || []).find(p => String(p.key || p.id || p.code) === sel);
-              return { code: opt?.code || sel, name: opt?.label || opt?.name || opt?.code || sel, unit: opt?.unit || '' };
+              return { code: opt?.code || sel, name: opt?.label || opt?.name || opt?.code || sel, unit: opt?.unit || '', desc: opt?.desc || '' };
             })();
             const ctx = {
               chartType,

@@ -106,10 +106,12 @@ export default function ParameterForm({
 
         <label className="lv-field" style={{ gridColumn: '1 / span 2' }}>
           <span>Description</span>
-          <input
+          <textarea
             placeholder="Add description"
             value={form.desc || ""}
             onChange={(e) => setForm({ ...form, desc: e.target.value })}
+            rows={4}
+            style={{ resize: 'vertical' }}
           />
         </label>
       </form>

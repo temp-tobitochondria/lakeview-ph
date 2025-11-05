@@ -79,6 +79,7 @@ export default function useMultiParamTimeSeriesData({ events, bucket }) {
             code: p.code || String(pid),
             name: p.name || p.code || String(pid),
             unit: p.unit || '',
+            desc: p.desc || '',
             threshold: { min: r?.threshold?.min_value ?? null, max: r?.threshold?.max_value ?? null },
             depths: new Map(),
           });
@@ -160,6 +161,7 @@ export default function useMultiParamTimeSeriesData({ events, bucket }) {
         code: entry.code,
         name: entry.name,
         unit: entry.unit,
+        desc: entry.desc || '',
         threshold: entry.threshold,
         labels,
         statsByDepth, // Map depthLabel -> [{sum,cnt,min,max}|null]

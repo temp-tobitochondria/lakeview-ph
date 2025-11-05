@@ -83,7 +83,7 @@ class OptionsController extends Controller
         $limit = max(1, min($limit, 2000));
 
         $rows = Parameter::query()
-            ->select(['id', 'code', 'name', 'unit', 'evaluation_type'])
+            ->select(['id', 'code', 'name', 'unit', 'evaluation_type', 'desc'])
             ->when($q !== '', function ($qb) use ($q) {
                 $like = "%{$q}%";
                 $qb->where(function ($inner) use ($like) {

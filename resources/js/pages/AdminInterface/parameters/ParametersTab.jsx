@@ -73,7 +73,8 @@ function ParametersTab() {
       const raw = localStorage.getItem(GRID_VISIBLE_KEY);
       if (raw) return JSON.parse(raw);
     } catch {}
-    return {};
+    // Hide Description by default; users can enable via Column Picker
+    return { desc: false };
   });
   useEffect(() => {
     try { localStorage.setItem(GRID_VISIBLE_KEY, JSON.stringify(visibleMap)); } catch {}

@@ -353,7 +353,7 @@ function WaterQualityTab({ lake }) {
                         if (p?.threshold) standards.push({ code: 'Active standard', min: p.threshold.min, max: p.threshold.max });
                         const ctx = {
                           chartType: 'time',
-                          param: { code: p.code, name: p.name, unit: p.unit },
+                          param: { code: p.code, name: p.name, unit: p.unit, desc: p.desc || '' },
                           seriesMode: 'avg',
                           bucket,
                           standards,
