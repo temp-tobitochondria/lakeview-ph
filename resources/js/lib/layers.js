@@ -139,6 +139,51 @@ export const fetchAllLayers = async ({ bodyType, bodyId, includeGeom = false, in
   return pluck(res);
 };
 
+/**
+ * Server-side paginated list of layers for admin screens.
+ * Returns { rows, page, perPage, total, lastPage }
+ */
+export const fetchLayersPaged = async ({
+  page = 1,
+  perPage = 15,
+  includeGeom = false,
+  includeBounds = false,
+  bodyType = '',
+  bodyId = '',
+  visibility = '',
+  downloadable = '',
+  createdBy = '',
+  q = '',
+  sortBy = 'created_at',
+  sortDir = 'desc',
+} = {}) => {
+  const include = [];
+  if (includeGeom) include.push('geom');
+  if (includeBounds) include.push('bounds');
+  const params = {
+    page,
+    per_page: perPage,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    body_type: bodyType || undefined,
+    body_id: bodyId || undefined,
+    visibility: visibility || undefined,
+    downloadable: downloadable || undefined,
+    created_by: createdBy || undefined,
+    q: q || undefined,
+    include: include.join(',') || undefined,
+  };
+  const res = await api('/layers', { params });
+  const rows = Array.isArray(res?.data) ? res.data : [];
+  return {
+    rows,
+    page: res?.current_page || page,
+    perPage: res?.per_page || perPage,
+    total: res?.total || rows.length,
+    lastPage: res?.last_page || 1,
+  };
+};
+
 export const fetchLayersForBody = async (bodyType, bodyId) => {
   if (!bodyType || !bodyId) return [];
   const res = await api(

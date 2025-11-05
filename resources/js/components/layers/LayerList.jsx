@@ -3,7 +3,7 @@ import { FiLayers, FiLoader, FiEye, FiTrash2, FiEdit2 } from "react-icons/fi";
 
 import Modal from "../Modal";
 import { confirm, alertError, alertSuccess, alertWarning, showLoading, closeLoading } from "../../lib/alerts";
-import { fetchAllLayers, toggleLayerVisibility, deleteLayer, updateLayer } from "../../lib/layers";
+import { fetchLayersPaged, fetchAllLayers, toggleLayerVisibility, deleteLayer, updateLayer } from "../../lib/layers";
 import TableLayout from "../../layouts/TableLayout";
 import TableToolbar from "../table/TableToolbar";
 import FilterPanel from "../table/FilterPanel";
@@ -35,6 +35,7 @@ function LayerList({
   const [layers, setLayers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
   const [resetSignal, setResetSignal] = useState(0);
   const [search, setSearch] = useState(() => {
     // Prefer prop; fallback to URL query ?search=
@@ -163,17 +164,31 @@ function LayerList({
     setMapViewport((prev) => ({ ...prev, bounds: null, token: Date.now() }));
   }, []);
 
-  const refresh = async () => {
+  const refresh = async (pageOverride = null) => {
     setLoading(true);
     setErr("");
     try {
-      // Include geom,bounds for preview support
-      const rows = await fetchAllLayers({ includeGeom: true, includeBounds: true });
+      // Include geom,bounds for preview support per page
+      const { rows, page, perPage, total, lastPage } = await fetchLayersPaged({
+        page: pageOverride ?? pagination.page,
+        perPage: pagination.perPage,
+        includeGeom: true,
+        includeBounds: true,
+        bodyType: fBodyType || undefined,
+        visibility: fVisibility || undefined,
+        downloadable: fDownloadableOnly || undefined,
+        createdBy: fCreatedBy || undefined,
+        q: search || undefined,
+        sortBy: 'created_at',
+        sortDir: 'desc',
+      });
       setLayers(Array.isArray(rows) ? rows : []);
+      setPagination({ page, perPage, total, lastPage });
     } catch (e) {
       console.error('[LayerList] Failed to fetch layers', e);
       setErr(e?.message || "Failed to fetch layers");
       setLayers([]);
+      setPagination((p) => ({ ...p, lastPage: 1, total: 0 }));
     } finally {
       setLoading(false);
     }
@@ -183,6 +198,13 @@ function LayerList({
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-fetch when search or filters change (debounced a bit by consumer if needed)
+  useEffect(() => {
+    const t = setTimeout(() => refresh(1), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, fBodyType, fVisibility, fDownloadableOnly, fCreatedBy]);
 
   useEffect(() => {
     if (!previewLayer?.geom_geojson) {
@@ -258,23 +280,8 @@ function LayerList({
 
   // Default toggling removed
 
-  // Derived filtered rows
-  const filtered = useMemo(() => {
-    const q = (search || "").toLowerCase();
-    return (layers || []).filter((row) => {
-      if (fBodyType && String(row.body_type) !== fBodyType) return false;
-      if (fVisibility && String(row.visibility) !== fVisibility) return false;
-      if (fDownloadableOnly === 'yes' && !row.is_downloadable) return false;
-      if (fDownloadableOnly === 'no' && row.is_downloadable) return false;
-  // Default filter no longer applies
-      if (fCreatedBy && formatCreator(row) !== fCreatedBy) return false;
-      if (q) {
-        const hay = [row.name, row.notes, row.uploaded_by_name, row.body_type, row.visibility].map((v) => (v || "").toString().toLowerCase()).join(" ");
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [layers, search, fBodyType, fVisibility, fDownloadableOnly, fDefaultOnly, fCreatedBy]);
+  // Server-side filters applied; show current page as-is
+  const filtered = useMemo(() => layers, [layers]);
 
   const filtersBadgeCount = (fBodyType ? 1 : 0) + (fVisibility ? 1 : 0) + (fDownloadableOnly ? 1 : 0) + (fDefaultOnly ? 1 : 0) + (fCreatedBy ? 1 : 0);
 
@@ -390,12 +397,17 @@ function LayerList({
             tableId="layers-table"
             columns={columns}
             data={filtered}
-            pageSize={15}
             actions={actions}
             resetSignal={resetSignal}
             columnPicker={false}
             loading={loading}
             loadingLabel={loading ? 'Loading layers…' : null}
+            serverSide={true}
+            pagination={{ page: pagination.page, totalPages: pagination.lastPage || 1 }}
+            onPageChange={(newPage) => {
+              setPagination((p) => ({ ...p, page: newPage }));
+              refresh(newPage);
+            }}
           />
 
           {/* Preview modal */}

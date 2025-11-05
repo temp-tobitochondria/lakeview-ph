@@ -53,18 +53,26 @@ class LayerController extends Controller
     public function index(Request $request)
     {
         $request->validate([
-            // Allow global listing; filters are optional
-            'body_type' => 'nullable|string|in:lake,watershed',
-            'body_id'   => 'nullable|integer|min:1',
-            'include'   => 'nullable|string'
+            // Filters (all optional)
+            'body_type'   => 'nullable|string|in:lake,watershed',
+            'body_id'     => 'nullable|integer|min:1',
+            'visibility'  => 'nullable|string|in:public,admin,organization,organization_admin',
+            'downloadable'=> 'nullable|string', // yes|no|1|0|true|false
+            'created_by'  => 'nullable|string',
+            'q'           => 'nullable|string',
+            'include'     => 'nullable|string',
+            // Pagination + sorting
+            'page'        => 'nullable|integer|min:1',
+            'per_page'    => 'nullable|integer|min:1|max:100',
+            'sort_by'     => 'nullable|string',
+            'sort_dir'    => 'nullable|string|in:asc,desc',
         ]);
 
         $include = collect(explode(',', (string) $request->query('include')))
             ->map(fn($s) => trim($s))->filter()->values();
 
         $query = Layer::query()
-            ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
-            ->orderByDesc('layers.created_at');
+            ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by');
 
         // Optional scoping by body
         $bt = $request->query('body_type');
@@ -78,14 +86,76 @@ class LayerController extends Controller
 
         // Note: tenant-based scoping has been removed. Org Admins no longer create/manage layers.
 
-    $query->select('layers.*'); // includes is_downloadable
+        // Filters
+        $vis = $request->query('visibility');
+        if ($vis !== null && $vis !== '') {
+            // Normalize legacy values to 'admin'
+            $vv = strtolower(trim($vis));
+            if (in_array($vv, ['organization','organization_admin'], true)) $vv = 'admin';
+            $query->whereRaw("LOWER(TRIM(layers.visibility)) = ?", [$vv]);
+        }
+        $dl = $request->query('downloadable');
+        if ($dl !== null && $dl !== '') {
+            $yes = ['1','true','yes'];
+            $no  = ['0','false','no'];
+            $val = strtolower(trim((string)$dl));
+            if (in_array($val, $yes, true))      $query->where('layers.is_downloadable', true);
+            elseif (in_array($val, $no, true))   $query->where('layers.is_downloadable', false);
+        }
+        $createdBy = $request->query('created_by');
+        if ($createdBy !== null && $createdBy !== '') {
+            $query->whereRaw("LOWER(COALESCE(users.name, '')) = ?", [strtolower(trim($createdBy))]);
+        }
+
+        // Search
+        if (($q = $request->query('q')) !== null && $q !== '') {
+            $needle = '%' . strtolower(trim($q)) . '%';
+            $query->where(function ($qq) use ($needle) {
+                $qq->whereRaw("LOWER(COALESCE(layers.name, '')) LIKE ?", [$needle])
+                   ->orWhereRaw("LOWER(COALESCE(layers.notes, '')) LIKE ?", [$needle])
+                   ->orWhereRaw("LOWER(COALESCE(users.name, '')) LIKE ?", [$needle])
+                   ->orWhereRaw("LOWER(COALESCE(layers.body_type, '')) LIKE ?", [$needle])
+                   ->orWhereRaw("LOWER(COALESCE(layers.visibility, '')) LIKE ?", [$needle]);
+            });
+        }
+
+        // Base select
+        $query->select('layers.*'); // includes is_downloadable
         $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
 
         if ($include->contains('geom'))   $query->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
         if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
 
-        $rows = $query->get();
-        return response()->json(['data' => $rows]);
+        // Sorting (default newest first)
+        $allowedSort = [
+            'name' => 'layers.name',
+            'body' => 'layers.body_type',
+            'body_type' => 'layers.body_type',
+            'visibility' => 'layers.visibility',
+            'downloadable' => 'layers.is_downloadable',
+            'is_downloadable' => 'layers.is_downloadable',
+            'creator' => 'users.name',
+            'uploaded_by_name' => 'users.name',
+            'area' => 'layers.area_km2',
+            'area_km2' => 'layers.area_km2',
+            'updated' => 'layers.updated_at',
+            'updated_at' => 'layers.updated_at',
+            'created_at' => 'layers.created_at',
+        ];
+        $sortBy  = $request->query('sort_by');
+        $sortDir = strtolower($request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if ($sortBy && isset($allowedSort[$sortBy])) {
+            $query->orderBy($allowedSort[$sortBy], $sortDir);
+        } else {
+            $query->orderByDesc('layers.created_at');
+        }
+
+        // Pagination
+        $perPage = (int)($request->query('per_page') ?: 15);
+        if ($perPage < 1) $perPage = 15;
+        if ($perPage > 100) $perPage = 100;
+        $paginator = $query->paginate($perPage);
+        return response()->json($paginator);
     }
 
     // Public list — robust to casing/whitespace
