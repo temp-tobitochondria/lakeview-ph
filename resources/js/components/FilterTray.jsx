@@ -64,16 +64,16 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
       setClassOptions(c);
 
       // Clear invalid selections if they no longer exist
-      if (region && !r.includes(region)) setRegion("");
-      if (province && !p.includes(province)) setProvince("");
-      if (municipality && !m.includes(municipality)) setMunicipality("");
-      if (classCode && !c.some(cc => cc.code === classCode)) setClassCode("");
+      if (params.region && !r.includes(params.region)) setRegion("");
+      if (params.province && !p.includes(params.province)) setProvince("");
+      if (params.municipality && !m.includes(params.municipality)) setMunicipality("");
+      if (params.class_code && !c.some(cc => cc.code === params.class_code)) setClassCode("");
     } catch (e) {
       setLoadError('Failed to load filters');
     } finally {
       setLoading(false);
     }
-  }, [region, province, municipality, classCode]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
