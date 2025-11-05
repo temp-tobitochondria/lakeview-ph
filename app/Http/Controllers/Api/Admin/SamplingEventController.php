@@ -86,6 +86,21 @@ class SamplingEventController extends Controller
             $query->where('sampling_events.station_id', (int) $request->input('station_id'));
         }
 
+        // Optional: filter events by the applied water quality standard
+        if ($request->filled('applied_standard_id')) {
+            $query->where('sampling_events.applied_standard_id', (int) $request->input('applied_standard_id'));
+        }
+
+        // Optional: filter events that have at least one sample result using a given parameter
+        if ($request->filled('parameter_id')) {
+            $parameterId = (int) $request->input('parameter_id');
+            $query->whereExists(function ($q) use ($parameterId) {
+                $q->select(DB::raw('1'))
+                  ->from('sample_results')
+                  ->whereColumn('sample_results.sampling_event_id', 'sampling_events.id')
+                  ->where('sample_results.parameter_id', $parameterId);
+            });
+        }
         // Year/Quarter/Month server-side filtering
         // Prefer explicit sampled_from/to if provided; otherwise interpret these helpers.
         $hasFrom = $request->filled('sampled_from');
