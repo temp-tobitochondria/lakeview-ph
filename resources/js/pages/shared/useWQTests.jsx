@@ -415,67 +415,15 @@ export function useWQTests({ variant, tableId, initialLakes = [], initialTests =
     if (isOrg) {
       const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
       return [
-        { label: 'View', title: 'View', icon: <FiEye />, onClick: async (row) => {
-            try {
-              const res = await api(`${basePath}/${row.id}`);
-              setSelected(res.data || res);
-            } catch {
-              setSelected(row);
-            }
-            setEditing(false);
-            setOpen(true);
-          }
-        },
-        { label: 'Edit', title: 'Edit', icon: <FiEdit2 />, onClick: async (row) => {
-            const canPublish = currentUserRole === 'org_admin' || currentUserRole === 'superadmin';
-            if (!(canPublish || (currentUserId && row.created_by_user_id === currentUserId))) { await alertError('Permission denied', 'You cannot edit this test.'); return; }
-            try {
-              const res = await api(`${basePath}/${row.id}`);
-              setSelected(res.data || res);
-            } catch {
-              setSelected(row);
-            }
-            setEditing(true);
-            setOpen(true);
-          }
-        },
+        { label: 'View', title: 'View', icon: <FiEye />, onClick: (row) => { setSelected(row); setEditing(false); setOpen(true); } },
+        { label: 'Edit', title: 'Edit', icon: <FiEdit2 />, onClick: async (row) => { const canPublish = currentUserRole === 'org_admin' || currentUserRole === 'superadmin'; if (!(canPublish || (currentUserId && row.created_by_user_id === currentUserId))) { await alertError('Permission denied', 'You cannot edit this test.'); return; } setSelected(row); setEditing(true); setOpen(true); } },
         { label: 'Delete', title: 'Delete', type: 'delete', icon: <FiTrash2 />, onClick: async (row) => { const ok = await swalConfirm({ title: 'Delete this test?', text: 'This cannot be undone.', icon: 'warning', confirmButtonText: 'Delete' }); if (!ok) return; try { await api(`${basePath}/${row.id}`, { method: 'DELETE' }); try { invalidateHttpCache(basePath); } catch {} setTests((prev) => prev.filter((t) => t.id !== row.id)); await alertSuccess('Deleted', 'The test was removed.'); } catch (e) { await alertError('Delete failed', e?.message || 'Please try again.'); } } },
       ];
     }
     // contrib
     return [
-      { label: 'View', title: 'View', icon: <FiEye />, onClick: async (row) => {
-          const basePath = currentOrgId ? `/contrib/${currentOrgId}/sample-events` : null;
-          if (basePath) {
-            try {
-              const res = await api(`${basePath}/${row.id}`);
-              setSelected(res.data || res);
-            } catch {
-              setSelected(row);
-            }
-          } else {
-            setSelected(row);
-          }
-          setEditing(false);
-          setOpen(true);
-        }
-      },
-      { label: 'Edit', title: 'Edit', icon: <FiEdit2 />, visible: (row) => Boolean(currentUserId && String(row.created_by_user_id) === String(currentUserId)), onClick: async (row) => {
-          const basePath = currentOrgId ? `/contrib/${currentOrgId}/sample-events` : null;
-          if (basePath) {
-            try {
-              const res = await api(`${basePath}/${row.id}`);
-              setSelected(res.data || res);
-            } catch {
-              setSelected(row);
-            }
-          } else {
-            setSelected(row);
-          }
-          setEditing(true);
-          setOpen(true);
-        }
-      },
+      { label: 'View', title: 'View', icon: <FiEye />, onClick: (row) => { setSelected(row); setEditing(false); setOpen(true); } },
+      { label: 'Edit', title: 'Edit', icon: <FiEdit2 />, visible: (row) => Boolean(currentUserId && String(row.created_by_user_id) === String(currentUserId)), onClick: async (row) => { setSelected(row); setEditing(true); setOpen(true); } },
       { label: 'Delete', title: 'Delete', type: 'delete', icon: <FiTrash2 />, visible: (row) => Boolean(currentUserId && String(row.created_by_user_id) === String(currentUserId)), onClick: async (row) => { const ok = await swalConfirm({ title: 'Delete this test?', text: 'This cannot be undone.', icon: 'warning', confirmButtonText: 'Delete' }); if (!ok) return; try { if (!currentOrgId) return; const basePath = `/contrib/${currentOrgId}/sample-events`; await api(`${basePath}/${row.id}`, { method: 'DELETE' }); try { invalidateHttpCache(basePath); } catch {} setTests((prev) => prev.filter((t) => t.id !== row.id)); await alertSuccess('Deleted', 'The test was removed.'); } catch (e) { await alertError('Delete failed', e?.message || 'Please try again.'); } } },
     ];
   }, [isAdmin, isOrg, currentTenantId, currentUserRole, currentUserId, isContrib, currentOrgId]);

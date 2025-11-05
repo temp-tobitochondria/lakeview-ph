@@ -65,7 +65,7 @@ export default function ContribWQTests() {
         editable={editing}
         parameterCatalog={paramCatalog}
         canPublish={false}
-        basePath={basePath}
+        basePath={basePath || '/admin/sample-events'}
         onSave={async (updated) => {
           setTests((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
           setSelected(updated);
