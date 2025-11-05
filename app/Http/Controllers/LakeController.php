@@ -171,7 +171,23 @@ class LakeController extends Controller
         } else {
             $coordGeo = $active->geom_geojson;
         }
-        return array_merge($arr, ['geom_geojson' => $coordGeo]);
+
+        // Derive lat/lon from the chosen geometry (if it's a Point). ST_AsGeoJSON returns [lon, lat]
+        $lat = null;
+        $lon = null;
+        if ($coordGeo) {
+            try {
+                $g = is_string($coordGeo) ? json_decode($coordGeo, true) : $coordGeo;
+                if (is_array($g) && isset($g['type']) && strtolower($g['type']) === 'point' && isset($g['coordinates']) && is_array($g['coordinates']) && count($g['coordinates']) >= 2) {
+                    $lon = $g['coordinates'][0];
+                    $lat = $g['coordinates'][1];
+                }
+            } catch (\Throwable $e) {
+                // ignore parse errors and leave lat/lon null
+            }
+        }
+
+        return array_merge($arr, ['geom_geojson' => $coordGeo, 'lat' => $lat, 'lon' => $lon]);
     }
 
     public function store(Request $req)
