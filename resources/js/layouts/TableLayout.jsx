@@ -284,6 +284,7 @@ export default function TableLayout({
         onClick={() => setPickerOpen((prev) => !prev)}
         aria-haspopup="true"
         aria-expanded={pickerOpen}
+        disabled={loading}
       >
         <FiColumns />
         <span>{columnPickerLabel}</span>
@@ -343,13 +344,34 @@ export default function TableLayout({
   const showToolbarRow = Boolean(toolbarSlots.left || toolbarSlots.right || columnPickerControl);
 
   return (
-    <div className="lv-table-wrap">
+    <div className="lv-table-wrap" style={{ position: 'relative' }} aria-busy={loading ? 'true' : 'false'}>
       {showToolbarRow && (
         <div className="lv-table-toolbar">
           <div className="lv-toolbar-left" style={{ flex: 1 }}>{toolbarSlots.left}</div>
           <div className="lv-toolbar-right">
             {toolbarSlots.right}
-            {columnPickerControl}
+            {React.cloneElement(columnPickerControl || <></>, { disabled: loading })}
+          </div>
+        </div>
+      )}
+
+      {/* Overlay spinner when loading (covers the table) */}
+      {loading && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(255,255,255,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 900,
+          pointerEvents: 'none'
+        }}>
+          <div style={{ pointerEvents: 'auto' }}>
+            <LoadingSpinner label={loadingLabel || 'Loading…'} />
           </div>
         </div>
       )}
@@ -369,6 +391,7 @@ export default function TableLayout({
                       type="button"
                       className={`lv-th-label lv-sortable ${sort.id === col.id ? 'is-sorted' : ''}`}
                       onClick={() => {
+                        if (loading) return;
                         if (serverSide) {
                           onSortChange(col.id);
                         } else {
@@ -426,8 +449,9 @@ export default function TableLayout({
                             key={i}
                             className={`icon-btn simple ${act.type === "delete" ? "danger" : act.type === "edit" ? "accent" : ""}`}
                             title={act.title || act.label}
-                            onClick={() => act.onClick?.(row._raw ?? row)}
+                            onClick={() => { if (!loading) act.onClick?.(row._raw ?? row); }}
                             aria-label={act.title || act.label}
+                            disabled={loading}
                           >
                             {act.icon}
                           </button>
@@ -442,11 +466,8 @@ export default function TableLayout({
             {!paged.length && (
               <tr>
                 <td className="lv-empty" colSpan={displayColumns.length + (actions?.length ? 1 : 0)}>
-                  {loading ? (
-                    <LoadingSpinner label={loadingLabel || 'Loading…'} />
-                  ) : (
-                    'No records found.'
-                  )}
+                  {/* Avoid showing the inline spinner when the overlay spinner is active to prevent stacked spinners */}
+                  {loading ? null : 'No records found.'}
                 </td>
               </tr>
             )}
@@ -456,11 +477,11 @@ export default function TableLayout({
 
       {!hidePager && (
         <div className="lv-table-pager">
-          <button className="pill-btn ghost sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          <button className="pill-btn ghost sm" disabled={loading || page <= 1} onClick={() => { if (!loading) onPageChange(page - 1); }}>
             {"< Prev"}
           </button>
             <span className="pager-text">Page {page} of {totalPages}</span>
-          <button className="pill-btn ghost sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          <button className="pill-btn ghost sm" disabled={loading || page >= totalPages} onClick={() => { if (!loading) onPageChange(page + 1); }}>
             {"Next >"}
           </button>
         </div>
