@@ -1,5 +1,5 @@
 // resources/js/components/FilterTray.jsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { cachedGet } from "../lib/httpCache";
 
 function NumberInput({ label, value, onChange, placeholder }) {
@@ -38,47 +38,42 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
   const [depthMin, setDepthMin] = useState(initial.mean_depth_min ?? null);
   const [depthMax, setDepthMax] = useState(initial.mean_depth_max ?? null);
 
-  // Dynamic options derived from current selection and lakes dataset
+  // Dynamic options provided by backend facets based on current selection
   const [classOptions, setClassOptions] = useState([]); // [{code,name}]
   const [regionOptions, setRegionOptions] = useState([]); // [string]
   const [provinceOptions, setProvinceOptions] = useState([]); // [string]
   const [municipalityOptions, setMunicipalityOptions] = useState([]); // [string]
 
-  // Reference data
-  const [classAllOptions, setClassAllOptions] = useState([]); // full list from API
-  const [lakes, setLakes] = useState([]); // full lakes dataset for client-side filtering
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  // Load reference data (classes) and lakes dataset for client-side cascading
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true); setLoadError("");
-      try {
-        // Use shared HTTP cache to persist across pages (public/admin)
-        const [classesJson, lakesJson] = await Promise.all([
-          cachedGet('/options/water-quality-classes', { ttlMs: 60 * 60 * 1000, auth: false }),
-          cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false }),
-        ]);
+  // Fetch facets from server for current selections
+  const fetchFacets = useCallback(async (params) => {
+    setLoadError("");
+    try {
+      setLoading(true);
+      const res = await cachedGet('/filters/lakes', { params, ttlMs: 60 * 60 * 1000, auth: false });
+      const data = res?.data || res || {};
+      const r = Array.isArray(data.regions) ? data.regions.map(x => x.value).filter(Boolean) : [];
+      const p = Array.isArray(data.provinces) ? data.provinces.map(x => x.value).filter(Boolean) : [];
+      const m = Array.isArray(data.municipalities) ? data.municipalities.map(x => x.value).filter(Boolean) : [];
+      const c = Array.isArray(data.classes) ? data.classes.map(x => ({ code: x.code || x.name, name: x.name || x.code })) : [];
+      setRegionOptions(r);
+      setProvinceOptions(p);
+      setMunicipalityOptions(m);
+      setClassOptions(c);
 
-        if (!alive) return;
-
-        const classesList = (classesJson?.data || classesJson || []).map((r) => ({
-          code: r.code || r.id || r,
-          name: r.name || r.code || r,
-        }));
-        setClassAllOptions(classesList);
-        setLakes(Array.isArray(lakesJson) ? lakesJson : (lakesJson?.data || []));
-      } catch (e) {
-        if (!alive) return;
-        setLoadError('Failed to load filters');
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+      // Clear invalid selections if they no longer exist
+      if (region && !r.includes(region)) setRegion("");
+      if (province && !p.includes(province)) setProvince("");
+      if (municipality && !m.includes(municipality)) setMunicipality("");
+      if (classCode && !c.some(cc => cc.code === classCode)) setClassCode("");
+    } catch (e) {
+      setLoadError('Failed to load filters');
+    } finally {
+      setLoading(false);
+    }
+  }, [region, province, municipality, classCode]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,7 +88,14 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     setElevationMax(initial.elevation_max ?? null);
     setDepthMin(initial.mean_depth_min ?? null);
     setDepthMax(initial.mean_depth_max ?? null);
-  }, [open, initial]);
+    // Fetch facets on open with initial params
+    fetchFacets({
+      region: initial.region || undefined,
+      province: initial.province || undefined,
+      municipality: initial.municipality || undefined,
+      class_code: initial.class_code || undefined,
+    });
+  }, [open, initial, fetchFacets]);
 
   // Close on Escape for accessibility
   const onKey = useCallback((e) => {
@@ -108,79 +110,16 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onKey]);
 
-  // Helpers to normalize multi-value fields on lakes
-  const normalizeList = (val, fallbackStr) => {
-    if (Array.isArray(val)) return val.filter(Boolean).map((s) => String(s).trim()).filter(Boolean);
-    if (typeof fallbackStr === 'string' && fallbackStr.trim()) {
-      return fallbackStr.split(',').map((s) => s.trim()).filter(Boolean);
-    }
-    return [];
-  };
-
-  const includesValue = (list, value) => {
-    if (!value) return true; // empty filter doesn't restrict
-    const arr = normalizeList(list, list);
-    return arr.includes(value);
-  };
-
-  const sortStrings = (arr) => Array.from(new Set(arr)).sort((a,b) => String(a).localeCompare(String(b), 'en', { sensitivity: 'base' }));
-
-  // Recompute cascading options whenever lakes or a selection changes
+  // Whenever selections change (while tray open), ask backend for new option sets
   useEffect(() => {
-    if (!lakes || lakes.length === 0) {
-      // nothing loaded yet
-      return;
-    }
-
-    // Apply current selections to narrow down the dataset
-    const filtered = lakes.filter((row) => {
-      const rList = normalizeList(row.region_list, row.region);
-      const pList = normalizeList(row.province_list, row.province);
-      const mList = normalizeList(row.municipality_list, row.municipality);
-      const cls = row.class_code || row.classCode || null;
-      return (
-        includesValue(rList, region) &&
-        includesValue(pList, province) &&
-        includesValue(mList, municipality) &&
-        (!classCode || (cls === classCode))
-      );
+    if (!open) return;
+    fetchFacets({
+      region: region || undefined,
+      province: province || undefined,
+      municipality: municipality || undefined,
+      class_code: classCode || undefined,
     });
-
-    // Build option sets from filtered dataset
-    const rOpts = [];
-    const pOpts = [];
-    const mOpts = [];
-    const cSet = new Set();
-    filtered.forEach((row) => {
-      normalizeList(row.region_list, row.region).forEach((v) => rOpts.push(v));
-      normalizeList(row.province_list, row.province).forEach((v) => pOpts.push(v));
-      normalizeList(row.municipality_list, row.municipality).forEach((v) => mOpts.push(v));
-      const code = row.class_code || row.classCode;
-      if (code) cSet.add(code);
-    });
-
-    const nextRegionOptions = sortStrings(rOpts);
-    const nextProvinceOptions = sortStrings(pOpts);
-    const nextMunicipalityOptions = sortStrings(mOpts);
-
-    // Map class codes to names but only those present in filtered results
-    const nextClassOptions = Array.from(cSet).sort((a,b) => String(a).localeCompare(String(b), 'en', { sensitivity: 'base' }))
-      .map((code) => {
-        const meta = classAllOptions.find((c) => (c.code || c.id) === code);
-        return { code, name: meta?.name || code };
-      });
-
-    setRegionOptions(nextRegionOptions);
-    setProvinceOptions(nextProvinceOptions);
-    setMunicipalityOptions(nextMunicipalityOptions);
-    setClassOptions(nextClassOptions);
-
-    // If current selections became invalid, clear them
-    if (region && !nextRegionOptions.includes(region)) setRegion("");
-    if (province && !nextProvinceOptions.includes(province)) setProvince("");
-    if (municipality && !nextMunicipalityOptions.includes(municipality)) setMunicipality("");
-    if (classCode && !nextClassOptions.some((c) => c.code === classCode)) setClassCode("");
-  }, [lakes, classAllOptions, region, province, municipality, classCode]);
+  }, [open, region, province, municipality, classCode, fetchFacets]);
 
   const handleApply = () => {
     const payload = {

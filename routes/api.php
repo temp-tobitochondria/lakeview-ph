@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\LakeFiltersController;
 use Illuminate\Support\Facades\DB;
 // use Illuminate\Support\Facades\DB;
 
@@ -244,6 +245,8 @@ Route::get('/lakes',            [LakeController::class, 'index']);
 Route::get('/lakes/{lake}',     [LakeController::class, 'show'])->whereNumber('lake');
 Route::get('/public/lakes-geo', [LakeController::class, 'publicGeo']);
 Route::get('/public/lakes/{lake}', [LakeController::class, 'publicShow']);
+// Faceted filter options for lakes (public)
+Route::get('/filters/lakes', [LakeFiltersController::class, 'index']);
 // Public geocode proxy endpoint (Nominatim)
 Route::get('/geocode/nominatim', [GeocodeController::class, 'nominatimSearch']);
 // Public lake flows
