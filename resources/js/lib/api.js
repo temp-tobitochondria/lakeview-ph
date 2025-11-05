@@ -98,7 +98,7 @@ function makeError(res, data) {
 }
 
 // --- Core request ---------------------------------------------------------
-async function request(method, url, { params, body, headers, raw, auth } = {}) {
+async function request(method, url, { params, body, headers, raw, auth, signal } = {}) {
   const finalUrl = buildUrl(url, params);
   const isForm = body instanceof FormData;
   const token = getToken();
@@ -115,6 +115,8 @@ async function request(method, url, { params, body, headers, raw, auth } = {}) {
       ...(headers || {}),
     },
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
+    // Allow consumers to cancel requests (e.g., modal close)
+    ...(signal ? { signal } : {}),
   };
   let res;
   try {

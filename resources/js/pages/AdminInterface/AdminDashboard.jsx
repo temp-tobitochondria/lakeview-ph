@@ -48,7 +48,7 @@ export default function AdminDashboard() {
     // Org Applications
     { path: "/admin-dashboard/org-applications", label: "Org Applications", icon: <FiClipboard /> },
     // Water Quality Tests
-    { path: "/admin-dashboard/wq-tests", label: "WQ Tests", icon: <FiFileText /> },
+    { path: "/admin-dashboard/wq-tests", label: "Water Quality Records", icon: <FiFileText /> },
       // Population Rasters
     { path: "/admin-dashboard/population-data", label: "Population Data", icon: <FiDatabase /> },
     // System Feedback

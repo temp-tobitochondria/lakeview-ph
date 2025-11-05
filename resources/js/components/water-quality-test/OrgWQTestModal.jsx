@@ -4,16 +4,9 @@ import { api } from "../../lib/api";
 import { alertSuccess, alertError, showLoading, closeLoading } from "../../lib/alerts";
 import AppMap from "../AppMap";
 import MapViewport from "../MapViewport";
-import { Marker, Popup } from "react-leaflet";
+import { CircleMarker, Popup } from "react-leaflet";
 import { FiMapPin, FiThermometer, FiPlus, FiTrash2 } from "react-icons/fi";
-import L from "leaflet";
-
-const DEFAULT_ICON = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+// Using CircleMarker avoids external icon assets and reduces initial load.
 
 const Pill = ({ children, tone = "muted" }) => (
   <span className={`tag ${tone === "success" ? "success" : tone === "danger" ? "danger" : "muted"}`}>
@@ -35,18 +28,6 @@ const pfLabel = (v) => {
   return s === "pass" ? "Pass" : s === "fail" ? "Fail" : s === "not_applicable" ? "N/A" : "—";
 };
 
-/**
- * OrgWQTestModal
- *
- * Props:
- * - open, onClose
- * - record: sampling event object
- * - canPublish: boolean
- * - onTogglePublish: () => void
- * - editable: boolean  // when true, parameters are editable
- * - onSave: (updatedRecord) => void
- * - parameterCatalog?: [{id, code, name, unit}] (optional; for add-row select)
- */
 export default function OrgWQTestModal({
   open,
   onClose,
@@ -61,6 +42,8 @@ export default function OrgWQTestModal({
   const [sampleEvent, setSampleEvent] = useState(record || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showMap, setShowMap] = useState(false);
+  const [mapVersion, setMapVersion] = useState(0);
 
   const formatDepth = (d) => {
     const n = Number(d);
@@ -72,16 +55,49 @@ export default function OrgWQTestModal({
     setSampleEvent(record || null);
   }, [record, open]);
 
+  // When map is revealed, bump a version token so MapViewport/Map reflow runs once
+  useEffect(() => {
+    if (showMap) setMapVersion(Date.now());
+  }, [showMap]);
+
   // When opened with a record id, fetch full event details (includes results + parameter info)
   useEffect(() => {
     let mounted = true;
-    if (!open || !record || !record.id) return;
+    if (!open || !record || !record.id || !basePath) return;
+    // If the caller already prefetched full details (including results), skip re-fetch
+    if (record && Array.isArray(record.results)) {
+      // Normalize prefetched results so we always have code/name/unit flattened
+      const normalizedResults = record.results.map((r) => {
+        const paramObj = r.parameter || null;
+        const catalogParam = (!paramObj && Array.isArray(parameterCatalog) && r.parameter_id)
+          ? parameterCatalog.find((p) => String(p.id) === String(r.parameter_id))
+          : null;
+        const source = paramObj || catalogParam || {};
+        return {
+          id: r.id,
+          parameter_id: r.parameter_id ?? source.id ?? null,
+          code: r.code ?? source.code ?? "",
+          name: r.name ?? source.name ?? "",
+          unit: r.unit ?? source.unit ?? "",
+          value: r.value ?? null,
+          depth_m: r.depth_m ?? 0,
+          pass_fail: r.pass_fail ?? null,
+          remarks: r.remarks ?? "",
+        };
+      });
+      setSampleEvent({ ...record, results: normalizedResults });
+      return () => { mounted = false; };
+    }
+
+    // Setup abort controller to cancel in-flight fetches when modal closes or deps change
+    const controller = new AbortController();
+    const { signal } = controller;
 
     (async () => {
       try {
         setLoading(true);
         setError(null);
-  const res = await api(`${basePath}/${encodeURIComponent(record.id)}`);
+        const res = await api(`${basePath}/${encodeURIComponent(record.id)}`, { signal });
         const data = res?.data || res || {};
 
         const normalizedResults = Array.isArray(data.results)
@@ -125,8 +141,9 @@ export default function OrgWQTestModal({
 
     return () => {
       mounted = false;
+      try { controller.abort(); } catch (_) {}
     };
-  }, [open, record]);
+  }, [open, record, basePath, parameterCatalog]);
 
   // derive geographic values from multiple possible field names
   const geo = useMemo(() => {
@@ -301,21 +318,62 @@ export default function OrgWQTestModal({
             </div>
           </div>
           <div className="dashboard-card-body">
-            <div className="map-preview" style={{ height: 300, marginBottom: 12 }}>
-              <AppMap style={{ height: "100%" }}>
-                {geo.hasPoint && geo.bounds && <MapViewport bounds={geo.bounds} />}
-                {geo.hasPoint && (
-                  <Marker position={[geo.lat, geo.lng]} icon={DEFAULT_ICON}>
-                    <Popup>
-                      <div>
-                        <div><strong>Point</strong></div>
-                        <div>{geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}</div>
-                        {stationName ? <div>Station: {stationName}</div> : null}
-                      </div>
-                    </Popup>
-                  </Marker>
-                )}
-              </AppMap>
+            <div
+              className="map-preview"
+              style={{
+                height: 300,
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                padding: 0,
+              }}
+            >
+              {!showMap ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button className="pill-btn ghost" onClick={() => setShowMap(true)}>
+                    <FiMapPin /> Show map
+                  </button>
+                </div>
+              ) : (
+                <div style={{ width: '100%', position: 'relative', height: '100%' }}>
+                  <AppMap
+                    key={mapVersion || 'map'}
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                    disableDrag={true}
+                    scrollWheelZoom={false}
+                    zoomControl={false}
+                    whenCreated={(map) => {
+                      try {
+                        if (map && map.dragging && map.dragging.disable) map.dragging.disable();
+                        if (map && map.touchZoom && map.touchZoom.disable) map.touchZoom.disable();
+                        if (map && map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
+                        if (map && map.scrollWheelZoom && map.scrollWheelZoom.disable) map.scrollWheelZoom.disable();
+                        if (map && map.boxZoom && map.boxZoom.disable) map.boxZoom.disable();
+                        if (map && map.keyboard && map.keyboard.disable) map.keyboard.disable();
+                      } catch (err) { /* ignore */ }
+                    }}
+                  >
+                    {geo.hasPoint && geo.bounds && <MapViewport bounds={geo.bounds} version={mapVersion} />}
+                    {geo.hasPoint && (
+                      <CircleMarker
+                        center={[geo.lat, geo.lng]}
+                        radius={8}
+                        pathOptions={{ color: '#2563eb', weight: 2, fillColor: '#3b82f6', fillOpacity: 0.7 }}
+                      >
+                        <Popup>
+                          <div>
+                            <div><strong>Point</strong></div>
+                            <div>{geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}</div>
+                            {stationName ? <div>Station: {stationName}</div> : null}
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    )}
+                  </AppMap>
+                </div>
+              )}
             </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>

@@ -4,15 +4,7 @@ import { apiPublic } from "../../lib/api";
 import { alertError } from "../../lib/alerts";
 import AppMap from "../AppMap";
 import MapViewport from "../MapViewport";
-import { Marker, Popup } from "react-leaflet";
-import L from "leaflet";
-
-const DEFAULT_ICON = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+import { CircleMarker, Popup } from "react-leaflet";
 
 const Pill = ({ children, tone = "muted" }) => (
   <span className={`tag ${tone === "success" ? "success" : tone === "danger" ? "danger" : "muted"}`}>
@@ -154,10 +146,23 @@ export default function PublicWQTestModal({ open, onClose, record, basePath = "/
           </div>
           <div style={{ padding: 8 }}>
             <div className="map-preview" style={{ height: 180, marginBottom: 6, borderRadius: 8, overflow: 'hidden' }}>
-              <AppMap style={{ height: '100%' }}>
+              <AppMap
+                style={{ height: '100%' }}
+                dragging={false}
+                doubleClickZoom={false}
+                scrollWheelZoom={false}
+                zoomControl={false}
+                touchZoom={false}
+                boxZoom={false}
+                keyboard={false}
+              >
                 {geo.hasPoint && geo.bounds && <MapViewport bounds={geo.bounds} />}
                 {geo.hasPoint && (
-                  <Marker position={[geo.lat, geo.lng]} icon={DEFAULT_ICON}>
+                  <CircleMarker
+                    center={[geo.lat, geo.lng]}
+                    radius={6}
+                    pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }}
+                  >
                     <Popup>
                       <div>
                         <div><strong>Point</strong></div>
@@ -165,7 +170,7 @@ export default function PublicWQTestModal({ open, onClose, record, basePath = "/
                         {stationName && stationName !== '—' ? <div>Station: {stationName}</div> : null}
                       </div>
                     </Popup>
-                  </Marker>
+                  </CircleMarker>
                 )}
               </AppMap>
             </div>

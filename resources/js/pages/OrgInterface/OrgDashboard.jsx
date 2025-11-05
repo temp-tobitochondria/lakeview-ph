@@ -27,13 +27,12 @@ export default function OrgDashboard() {
     { path: "/org-dashboard", label: "Overview", icon: <FiHome />, exact: true },
     // Organization Members
     { path: "/org-dashboard/members", label: "Members", icon: <FiUsers /> },
-  // Applications (review join requests)
-  { path: "/org-dashboard/applications", label: "Applications", icon: <FiClipboard /> },
+    // Applications (review join requests)
+    { path: "/org-dashboard/applications", label: "Applications", icon: <FiClipboard /> },
     // Log Water Quality Tests
-    { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Test", icon: <FiPlusCircle /> },
+    { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Data", icon: <FiPlusCircle /> },
     // View Water Quality Tests
-    { path: "/org-dashboard/wq-tests", label: "View Water Quality Tests", icon: <FiClipboard /> },
-  // Base Layers page removed for Org Admin
+    { path: "/org-dashboard/wq-tests", label: "Water Quality Records", icon: <FiClipboard /> },
     // Organization-wide Audit Logs
     { path: "/org-dashboard/org-audit", label: "Audit Logs", icon: <FiActivity /> },
     // Settings
@@ -47,11 +46,9 @@ export default function OrgDashboard() {
         <Route path="members" element={<OrgMembers />} />
         <Route path="add-wq-tests" element={<OrgAddWQTest  />} />
         <Route path="wq-tests" element={<OrgWQTests  />} />
-  {/* Base Layers route removed */}
-        {/* Organization Audit Logs (was missing causing blank page) */}
         <Route path="org-audit" element={<OrgAuditLogsPage />} />
-  <Route path="settings" element={<OrgSettingsPage />} />
-    <Route path="applications" element={<OrgApplications />} />
+        <Route path="settings" element={<OrgSettingsPage />} />
+        <Route path="applications" element={<OrgApplications />} />
       </Routes>
     </DashboardLayout>
   );

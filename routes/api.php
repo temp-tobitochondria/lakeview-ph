@@ -158,7 +158,7 @@ Route::prefix('admin')->middleware(['auth:sanctum','role:superadmin,org_admin'])
 Route::prefix('admin')->middleware(['auth:sanctum','role:superadmin,org_admin,contributor'])->group(function () {
     Route::get   ('sample-events',                              [AdminSamplingEventController::class, 'index']);
     Route::get   ('sample-events/options',                      [AdminSamplingEventController::class, 'options']);
-    Route::get   ('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'show'])->whereNumber('samplingEvent');
+    Route::get   ('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'show'])->whereNumber('samplingEvent')->middleware('log.sql');
     Route::post  ('sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'update'])->whereNumber('samplingEvent');
     Route::delete('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroy'])->whereNumber('samplingEvent');
@@ -198,7 +198,7 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
         // Sampling Events (tenant scoped) accessible to org_admin + contributor + superadmin (superadmin passes role middleware automatically)
     Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
     Route::get   ('/sample-events/options',                      [AdminSamplingEventController::class, 'options']);
-    Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent');
+    Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent')->middleware('log.sql');
     Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'updateOrg'])->whereNumber('samplingEvent');
     Route::delete('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroyOrg'])->whereNumber('samplingEvent');
@@ -228,7 +228,7 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:contributor'])
         // Sampling Events (limited contributor access). Reuse same controller; controller enforces fine-grained rules.
     Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
     Route::get   ('/sample-events/options',                      [AdminSamplingEventController::class, 'options']);
-    Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent');
+    Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent')->middleware('log.sql');
     Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'updateOrg'])->whereNumber('samplingEvent');
     Route::delete('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'destroyOrg'])->whereNumber('samplingEvent');
@@ -349,7 +349,7 @@ Route::get('/public/sample-events', [AdminSamplingEventController::class, 'publi
 });
 Route::get('/public/sample-events/{samplingEvent}', [AdminSamplingEventController::class, 'publicShow'] ?? function() {
     return response()->json(['data' => null], 404);
-});
+})->middleware('log.sql');
 
 // Additional options endpoints (non-duplicated)
 Route::get('/options/parameters', [OptionsController::class, 'parameters']);

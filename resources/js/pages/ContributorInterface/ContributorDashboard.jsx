@@ -21,9 +21,9 @@ export default function ContributorDashboard() {
     // Overview
     { path: "/contrib-dashboard", label: "Overview", icon: <FiHome />, exact: true },
     // Log Water Quality Tests
-    { path: "/contrib-dashboard/add-wq-tests", label: "Add Water Quality Test", icon: <FiPlusCircle /> },
+    { path: "/contrib-dashboard/add-wq-tests", label: "Add Water Quality Data", icon: <FiPlusCircle /> },
     // View Water Quality Tests
-    { path: "/contrib-dashboard/wq-tests", label: "View Water Quality Tests", icon: <FiClipboard /> },
+    { path: "/contrib-dashboard/wq-tests", label: "Water Quality Records", icon: <FiClipboard /> },
     // Settings
     { path: "/contrib-dashboard/settings", label: "Settings", icon: <FiSettings /> },
 
@@ -40,9 +40,8 @@ export default function ContributorDashboard() {
         <Route path="add-wq-tests" element={<ContribAddWQTest />} />
         {/* View Water Quality Tests */}
         <Route path="wq-tests" element={<ContribWQTests />} />
-        {/* Profile */}
-  {/* Settings */}
-  <Route path="settings" element={<ContribSettingsPage />} />
+        {/* Settings */}
+        <Route path="settings" element={<ContribSettingsPage />} />
       </Routes>
     </DashboardLayout>
   );
