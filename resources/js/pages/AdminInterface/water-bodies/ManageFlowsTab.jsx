@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi';
 import LakeFlowForm from '../../../components/LakeFlowForm';
+import FilterPanel from '../../../components/table/FilterPanel';
 import Modal from '../../../components/Modal';
 import AppMap from '../../../components/AppMap';
 import MapViewport from '../../../components/MapViewport';
@@ -37,7 +38,8 @@ export default function ManageFlowsTab() {
   const [lakes, setLakes] = useState([]);
   const [lakesLoading, setLakesLoading] = useState(false);
   const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [adv, setAdv] = useState({}); // { lake_id, flow_type }
   const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
   const [sort, setSort] = useState({ id: 'lake', dir: 'asc' });
   const [formOpen, setFormOpen] = useState(false);
@@ -86,7 +88,8 @@ export default function ManageFlowsTab() {
         sort_by: sort.id,
         sort_dir: sort.dir,
         q: query,
-        type: typeFilter,
+        type: adv.flow_type || '',
+        lake_id: adv.lake_id || '',
       };
       const res = await api('/lake-flows', { params });
       const list = Array.isArray(res.data) ? res.data : [];
@@ -100,10 +103,19 @@ export default function ManageFlowsTab() {
     } catch (e) {
       setRows([]); setErrorMsg(e.message || 'Failed to load tributaries');
     } finally { setLoading(false); }
-  }, [pagination.page, pagination.perPage, sort.id, sort.dir, query, typeFilter]);
+  }, [pagination.page, pagination.perPage, sort.id, sort.dir, query, adv]);
 
   useEffect(()=>{ fetchLakesOptions(); }, [fetchLakesOptions]);
-  useEffect(()=>{ fetchRows(); }, [fetchRows]);
+  // Debounce fetching to be consistent with Lakes tab behaviour
+  useEffect(()=>{
+    const t = setTimeout(() => fetchRows(), 300);
+    return () => clearTimeout(t);
+  }, [fetchRows]);
+
+  // Reset to first page when search or filters change
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [query, adv]);
 
   const handlePageChange = (newPage) => {
     setPagination(p => ({ ...p, page: newPage }));
@@ -226,24 +238,61 @@ export default function ManageFlowsTab() {
     { label:'Delete', title:'Delete', icon:<FiTrash2 />, onClick: openDelete, type:'delete' },
   ], [openEdit]);
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (adv.flow_type) count += 1;
+    if (adv.lake_id) count += 1;
+    return count;
+  }, [adv]);
+
   return (
     <div className="dashboard-card">
       <TableToolbar
         tableId={TABLE_ID}
         search={{ value: query, onChange: setQuery, placeholder: 'Search tributaries by lake, name, or source...' }}
-        filters={[{
-          id:'flow_type', label:'Type', type:'select', value:typeFilter, onChange:setTypeFilter, options:[
-            { value:'', label:'All Types' },
-            { value:'inflow', label:'Inlets' },
-            { value:'outflow', label:'Outlets' },
-          ]
-        }]}
+        filters={[]}
         columnPicker={{ columns, visibleMap, onVisibleChange: setVisibleMap }}
         onResetWidths={triggerResetWidths}
         onRefresh={fetchRows}
         onAdd={openCreate}
-        onToggleFilters={undefined}
-        filtersBadgeCount={0}
+        onToggleFilters={() => setFiltersOpen((v) => !v)}
+        filtersBadgeCount={activeFilterCount}
+      />
+
+      <FilterPanel
+        open={filtersOpen}
+        onClearAll={() => setAdv({})}
+        fields={[
+          {
+            type: 'group',
+            className: 'grid-3',
+            children: [
+              {
+                id: 'flow_type',
+                label: 'Type',
+                type: 'select',
+                value: adv.flow_type ?? '',
+                onChange: (value) => setAdv((s) => ({ ...s, flow_type: value })),
+                options: [
+                  { value: '', label: 'All Types' },
+                  { value: 'inflow', label: 'Inlets' },
+                  { value: 'outflow', label: 'Outlets' },
+                ],
+              },
+              {
+                id: 'lake_id',
+                label: 'Lake',
+                type: 'select',
+                value: adv.lake_id ?? '',
+                onChange: (value) => setAdv((s) => ({ ...s, lake_id: value })),
+                options: [
+                  { value: '', label: 'All Lakes' },
+                  ...lakes.map((lk) => ({ value: String(lk.id), label: lk.name })),
+                ],
+              },
+            ],
+          },
+        ]}
       />
 
       <div className="dashboard-card-body" style={{ paddingTop: 8 }}>
@@ -255,7 +304,8 @@ export default function ManageFlowsTab() {
               tableId={TABLE_ID}
               columns={visibleColumns}
               data={rows}
-              pagination={pagination}
+              serverSide={true}
+              pagination={{ page: pagination.page, totalPages: pagination.lastPage || 1 }}
               onPageChange={handlePageChange}
               sort={sort}
               onSortChange={handleSortChange}

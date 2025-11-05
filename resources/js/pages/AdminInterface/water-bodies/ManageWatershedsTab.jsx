@@ -131,8 +131,14 @@ export default function ManageWatershedsTab() {
   }, [pagination.page, pagination.perPage, sort.id, sort.dir, query]);
 
   useEffect(() => {
-    loadWatersheds();
+    const t = setTimeout(() => loadWatersheds(), 300);
+    return () => clearTimeout(t);
   }, [loadWatersheds]);
+
+  // Reset to first page when search text changes
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  }, [query]);
 
   const handleSortChange = (colId) => {
     setSort((prev) => ({
@@ -418,7 +424,8 @@ export default function ManageWatershedsTab() {
             tableId={TABLE_ID}
             columns={visibleColumns}
             data={rows}
-            pagination={pagination}
+            serverSide={true}
+            pagination={{ page: pagination.page, totalPages: pagination.lastPage || 1 }}
             onPageChange={handlePageChange}
             sort={sort}
             onSortChange={handleSortChange}
@@ -483,8 +490,6 @@ export default function ManageWatershedsTab() {
         onSubmit={handleSubmit}
         onCancel={() => setFormOpen(false)}
       />
-
-      {/* ConfirmDialog removed — deletion handled via centered SweetAlert confirm */}
 
     </div>
   );
