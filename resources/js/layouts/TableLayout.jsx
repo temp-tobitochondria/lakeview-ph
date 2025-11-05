@@ -20,7 +20,6 @@ export default function TableLayout({
   tableId = "lv-table",
   columns = [],
   data = [],
-  // pageSize = 10, // Replaced by server-side pagination
   actions = [],
   disableActionsWhen = null, // function(row) => boolean
   resetSignal = 0,
@@ -350,7 +349,7 @@ export default function TableLayout({
           <div className="lv-toolbar-left" style={{ flex: 1 }}>{toolbarSlots.left}</div>
           <div className="lv-toolbar-right">
             {toolbarSlots.right}
-            {React.cloneElement(columnPickerControl || <></>, { disabled: loading })}
+            {columnPickerControl && React.cloneElement(columnPickerControl, { disabled: loading })}
           </div>
         </div>
       )}

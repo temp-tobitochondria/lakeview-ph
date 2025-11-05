@@ -1,30 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FiEdit2, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
+import { FiEdit2, FiPlus, FiTrash2 } from "react-icons/fi";
 
 import TableLayout from "../../../layouts/TableLayout";
 import TableToolbar from "../../../components/table/TableToolbar";
-import FilterPanel from "../../../components/table/FilterPanel";
-import { api, buildQuery } from "../../../lib/api";
+import { api } from "../../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../../lib/httpCache";
 import { confirm, alertSuccess, alertError, showLoading, closeLoading } from "../../../lib/alerts";
-
-const CATEGORY_OPTIONS = [
-  { value: "Physico-chemical", label: "Physico-chemical" },
-  { value: "Biological", label: "Biological" },
-  { value: "Bacteriological", label: "Bacteriological" },
-  { value: "Microbiological", label: "Microbiological" },
-  { value: "Inorganic", label: "Inorganic" },
-  { value: "Metal", label: "Metal" },
-  { value: "Organic", label: "Organic" },
-  { value: "Other", label: "Other" },
-];
-
-const GROUP_OPTIONS = [
-  { value: "Primary", label: "Primary" },
-  { value: "Secondary (Inorganics)", label: "Secondary (Inorganics)" },
-  { value: "Secondary (Metals)", label: "Secondary (Metals)" },
-  { value: "Secondary (Organics)", label: "Secondary (Organics)" },
-];
+import ParameterForm from "../../../components/ParameterForm";
 
 const UNIT_OPTIONS = [
   { value: "mg/L", label: "mg/L" },
@@ -44,10 +26,8 @@ const emptyForm = {
   code: "",
   name: "",
   unit: "",
-  category: "",
-  group: "",
   evaluation_type: "",
-  notes: "",
+  desc: "",
 };
 
 const ensureOption = (options, value) => {
@@ -59,20 +39,14 @@ const ensureOption = (options, value) => {
 
 function ParametersTab() {
 
-  // Helper: normalize API errors into a readable message. The api client
-  // often throws an Error whose message is a JSON-stringified object coming
-  // from the backend (Laravel). Attempt to pull a useful message and
-  // translate FK constraint errors into a friendly prompt.
   const extractApiErrorMessage = (err) => {
     if (!err) return 'Unknown error';
-    // If the client attached a response object, prefer that
     const respData = err?.response?.data;
     if (respData) {
       if (typeof respData === 'string') return respData;
       if (respData.message) return respData.message;
       try { return JSON.stringify(respData); } catch (_) { /* fallthrough */ }
     }
-    // err.message may itself be a JSON string produced by makeError()
     const msg = err.message || String(err);
     try {
       const parsed = JSON.parse(msg);
@@ -85,17 +59,10 @@ function ParametersTab() {
 
   // TableLayout now supports an in-table loading spinner via its loading prop
 
-  const [form, setForm] = useState(emptyForm);
   const [params, setParams] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [modalSaving, setModalSaving] = useState(false);
   const [query, setQuery] = useState("");
-  const ADV_KEY = "admin-parameters-grid::filters_advanced";
-  const persistedAdv = (() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); } catch { return {}; } })();
-  const [filterCategory, setFilterCategory] = useState(persistedAdv.category || "");
-  const [filterGroup, setFilterGroup] = useState(persistedAdv.group || "");
-  const [filterEval, setFilterEval] = useState(persistedAdv.evaluation || "");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [gridResetSignal, setGridResetSignal] = useState(0);
 
   // Column visibility (managed via TableToolbar's ColumnPicker)
@@ -111,12 +78,10 @@ function ParametersTab() {
   useEffect(() => {
     try { localStorage.setItem(GRID_VISIBLE_KEY, JSON.stringify(visibleMap)); } catch {}
   }, [visibleMap]);
-  useEffect(() => {
-    try { localStorage.setItem(ADV_KEY, JSON.stringify({ category: filterCategory, group: filterGroup, evaluation: filterEval })); } catch {}
-  }, [filterCategory, filterGroup, filterEval]);
   const [resetSignal, setResetSignal] = useState(0);
-  const [gridEdits, setGridEdits] = useState({});
-  const [newRows, setNewRows] = useState([]);
+  // Modal editing state
+  const [editOpen, setEditOpen] = useState(false);
+  const [modalForm, setModalForm] = useState(emptyForm);
   // Server-side pagination state
   const [page, setPage] = useState(1);
   const perPage = 5;
@@ -143,102 +108,51 @@ function ParametersTab() {
     }
   }, []);
 
-  // Reset to page 1 when query or filters change
+  // Reset to page 1 when query changes
   useEffect(() => {
     setPage(1);
-  }, [query, filterCategory, filterGroup, filterEval]);
+  }, [query]);
 
   useEffect(() => {
     const paramsObj = {
       search: query,
       page,
       per_page: perPage,
-      category: filterCategory || undefined,
-      group: filterGroup || undefined,
-      evaluation: filterEval || undefined,
     };
     fetchParameters(paramsObj);
-  }, [fetchParameters, query, filterCategory, filterGroup, filterEval, page, resetSignal]);
+  }, [fetchParameters, query, page, resetSignal]);
 
-  // With server-side pagination and filtering, use the server result as-is
   const filtered = useMemo(() => params, [params]);
 
   const gridRows = useMemo(() => {
-    const existing = filtered.map((p) => ({
+    return filtered.map((p) => ({
       id: p.id,
       code: p.code,
       name: p.name || "",
-      category: p.category || "",
-      group: p.group || "",
       unit: p.unit || "",
       evaluation_type: p.evaluation_type || "",
-      notes: p.notes || "",
-      __id: p.id,
+      desc: p.desc || "",
+      _raw: p,
     }));
-    // New rows should appear at the beginning (first page)
-    const newRowObjects = newRows.map((rid) => ({ id: rid, code: "", name: "", category: "", group: "", unit: "", evaluation_type: "", notes: "", __id: null }));
-    const rows = [...newRowObjects, ...existing];
-    return rows.map((r) => ({ ...r, ...(gridEdits[r.id] || {}) }));
-  }, [filtered, newRows, gridEdits]);
+  }, [filtered]);
 
-  const updateGridCell = (key, field, value) => {
-    setGridEdits((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  const openCreateModal = () => {
+    setModalForm({ ...emptyForm });
+    setEditOpen(true);
   };
 
-  const saveGridRow = async (row) => {
-    const key = row?.id;
-    const merged = { ...(row || {}), ...(gridEdits[key] || {}) };
-    const effectiveId = merged.__id || (Number.isInteger(key) ? key : null);
-    const effectiveRow = { ...merged, __id: effectiveId };
-
-    const payload = {
-      code: String(effectiveRow.code || "").trim(),
-      name: String(effectiveRow.name || "").trim(),
-      unit: effectiveRow.unit || null,
-      category: effectiveRow.category || null,
-      group: effectiveRow.group || null,
-      evaluation_type: effectiveRow.evaluation_type || null,
-      notes: (effectiveRow.notes || "").trim() || null,
-      // aliases removed from UI; backend may still accept aliases if needed
-    };
-
-    try {
-      if (effectiveRow.__id) {
-  showLoading('Saving parameter', 'Please wait…');
-        await api(`/admin/parameters/${effectiveRow.__id}`, { method: "PUT", body: payload });
-        await alertSuccess("Saved", `Updated ${payload.code}.`);
-      } else {
-        if (!payload.code || !payload.name) {
-          await alertError("Validation", "Code and Name are required for new parameter");
-          return;
-        }
-  showLoading('Creating parameter', 'Please wait…');
-        await api(`/admin/parameters`, { method: "POST", body: payload });
-        await alertSuccess("Created", `Created ${payload.code}.`);
-      }
-
-      setGridEdits((prev) => ({ ...prev, [key]: {} }));
-      if (!effectiveRow.__id) setNewRows((prev) => prev.filter((rid) => rid !== key));
-      invalidateHttpCache('/admin/parameters');
-      await fetchParameters({
-        search: query,
-        page,
-        per_page: perPage,
-        category: filterCategory || undefined,
-        group: filterGroup || undefined,
-        evaluation: filterEval || undefined,
-      });
-    } catch (err) {
-      console.error("Failed to save parameter", err);
-      await alertError("Save failed", err?.message || "Failed to save parameter");
-    } finally {
-      closeLoading();
-    }
+  const openEditModal = (row) => {
+    setModalForm({
+      code: row.code || "",
+      name: row.name || "",
+      unit: row.unit || "",
+      evaluation_type: row.evaluation_type || "",
+      desc: row.desc || "",
+      __id: row.id,
+    });
+    setEditOpen(true);
   };
 
-  // Threshold-based guards removed by request; only sampling events will be used as reference for deletion rules.
-
-  // Check if any sampling events have results that use this parameter
   const hasSamplingEventsForParameter = useCallback(async (paramId) => {
     try {
       const res = await api(`/admin/sample-events?parameter_id=${encodeURIComponent(paramId)}&per_page=1`);
@@ -247,45 +161,33 @@ function ParametersTab() {
       if (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0) return true;
       return false;
     } catch (_) {
-      // Do not block on pre-check errors; backend constraints still apply
       return false;
     }
   }, []);
 
   const deleteGridRow = async (row) => {
-    if (!row.__id) {
-      setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
-      setNewRows((prev) => prev.filter((rid) => rid !== row.id));
-      return;
-    }
     const ok = await confirm({ title: 'Delete parameter?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
     if (!ok) return;
-    // Guard: prevent deletion when sampling events used this parameter
     try {
-      const used = await hasSamplingEventsForParameter(row.__id);
+      const used = await hasSamplingEventsForParameter(row.id);
       if (used) {
         await alertError('Delete not allowed', `Cannot delete "${row.code}" because there are sampling events that used this parameter.`);
         return;
       }
     } catch (_) {}
     try {
-  showLoading('Deleting parameter', 'Please wait…');
-      await api(`/admin/parameters/${row.__id}`, { method: "DELETE" });
-      setGridEdits((prev) => ({ ...prev, [row.id]: {} }));
+      showLoading('Deleting parameter', 'Please wait…');
+      await api(`/admin/parameters/${row.id}`, { method: "DELETE" });
       invalidateHttpCache('/admin/parameters');
       await fetchParameters({
         search: query,
         page,
         per_page: perPage,
-        category: filterCategory || undefined,
-        group: filterGroup || undefined,
-        evaluation: filterEval || undefined,
       });
       await alertSuccess('Deleted', `"${row.code}" was deleted.`);
     } catch (err) {
       console.error("Failed to delete parameter", err);
       const raw = extractApiErrorMessage(err);
-      // Detect common FK constraint message fragment from Postgres/Laravel
       if (/(foreign key violation|violates foreign key constraint|still referenced)/i.test(raw)) {
         await alertError('Delete failed', `Cannot delete "${row.code}" because there are sample results that reference it. Remove or reassign those sample results first.`);
       } else {
@@ -297,74 +199,13 @@ function ParametersTab() {
   };
 
   const gridColumns = useMemo(() => [
-    { id: "code", header: "Code", width: 120, sortValue: (row) => row.code || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <input type="text" value={wrapper.code ?? ""} disabled={!!wrapper.__id} placeholder="Type code..."
-          onChange={(e) => updateGridCell(key, "code", e.target.value)} style={{ width: "100%" }} />
-      );
-    }},
-    { id: "name", header: "Name", width: 200, sortValue: (row) => row.name || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <input type="text" value={wrapper.name ?? ""} placeholder="Type name..."
-          onChange={(e) => updateGridCell(key, "name", e.target.value)} style={{ width: "100%" }} />
-      );
-    }},
-    { id: "category", header: "Category", width: 160, sortValue: (row) => row.category || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <select value={wrapper.category ?? ""} onChange={(e) => updateGridCell(key, "category", e.target.value)} style={{ width: "100%" }}>
-          <option value="">Select category</option>
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }},
-    { id: "group", header: "Group", width: 200, sortValue: (row) => row.group || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <select value={wrapper.group ?? ""} onChange={(e) => updateGridCell(key, "group", e.target.value)} style={{ width: "100%" }}>
-          <option value="">Select group</option>
-          {GROUP_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }},
-    { id: "unit", header: "Unit", width: 120, sortValue: (row) => row.unit || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <select value={wrapper.unit ?? ""} onChange={(e) => updateGridCell(key, "unit", e.target.value)} style={{ width: "100%" }}>
-          <option value="">Select unit</option>
-          {UNIT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }},
-    { id: "evaluation_type", header: "Evaluation", width: 160, sortValue: (row) => row.evaluation_type || "", render: (row) => {
-      const key = row.id;
-      const wrapper = { ...row, ...(gridEdits[key] || {}) };
-      return (
-        <select value={wrapper.evaluation_type ?? ""} onChange={(e) => updateGridCell(key, "evaluation_type", e.target.value)} style={{ width: "100%" }}>
-          <option value="">Not set</option>
-          <option value="Max (≤)">Max (≤)</option>
-          <option value="Min (≥)">Min (≥)</option>
-          <option value="Range">Range (between)</option>
-        </select>
-      );
-    }},
-    // 'Active' and 'Aliases' columns removed per product decision
-  ], [gridEdits]);
+    { id: "code", header: "Code", width: 140, render: (row) => <span>{row.code}</span> },
+    { id: "name", header: "Name", width: 220, render: (row) => <span>{row.name}</span> },
+    { id: "unit", header: "Unit", width: 120, render: (row) => <span>{row.unit || "—"}</span> },
+    { id: "evaluation_type", header: "Evaluation", width: 160, render: (row) => <span>{EVALUATION_LABELS[(row.evaluation_type || "").toLowerCase()] || row.evaluation_type || "—"}</span> },
+    { id: "desc", header: "Description", width: 280, render: (row) => <span title={row.desc}>{row.desc || "—"}</span> },
+  ], []);
 
-  // Columns visible via toolbar's column picker (always keep Code visible)
   const columnsForPicker = useMemo(
     () => gridColumns.map((c) => ({ id: c.id, header: c.header })),
     [gridColumns]
@@ -379,72 +220,10 @@ function ParametersTab() {
       search: query,
       page,
       per_page: perPage,
-      category: filterCategory || undefined,
-      group: filterGroup || undefined,
-      evaluation: filterEval || undefined,
     });
-  }, [fetchParameters, query, page, filterCategory, filterGroup, filterEval]);
+  }, [fetchParameters, query, page]);
 
-  const categoryOptions = useMemo(() => ensureOption(CATEGORY_OPTIONS, form.category), [form.category]);
-  const groupOptions = useMemo(() => ensureOption(GROUP_OPTIONS, form.group), [form.group]);
-  const unitOptions = useMemo(() => ensureOption(UNIT_OPTIONS, form.unit), [form.unit]);
-
-  const categoryFilterOptions = useMemo(() => {
-    const map = new Map();
-    CATEGORY_OPTIONS.forEach((opt) => map.set(opt.value, opt.label));
-    params.forEach((item) => {
-      if (item.category && !map.has(item.category)) {
-        map.set(item.category, item.category);
-      }
-    });
-    return [
-      { value: "", label: "All categories" },
-      ...Array.from(map.entries()).map(([value, label]) => ({ value, label })),
-    ];
-  }, [params]);
-
-  const groupFilterOptions = useMemo(() => {
-    const map = new Map();
-    GROUP_OPTIONS.forEach((opt) => map.set(opt.value, opt.label));
-    params.forEach((item) => {
-      if (item.group && !map.has(item.group)) {
-        map.set(item.group, item.group);
-      }
-    });
-    return [
-      { value: "", label: "All groups" },
-      ...Array.from(map.entries()).map(([value, label]) => ({ value, label })),
-    ];
-  }, [params]);
-
-
-  const evaluationFilterOptions = useMemo(() => {
-    const values = new Set();
-    params.forEach((item) => {
-      if (item.evaluation_type) values.add((item.evaluation_type || "").toLowerCase());
-    });
-    const canonical = ["max", "min", "range"];
-    const deduped = [];
-    canonical.forEach((value) => {
-      if (values.has(value)) deduped.push(value);
-    });
-    values.forEach((value) => {
-      if (!canonical.includes(value)) deduped.push(value);
-    });
-    return [
-      { value: "", label: "All evaluation types" },
-      ...deduped.map((value) => ({ value, label: EVALUATION_LABELS[value] || value })),
-    ];
-  }, [params]);
-
-  // Advanced filter panel config and helpers
-  const advancedFields = useMemo(() => ([
-    { id: 'category', label: 'Category', type: 'select', value: filterCategory, onChange: (v) => setFilterCategory(v), options: categoryFilterOptions },
-    { id: 'group', label: 'Group', type: 'select', value: filterGroup, onChange: (v) => setFilterGroup(v), options: groupFilterOptions },
-    { id: 'evaluation', label: 'Evaluation', type: 'select', value: filterEval, onChange: (v) => setFilterEval(v), options: evaluationFilterOptions },
-  ]), [filterCategory, filterGroup, filterEval, categoryFilterOptions, groupFilterOptions, evaluationFilterOptions]);
-  const clearAdvanced = useCallback(() => { setFilterCategory(''); setFilterGroup(''); setFilterEval(''); }, []);
-  const activeAdvCount = useMemo(() => [filterCategory, filterGroup, filterEval].filter(Boolean).length, [filterCategory, filterGroup, filterEval]);
+  const unitOptions = useMemo(() => ensureOption(UNIT_OPTIONS, modalForm.unit), [modalForm.unit]);
 
   const actions = useMemo(
     () => [
@@ -452,111 +231,46 @@ function ParametersTab() {
         label: "Edit",
         type: "edit",
         icon: <FiEdit2 />,
-        onClick: (row) => {
-          setForm({
-            code: row.code,
-            name: row.name,
-            unit: row.unit || "",
-            category: row.category || "",
-            group: row.group || "",
-            evaluation_type: row.evaluation_type || "",
-            notes: row.notes || "",
-            __id: row.id,
-          });
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        },
+        onClick: (row) => openEditModal(row),
       },
       {
         label: "Delete",
         type: "delete",
         icon: <FiTrash2 />,
-        onClick: async (row) => {
-          const ok = await confirm({ title: 'Delete parameter?', text: `Delete ${row.code}?`, confirmButtonText: 'Delete' });
-          if (!ok) return;
-          // Guard: prevent deletion when sampling events used this parameter
-          try {
-            const used = await hasSamplingEventsForParameter(row.id);
-            if (used) {
-              await alertError('Delete not allowed', `Cannot delete "${row.code}" because there are sampling events that used this parameter.`);
-              return;
-            }
-          } catch (_) {}
-          try {
-            showLoading('Deleting parameter', 'Please wait…');
-            await api(`/admin/parameters/${row.id}`, { method: "DELETE" });
-            await fetchParameters({
-              search: query,
-              page,
-              per_page: perPage,
-              category: filterCategory || undefined,
-              group: filterGroup || undefined,
-              evaluation: filterEval || undefined,
-            });
-            await alertSuccess('Deleted', `"${row.code}" was deleted.`);
-          } catch (err) {
-            console.error("Failed to delete parameter", err);
-            const raw = extractApiErrorMessage(err);
-            if (/(foreign key violation|violates foreign key constraint|still referenced)/i.test(raw)) {
-              await alertError('Delete failed', `Cannot delete "${row.code}" because there are sample results that reference it. Remove or reassign those sample results first.`);
-            } else {
-              await alertError('Delete failed', raw || 'Failed to delete parameter');
-            }
-          } finally {
-            closeLoading();
-          }
-        },
+        onClick: (row) => deleteGridRow(row),
       },
-    ], [fetchParameters]
+    ], [deleteGridRow]
   );
 
-  const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleReset = () => {
-    setForm(emptyForm);
-  };
-
-  const handleSave = async (event) => {
-    event.preventDefault();
-    setSaving(true);
+  // Save handler used by ParameterForm
+  const submitParameter = async (payload) => {
     try {
-      const payload = {
-        code: form.code.trim(),
-        name: form.name.trim(),
-        unit: form.unit || null,
-        category: form.category || null,
-        group: form.group || null,
-        evaluation_type: form.evaluation_type || null,
-        notes: form.notes.trim() || null,
-      };
-
-      if (form.__id) {
-  showLoading('Saving parameter', 'Please wait…');
-        await api(`/admin/parameters/${form.__id}`, { method: "PUT", body: payload });
+      setModalSaving(true);
+      if (modalForm.__id) {
+        showLoading('Saving parameter', 'Please wait…');
+        await api(`/admin/parameters/${modalForm.__id}`, { method: "PUT", body: payload });
         await alertSuccess('Saved', `"${payload.code}" was updated.`);
       } else {
-  showLoading('Creating parameter', 'Please wait…');
-        await api("/admin/parameters", { method: "POST", body: payload });
+        showLoading('Creating parameter', 'Please wait…');
+        await api(`/admin/parameters`, { method: "POST", body: payload });
         await alertSuccess('Created', `"${payload.code}" was created.`);
       }
-
-      handleReset();
+      setEditOpen(false);
+      setModalForm({ ...emptyForm });
+      invalidateHttpCache('/admin/parameters');
       await fetchParameters({
         search: query,
         page,
         per_page: perPage,
-        category: filterCategory || undefined,
-        group: filterGroup || undefined,
         evaluation: filterEval || undefined,
       });
       setResetSignal((value) => value + 1);
     } catch (err) {
-      console.error("Failed to save parameter", err);
+      console.error('Failed to save parameter', err);
       await alertError('Save failed', err?.message || 'Failed to save parameter');
     } finally {
       closeLoading();
-      setSaving(false);
+      setModalSaving(false);
     }
   };
 
@@ -576,16 +290,13 @@ function ParametersTab() {
           serverSide={true}
           pagination={{ page, totalPages }}
           onPageChange={(p) => setPage(p)}
-          actions={[
-            { label: "Save", type: "edit", icon: <FiSave />, onClick: (row) => saveGridRow(row) },
-            { label: "Delete", type: "delete", icon: <FiTrash2 />, onClick: (row) => deleteGridRow(row) },
-          ]}
+          actions={actions}
           resetSignal={gridResetSignal}
           columnPicker={false}
           toolbar={
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minWidth: 0, gap: 8 }}>
               <div>
-                <button type="button" className="pill-btn primary" onClick={() => { setPage(1); setNewRows((prev) => [`__new__-${Date.now()}`, ...prev]); }}>
+                <button type="button" className="pill-btn primary" onClick={openCreateModal}>
                   <FiPlus />
                   <span>Add Water Quality Parameter</span>
                 </button>
@@ -597,20 +308,28 @@ function ParametersTab() {
                   columns: columnsForPicker,
                   visibleMap,
                   onVisibleChange: (map) => {
-                    const next = { ...map, code: true }; // enforce Code always visible
+                    const next = { ...map, code: true }; 
                     setVisibleMap(next);
                   },
                 }}
                 onResetWidths={() => setGridResetSignal((s) => s + 1)}
                 onRefresh={handleRefresh}
-                onToggleFilters={() => setShowAdvanced((s) => !s)}
-                filtersBadgeCount={activeAdvCount}
               />
-              <FilterPanel open={showAdvanced} fields={advancedFields} onClearAll={clearAdvanced} />
             </div>
           }
           loading={loading}
           loadingLabel="Loading parameters…"
+        />
+
+        {/* Create/Edit Modal via reusable ParameterForm */}
+        <ParameterForm
+          open={editOpen}
+          mode={modalForm.__id ? 'edit' : 'create'}
+          initialValue={modalForm}
+          unitOptions={unitOptions}
+          loading={modalSaving}
+          onSubmit={submitParameter}
+          onCancel={() => setEditOpen(false)}
         />
       </div>
     </div>

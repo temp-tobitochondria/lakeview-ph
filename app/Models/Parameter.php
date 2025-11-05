@@ -15,15 +15,11 @@ class Parameter extends Model
         'code',
         'name',
         'unit',
-        'category',
-        'group',
         'evaluation_type',
-        'is_active',
-        'notes',
+        'desc',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
     ];
 
     // aliases feature removed (parameter_aliases table dropped)

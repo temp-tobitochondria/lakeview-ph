@@ -32,14 +32,7 @@ class ParameterController extends Controller
             });
         }
 
-        if ($request->filled('category')) {
-            $query->where('category', $request->input('category'));
-        }
-
-        // Optional group filter (to align with UI advanced filters)
-        if ($request->filled('group')) {
-            $query->where('group', $request->input('group'));
-        }
+        // category/group removed from API
 
         // Optional evaluation filter (canonical: max|min|range) or direct evaluation_type string
         if ($request->filled('evaluation')) {
@@ -57,9 +50,7 @@ class ParameterController extends Controller
             $query->where('evaluation_type', $request->input('evaluation_type'));
         }
 
-        if ($request->filled('is_active')) {
-            $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN));
-        }
+            // is_active removed
 
         $query = $query->orderBy('name');
 
@@ -133,11 +124,10 @@ class ParameterController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'unit' => ['nullable', 'string', 'max:255'],
-            'category' => ['nullable', 'string', 'max:255'],
-            'group' => ['nullable', 'string', 'max:255'],
+            // category/group removed
             'evaluation_type' => ['nullable', Rule::in(['Max (≤)', 'Min (≥)', 'Range'])],
-            'is_active' => ['sometimes', 'boolean'],
-            'notes' => ['nullable', 'string'],
+                // 'is_active' removed
+            'desc' => ['nullable', 'string'],
             // aliases removed
         ]);
     }
