@@ -427,6 +427,7 @@ function CompareLake({
               availableYears={availableYears}
               selectedYears={selectedYears}
               setSelectedYears={setSelectedYears}
+              includeCustom={false}
             />
           </div>
 
