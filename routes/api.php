@@ -157,6 +157,7 @@ Route::prefix('admin')->middleware(['auth:sanctum','role:superadmin,org_admin'])
 // Sample Events: allow org_admin and contributor (read/write), superadmin (all). Controller enforces fine-grained rules.
 Route::prefix('admin')->middleware(['auth:sanctum','role:superadmin,org_admin,contributor'])->group(function () {
     Route::get   ('sample-events',                              [AdminSamplingEventController::class, 'index']);
+    Route::get   ('sample-events/options',                      [AdminSamplingEventController::class, 'options']);
     Route::get   ('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'show'])->whereNumber('samplingEvent');
     Route::post  ('sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'update'])->whereNumber('samplingEvent');
@@ -196,6 +197,7 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:org_admin,superadmin'])
 
         // Sampling Events (tenant scoped) accessible to org_admin + contributor + superadmin (superadmin passes role middleware automatically)
     Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
+    Route::get   ('/sample-events/options',                      [AdminSamplingEventController::class, 'options']);
     Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent');
     Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'updateOrg'])->whereNumber('samplingEvent');
@@ -225,6 +227,7 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:contributor'])
         // tenant-scoped contribution endpoints here
         // Sampling Events (limited contributor access). Reuse same controller; controller enforces fine-grained rules.
     Route::get   ('/sample-events',                              [AdminSamplingEventController::class, 'index']);
+    Route::get   ('/sample-events/options',                      [AdminSamplingEventController::class, 'options']);
     Route::get   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'showOrg'])->whereNumber('samplingEvent');
     Route::post  ('/sample-events',                              [AdminSamplingEventController::class, 'store']);
     Route::put   ('/sample-events/{samplingEvent}',              [AdminSamplingEventController::class, 'updateOrg'])->whereNumber('samplingEvent');

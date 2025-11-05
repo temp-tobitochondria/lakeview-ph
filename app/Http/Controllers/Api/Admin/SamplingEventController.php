@@ -86,6 +86,43 @@ class SamplingEventController extends Controller
             $query->where('sampling_events.station_id', (int) $request->input('station_id'));
         }
 
+        // Year/Quarter/Month server-side filtering
+        // Prefer explicit sampled_from/to if provided; otherwise interpret these helpers.
+        $hasFrom = $request->filled('sampled_from');
+        $hasTo = $request->filled('sampled_to');
+        if (!$hasFrom && !$hasTo) {
+            $year = (int) $request->query('year', 0);
+            $quarter = (int) $request->query('quarter', 0);
+            $month = (int) $request->query('month', 0);
+
+            if ($year > 0) {
+                // If year is supplied, optionally narrow by quarter or month using an inclusive date range.
+                if ($month >= 1 && $month <= 12) {
+                    $start = CarbonImmutable::create($year, $month, 1, 0, 0, 0);
+                    $end = $start->endOfMonth();
+                    $query->whereBetween('sampling_events.sampled_at', [$start, $end]);
+                } elseif ($quarter >= 1 && $quarter <= 4) {
+                    $startMonth = (($quarter - 1) * 3) + 1; // 1,4,7,10
+                    $start = CarbonImmutable::create($year, $startMonth, 1, 0, 0, 0);
+                    $end = $start->addMonths(2)->endOfMonth();
+                    $query->whereBetween('sampling_events.sampled_at', [$start, $end]);
+                } else {
+                    $start = CarbonImmutable::create($year, 1, 1, 0, 0, 0);
+                    $end = CarbonImmutable::create($year, 12, 31, 23, 59, 59);
+                    $query->whereBetween('sampling_events.sampled_at', [$start, $end]);
+                }
+            } else {
+                // No year provided: allow standalone month/quarter filters across all years
+                if ($month >= 1 && $month <= 12) {
+                    $query->whereMonth('sampling_events.sampled_at', $month);
+                }
+                if ($quarter >= 1 && $quarter <= 4) {
+                    // Use ANSI/Postgres EXTRACT for compatibility
+                    $query->whereRaw('EXTRACT(QUARTER FROM sampling_events.sampled_at) = ?', [$quarter]);
+                }
+            }
+        }
+
         if ($request->filled('sampled_from')) {
             $query->where('sampling_events.sampled_at', '>=', CarbonImmutable::parse($request->input('sampled_from')));
         }
@@ -97,6 +134,19 @@ class SamplingEventController extends Controller
         // Optional created_by_user_id filter (for member filter in org/contrib views)
         if ($request->filled('created_by_user_id')) {
             $query->where('sampling_events.created_by_user_id', (int) $request->input('created_by_user_id'));
+        }
+
+        // Text search: match station, lake, or organization names
+        if ($request->filled('q')) {
+            $q = trim((string) $request->input('q'));
+            if ($q !== '') {
+                $like = '%'.mb_strtolower($q).'%';
+                $query->where(function ($qq) use ($like) {
+                    $qq->orWhereRaw('LOWER(COALESCE(stations.name, \'\')) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(COALESCE(lakes.name, \'\')) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(COALESCE(tenants.name, \'\')) LIKE ?', [$like]);
+                });
+            }
         }
 
         $perPage = (int) $request->query('per_page', 10);
@@ -314,9 +364,12 @@ class SamplingEventController extends Controller
         return SamplingEvent::query()
             ->select('sampling_events.*')
             ->leftJoin('stations', 'stations.id', '=', 'sampling_events.station_id')
+            ->leftJoin('lakes', 'lakes.id', '=', 'sampling_events.lake_id')
             ->selectRaw('ST_Y(stations.geom_point) as latitude')
             ->selectRaw('ST_X(stations.geom_point) as longitude')
             ->leftJoin('tenants', 'tenants.id', '=', 'sampling_events.organization_id')
+            ->addSelect(DB::raw("COALESCE(stations.name, '') AS station_name"))
+            ->addSelect(DB::raw("COALESCE(lakes.name, '') AS lake_name"))
             ->addSelect(DB::raw("COALESCE(tenants.name, '') AS organization_name"))
             ->leftJoin('users as __creator', '__creator.id', '=', 'sampling_events.created_by_user_id')
             ->leftJoin('users as __updater', '__updater.id', '=', 'sampling_events.updated_by_user_id')
@@ -427,6 +480,89 @@ class SamplingEventController extends Controller
 
     protected function syncEventPoint(int $eventId, array $data): void { /* no-op */ }
     protected function shouldSyncPoint(array $data): bool { return false; }
+
+    // Dynamic options for Year/Quarter/Month based on existing sampling events matching current filters
+    public function options(Request $request)
+    {
+        // Accept organization_id from query OR fallback to route parameter {tenant}
+        $requestedTenant = $request->input('organization_id');
+        if ($requestedTenant === null) {
+            $routeTenant = $request->route('tenant');
+            if ($routeTenant !== null) { $requestedTenant = (int) $routeTenant; }
+        }
+        $requestedTenant = $requestedTenant !== null ? (int) $requestedTenant : null;
+
+        $context = $this->resolveTenantMembership($request, ['org_admin', 'contributor'], $requestedTenant, false);
+        $q = $this->eventListQuery();
+
+        $publicOnly = false;
+        if ($context['has_membership']) {
+            if ($context['tenant_id'] === null) { abort(422, 'organization_id is required.'); }
+            $tenantId = (int) $context['tenant_id'];
+            $q->where('sampling_events.organization_id', $tenantId);
+        } elseif ($context['is_superadmin']) {
+            if ($requestedTenant !== null) { $q->where('sampling_events.organization_id', (int) $requestedTenant); }
+        } else {
+            if ($requestedTenant === null) { abort(403, 'Forbidden'); }
+            $publicOnly = true;
+            $q->where('sampling_events.organization_id', $requestedTenant)
+              ->where('sampling_events.status', 'public');
+        }
+
+        // Apply same basic filters (status if not publicOnly), lake, station, created_by_user_id, date window, and text q
+        if ($request->filled('status') && !$publicOnly) {
+            $statuses = collect(Arr::wrap($request->input('status')))
+                ->flatMap(fn($v) => explode(',', $v))
+                ->map(fn($v) => trim(strtolower($v)))
+                ->filter()->unique()->values();
+            if ($statuses->isNotEmpty()) { $q->whereIn('sampling_events.status', $statuses->all()); }
+        }
+        if ($request->filled('lake_id')) { $q->where('sampling_events.lake_id', (int) $request->input('lake_id')); }
+        if ($request->filled('station_id')) { $q->where('sampling_events.station_id', (int) $request->input('station_id')); }
+        if ($request->filled('created_by_user_id')) { $q->where('sampling_events.created_by_user_id', (int) $request->input('created_by_user_id')); }
+        if ($request->filled('sampled_from')) { $q->where('sampling_events.sampled_at', '>=', CarbonImmutable::parse($request->input('sampled_from'))); }
+        if ($request->filled('sampled_to')) { $q->where('sampling_events.sampled_at', '<=', CarbonImmutable::parse($request->input('sampled_to'))); }
+        if ($request->filled('q')) {
+            $txt = trim((string) $request->input('q'));
+            if ($txt !== '') {
+                $like = '%'.mb_strtolower($txt).'%';
+                $q->where(function ($qq) use ($like) {
+                    $qq->orWhereRaw("LOWER(COALESCE(stations.name, '')) LIKE ?", [$like])
+                       ->orWhereRaw("LOWER(COALESCE(lakes.name, '')) LIKE ?", [$like])
+                       ->orWhereRaw("LOWER(COALESCE(tenants.name, '')) LIKE ?", [$like]);
+                });
+            }
+        }
+
+        // Optional narrowing by selected year/quarter for months/quarters computation
+        $selectedYear = $request->filled('year') ? (int) $request->query('year') : null;
+        $selectedQuarter = $request->filled('quarter') ? (int) $request->query('quarter') : null;
+
+        $yearsQuery = (clone $q)
+            ->select(DB::raw('DISTINCT CAST(EXTRACT(YEAR FROM sampling_events.sampled_at) AS INT) AS year'))
+            ->orderBy('year', 'desc');
+
+        $quartersQuery = (clone $q)
+            ->select(DB::raw('DISTINCT CAST(EXTRACT(QUARTER FROM sampling_events.sampled_at) AS INT) AS quarter'));
+        if ($selectedYear) { $quartersQuery->whereRaw('EXTRACT(YEAR FROM sampling_events.sampled_at) = ?', [$selectedYear]); }
+        $quartersQuery->orderBy('quarter', 'asc');
+
+        $monthsQuery = (clone $q)
+            ->select(DB::raw('DISTINCT CAST(EXTRACT(MONTH FROM sampling_events.sampled_at) AS INT) AS month'));
+        if ($selectedYear) { $monthsQuery->whereRaw('EXTRACT(YEAR FROM sampling_events.sampled_at) = ?', [$selectedYear]); }
+        if ($selectedQuarter) { $monthsQuery->whereRaw('EXTRACT(QUARTER FROM sampling_events.sampled_at) = ?', [$selectedQuarter]); }
+        $monthsQuery->orderBy('month', 'asc');
+
+        $years = $yearsQuery->pluck('year')->filter(fn($v) => $v !== null)->values();
+        $quarters = $quartersQuery->pluck('quarter')->filter(fn($v) => $v !== null)->values();
+        $months = $monthsQuery->pluck('month')->filter(fn($v) => $v !== null)->values();
+
+        return response()->json(['data' => [
+            'years' => $years,
+            'quarters' => $quarters,
+            'months' => $months,
+        ]]);
+    }
 
     protected function syncMeasurements(SamplingEvent $event, array $measurements): void
     {

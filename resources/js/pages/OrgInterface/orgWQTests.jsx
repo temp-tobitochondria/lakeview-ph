@@ -114,6 +114,9 @@ export default function OrgWQTests({
           const opts = await fetchLakeOptions();
           // fetched lakes
           if (!mounted) return;
+        if (year) params.set('year', String(year));
+        if (quarter) params.set('quarter', String(quarter));
+        if (month) params.set('month', String(month));
           setLakes(Array.isArray(opts) ? opts : []);
         } catch (e) {
           console.error('[OrgWQTests] failed to fetch lakes', e);
@@ -151,7 +154,11 @@ export default function OrgWQTests({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [year, setYear] = useState("");
-  const [quarter, setQuarter] = useState("");
+        if (Number(cp) > Number(lp)) {
+          setPage(Number(lp) || 1);
+        } else if (Number(cp) !== Number(page)) {
+          setPage(Number(cp) || 1);
+        }
   const [month, setMonth] = useState("");
   const [memberId, setMemberId] = useState(() => qp.get('member_id') || qp.get('created_by_user_id') || '');
 
@@ -161,8 +168,18 @@ export default function OrgWQTests({
   const [editing, setEditing] = useState(false);
 
   const [resetSignal, setResetSignal] = useState(0);
+
+  // Reset pagination to first page when any filter/search changes
+  useEffect(() => {
+    if (!authLoaded) return;
+    setPage(1);
+  }, [authLoaded, lakeId, status, memberId, dateFrom, dateTo, year, quarter, month, q]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  // dynamic options from server
+  const [yearOpts, setYearOpts] = useState([]);
+  const [quarterOpts, setQuarterOpts] = useState([]);
+  const [monthOpts, setMonthOpts] = useState([]);
   // fetch tests when the page mounts or when filters/pagination change
   useEffect(() => {
     let mounted = true;
@@ -175,9 +192,10 @@ export default function OrgWQTests({
         const params = new URLSearchParams();
         params.set('per_page', '10');
         params.set('page', String(page));
-        if (lakeId) params.set('lake_id', String(lakeId));
+  if (lakeId) params.set('lake_id', String(lakeId));
         if (status) params.set('status', String(status));
         if (memberId) params.set('created_by_user_id', String(memberId));
+  if (q) params.set('q', String(q));
         const deriveRange = () => {
           if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
           const y = year ? Number(year) : null;
@@ -191,7 +209,7 @@ export default function OrgWQTests({
         if (range.from) params.set('sampled_from', range.from);
         if (range.to) params.set('sampled_to', range.to);
 
-        const res = await cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 2 * 60 * 1000 });
+  const res = await cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : (Array.isArray(res?.data?.data) ? res.data.data : []);
         setTests(list);
@@ -267,15 +285,39 @@ export default function OrgWQTests({
     })();
 
     return () => { mounted = false; };
-  }, [authLoaded, currentTenantId, resetSignal, page, lakeId, status, memberId, dateFrom, dateTo, year, quarter, month]);
+  }, [authLoaded, currentTenantId, resetSignal, page, lakeId, status, memberId, dateFrom, dateTo, year, quarter, month, q]);
 
   // Full refresh handler: reload tests, lakes and parameter catalog
   const doRefresh = async () => {
     setLoading(true);
     try {
       const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
+      const params = new URLSearchParams();
+      params.set('per_page', '10');
+      params.set('page', '1');
+      if (lakeId) params.set('lake_id', String(lakeId));
+      if (status) params.set('status', String(status));
+      if (memberId) params.set('created_by_user_id', String(memberId));
+      if (year) params.set('year', String(year));
+      if (quarter) params.set('quarter', String(quarter));
+      if (month) params.set('month', String(month));
+      if (q) params.set('q', String(q));
+      const deriveRange = () => {
+        if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
+        const y = year ? Number(year) : null;
+        const qv = quarter ? Number(quarter) : null;
+        const m = month ? Number(month) : null;
+        if (!y) return { from: null, to: null };
+        if (m) { const start = new Date(y, m - 1, 1); const end = new Date(y, m, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+        if (qv) { const sm = (qv - 1) * 3; const start = new Date(y, sm, 1); const end = new Date(y, sm + 3, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+        const start = new Date(y, 0, 1); const end = new Date(y, 12, 0); return { from: start.toISOString(), to: end.toISOString() };
+      };
+      const range = deriveRange();
+      if (range.from) params.set('sampled_from', range.from);
+      if (range.to) params.set('sampled_to', range.to);
+
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        cachedGet(`${basePath}?per_page=10&page=1`, { ttlMs: 2 * 60 * 1000 }),
+        cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
         cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
@@ -298,6 +340,36 @@ export default function OrgWQTests({
       setLoading(false);
     }
   };
+
+  // Fetch dynamic Y/Q/M options when filters change (tenant-scoped)
+  useEffect(() => {
+    let mounted = true;
+    if (!authLoaded) return () => {};
+    const fetchOpts = async () => {
+      try {
+        const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events/options` : '/admin/sample-events/options';
+        const params = new URLSearchParams();
+        if (lakeId) params.set('lake_id', String(lakeId));
+        if (status) params.set('status', String(status));
+        if (memberId) params.set('created_by_user_id', String(memberId));
+        if (dateFrom) params.set('sampled_from', dateFrom);
+        if (dateTo) params.set('sampled_to', dateTo);
+        if (year) params.set('year', String(year));
+        if (quarter) params.set('quarter', String(quarter));
+        if (q) params.set('q', String(q));
+        const res = await cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 60 * 1000 });
+        if (!mounted) return;
+        const data = res?.data ?? res;
+        setYearOpts(Array.isArray(data?.years) ? data.years : []);
+        setQuarterOpts(Array.isArray(data?.quarters) ? data.quarters : []);
+        setMonthOpts(Array.isArray(data?.months) ? data.months : []);
+      } catch (e) {
+        if (mounted) { setYearOpts([]); setQuarterOpts([]); setMonthOpts([]); }
+      }
+    };
+    fetchOpts();
+    return () => { mounted = false; };
+  }, [authLoaded, currentTenantId, lakeId, status, memberId, dateFrom, dateTo, year, quarter, q]);
 
   const baseColumns = useMemo(
     () => [
@@ -403,26 +475,10 @@ export default function OrgWQTests({
         if (to && d > to) return false;
       }
 
-      if (q) {
-        const s = q.toLowerCase();
-        const hay = [
-          t.id,
-          t.lake_name,
-          t.lake?.name,
-          t.station_name,
-          t.station?.name,
-          t.sampler_name,
-          t.method,
-          t.applied_standard_code,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(s)) return false;
-      }
+      // Note: free-text search is handled server-side via the `q` parameter
       return true;
     });
-  }, [tests, q, lakeId, status, memberId, year, quarter, month, dateFrom, dateTo]);
+  }, [tests, lakeId, status, memberId, year, quarter, month, dateFrom, dateTo]);
 
   const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
   const actions = [
@@ -469,11 +525,7 @@ export default function OrgWQTests({
     },
   ];
 
-  // Unique years from data (for Year filter)
-  const years = useMemo(() => {
-    const set = new Set(tests.map((t) => yqmFrom(t).year).filter((n) => Number.isFinite(n)));
-    return Array.from(set).sort((a, b) => b - a);
-  }, [tests]);
+  const monthName = (m) => [null,'January','February','March','April','May','June','July','August','September','October','November','December'][m] || String(m);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -502,9 +554,15 @@ export default function OrgWQTests({
     { id: 'lake', label: 'Lake', type: 'select', value: lakeId, onChange: setLakeId, options: [{ value: '', label: 'All lakes' }, ...lakes.map((l) => ({ value: String(l.id), label: l.name }))] },
     { id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: [{ value: '', label: 'All' }, { value: 'draft', label: 'Draft' }, { value: 'public', label: 'Published' }] },
     { id: 'member', label: 'Member', type: 'select', value: memberId, onChange: setMemberId, options: [{ value: '', label: 'Any Member' }, ...members.map((m) => ({ value: String(m.id), label: m.name || m.full_name || m.display_name || m.email || `User ${m.id}` }))] },
-    { id: 'year', label: 'Year', type: 'select', value: year, onChange: setYear, options: [{ value: '', label: 'Year' }, ...years.map((y) => ({ value: String(y), label: String(y) }))] },
-    { id: 'quarter', label: 'Quarter', type: 'select', value: quarter, onChange: setQuarter, options: [{ value: '', label: 'Quarter' }, { value: '1', label: 'Q1' }, { value: '2', label: 'Q2' }, { value: '3', label: 'Q3' }, { value: '4', label: 'Q4' }] },
-    { id: 'month', label: 'Month', type: 'select', value: month, onChange: setMonth, options: [{ value: '', label: 'Month' }, ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({ value: String(m), label: String(m).padStart(2,'0') }))] },
+    {
+      id: 'yqm',
+      type: 'group',
+      children: [
+        { id: 'year', label: 'Year', type: 'select', value: year, onChange: setYear, options: [{ value: '', label: 'Year' }, ...yearOpts.map((yy) => ({ value: String(yy), label: String(yy) }))] },
+        { id: 'quarter', label: 'Quarter', type: 'select', value: quarter, onChange: setQuarter, options: [{ value: '', label: 'Quarter' }, ...quarterOpts.map((qv) => ({ value: String(qv), label: `Q${qv}` }))] },
+        { id: 'month', label: 'Month', type: 'select', value: month, onChange: setMonth, options: [{ value: '', label: 'Month' }, ...monthOpts.map((mv) => ({ value: String(mv), label: monthName(mv) }))] },
+      ],
+    },
     { id: 'from', label: 'From', type: 'date', value: dateFrom, onChange: setDateFrom },
     { id: 'to', label: 'To', type: 'date', value: dateTo, onChange: setDateTo },
   ];
