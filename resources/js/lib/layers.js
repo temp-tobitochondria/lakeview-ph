@@ -159,12 +159,6 @@ export const createLayer = async (payload) => {
   return r;
 };
 
-export const activateLayer = async (id) => {
-  const r = await api(`/layers/${id}`, { method: "PATCH", body: { is_active: true } });
-  try { invalidateHttpCache('/layers'); cache.clear('public:layers'); } catch (_) {}
-  return r;
-};
-
 export const computeNextVisibility = (current, allowed = []) => {
   const base = Array.isArray(allowed) && allowed.length ? allowed.filter(Boolean) : ['public', 'admin'];
   const normalized = base.map((v) => String(v));
@@ -222,8 +216,6 @@ export const updateLayer = async (id, payload) => {
 };
 
 export async function setLayerDefault(layerId, isActive) {
-  return api(`/layers/${layerId}/default`, {
-    method: 'PATCH',
-    body: { is_active: !!isActive },
-  });
+  // Deprecated: default concept removed; one-layer-per-body implies default implicitly
+  return Promise.resolve(null);
 }

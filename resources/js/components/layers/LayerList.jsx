@@ -52,11 +52,12 @@ function LayerList({
   const [fBodyType, setFBodyType] = useState(""); // '', 'lake', 'watershed'
   const [fVisibility, setFVisibility] = useState(""); // '', 'public','admin'
   const [fDownloadableOnly, setFDownloadableOnly] = useState(""); // '', 'yes', 'no'
-  const [fDefaultOnly, setFDefaultOnly] = useState(""); // '', 'yes', 'no'
+  // Default layer concept removed (1 layer per body)
+  const [fDefaultOnly, setFDefaultOnly] = useState(""); // retained for backward-compat; no-op
   const [fCreatedBy, setFCreatedBy] = useState(""); // '' or specific creator
 
   // Column visibility management
-  const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, default: true, creator: false, area: false, updated: false }), []);
+  const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, creator: false, area: false, updated: false }), []);
   const [visibleMap, setVisibleMap] = useState(defaultVisible);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -255,30 +256,7 @@ function LayerList({
     }
   };
 
-  const doToggleDefault = async (row) => {
-    try {
-  showLoading(row.is_active ? 'Updating layer' : 'Setting as default', 'Please wait…');
-      if (row.is_active) {
-        // Turn OFF current default
-        await updateLayer(row.id, { is_active: false });
-        await refresh();
-        return;
-      }
-      // Trying to turn ON -> block if another layer is already default
-      const existing = layers.find((l) => l.is_active && l.id !== row.id);
-      if (existing) {
-        await alertWarning('Default Layer Exists', `"${existing.name}" is already set as the default layer.\n\nPlease turn it OFF first, then set "${row.name}" as the default.`);
-        return;
-      }
-      await updateLayer(row.id, { is_active: true });
-      await refresh();
-      } catch (e) {
-      console.error('[LayerList] Toggle default failed', e);
-      await alertError('Failed to toggle default', e?.message || '');
-    } finally {
-      closeLoading();
-    }
-  };
+  // Default toggling removed
 
   // Derived filtered rows
   const filtered = useMemo(() => {
@@ -288,8 +266,7 @@ function LayerList({
       if (fVisibility && String(row.visibility) !== fVisibility) return false;
       if (fDownloadableOnly === 'yes' && !row.is_downloadable) return false;
       if (fDownloadableOnly === 'no' && row.is_downloadable) return false;
-      if (fDefaultOnly === 'yes' && !row.is_active) return false;
-      if (fDefaultOnly === 'no' && row.is_active) return false;
+  // Default filter no longer applies
       if (fCreatedBy && formatCreator(row) !== fCreatedBy) return false;
       if (q) {
         const hay = [row.name, row.notes, row.uploaded_by_name, row.body_type, row.visibility].map((v) => (v || "").toString().toLowerCase()).join(" ");
@@ -307,7 +284,7 @@ function LayerList({
     if (visibleMap.body) arr.push({ id: 'body', header: 'Body', render: (r) => (r.body_type === 'watershed' ? 'Watershed' : 'Lake'), sortValue: (r) => (r.body_type || '') });
     if (visibleMap.visibility) arr.push({ id: 'visibility', header: 'Visibility', render: (r) => getVisibilityLabel(r.visibility), sortValue: (r) => r.visibility });
     if (visibleMap.downloadable) arr.push({ id: 'downloadable', header: 'Downloadable', render: (r) => (r.is_downloadable ? 'Yes' : 'No'), sortValue: (r) => (r.is_downloadable ? 1 : 0), width: 120 });
-    if (visibleMap.default) arr.push({ id: 'default', header: 'Default Layer', render: (r) => (r.is_active ? 'Yes' : 'No'), sortValue: (r) => (r.is_active ? 1 : 0), width: 120 });
+  // Default column removed (one layer per body)
     if (visibleMap.creator) arr.push({ id: 'creator', header: 'Created by', render: (r) => formatCreator(r) });
   if (visibleMap.area) arr.push({ id: 'area', header: 'Surface Area (km²)', render: (r) => (r.area_km2 ?? '-'), sortValue: (r) => (typeof r.area_km2 === 'number' ? r.area_km2 : -1), width: 120 });
     if (visibleMap.updated) arr.push({ id: 'updated', header: 'Updated', render: (r) => (r.updated_at ? new Date(r.updated_at).toLocaleString() : '-'), sortValue: (r) => (r.updated_at || ''), width: 200 });
@@ -339,7 +316,7 @@ function LayerList({
     { id: 'body', header: 'Body' },
     { id: 'visibility', header: 'Visibility' },
     { id: 'downloadable', header: 'Downloadable' },
-    { id: 'default', header: 'Default Layer' },
+  // Default Layer column removed
     { id: 'creator', header: 'Created by' },
   { id: 'area', header: 'Surface Area (km²)' },
     { id: 'updated', header: 'Updated' },
@@ -372,11 +349,7 @@ function LayerList({
       { value: 'yes', label: 'Yes' },
       { value: 'no', label: 'No' },
     ]},
-    { id: 'default', label: 'Default Layer', type: 'select', value: fDefaultOnly, onChange: setFDefaultOnly, options: [
-      { value: '', label: 'All' },
-      { value: 'yes', label: 'Yes' },
-      { value: 'no', label: 'No' },
-    ]},
+    // Default filter removed
     { id: 'created_by', label: 'Created by', type: 'select', value: fCreatedBy, onChange: setFCreatedBy, options: [
       { value: '', label: 'All' },
       ...uniqueCreators.map(c => ({ value: c, label: c }))
@@ -402,7 +375,7 @@ function LayerList({
               setFBodyType("");
               setFVisibility("");
               setFDownloadableOnly("");
-              setFDefaultOnly("");
+              // default-only filter removed
               setFCreatedBy("");
             }}
           />

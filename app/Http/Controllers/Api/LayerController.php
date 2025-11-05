@@ -64,7 +64,6 @@ class LayerController extends Controller
 
         $query = Layer::query()
             ->leftJoin('users', 'users.id', '=', 'layers.uploaded_by')
-            ->orderByDesc('is_active')
             ->orderByDesc('layers.created_at');
 
         // Optional scoping by body
@@ -104,10 +103,9 @@ class LayerController extends Controller
             ->whereRaw("LOWER(TRIM(layers.visibility)) = 'public'")
             ->whereRaw("LOWER(TRIM(layers.body_type)) = ?", [strtolower($request->query('body_type'))])
             ->where('layers.body_id', (int)$request->query('body_id'))
-            ->orderByDesc('layers.is_active')
             ->orderByDesc('layers.created_at');
 
-    $query->select(['layers.id','layers.name','layers.notes','layers.is_active','layers.is_downloadable','layers.created_at','layers.updated_at']);
+    $query->select(['layers.id','layers.name','layers.notes','layers.is_downloadable','layers.created_at','layers.updated_at']);
         $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
 
         if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox) AS bbox_geojson');
@@ -133,7 +131,7 @@ class LayerController extends Controller
             ->where('layers.id', $id)
             ->where('layers.visibility', 'public');
 
-    $q->select(['layers.id','layers.body_type','layers.body_id','layers.name','layers.notes','layers.is_active','layers.is_downloadable','layers.created_at','layers.updated_at']);
+    $q->select(['layers.id','layers.body_type','layers.body_id','layers.name','layers.notes','layers.is_downloadable','layers.created_at','layers.updated_at']);
         $q->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
         if ($include->contains('geom'))   $q->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
         if ($include->contains('bounds')) $q->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
@@ -153,7 +151,6 @@ class LayerController extends Controller
         $request->validate(['body_type'=>'required|string|in:lake,watershed','body_id'=>'required|integer|min:1']);
         $row = Layer::where('body_type', $request->query('body_type'))
             ->where('body_id', (int)$request->query('body_id'))
-            ->where('is_active', true)
             ->select('*')
             ->selectRaw('ST_AsGeoJSON(geom) AS geom_geojson')
             ->first();
@@ -175,7 +172,6 @@ class LayerController extends Controller
                 }
                 $data['visibility'] = $visibility;
                 $data['is_downloadable'] = (bool)($data['is_downloadable'] ?? false);
-                if ($role !== Role::SUPERADMIN) $data['is_active'] = false;
 
                 // Use transaction: create row first (without geom), then set geometry via PostGIS SQL
                 return DB::transaction(function () use ($data, $user) {
@@ -185,8 +181,7 @@ class LayerController extends Controller
                                 'body_id'     => (int)$data['body_id'],
                                 'name'        => $data['name'],
                                 'srid'        => (int)($data['srid']  ?? 4326),
-                                'visibility'  => $data['visibility']  ?? 'public',
-                                'is_active'   => (bool)($data['is_active'] ?? false),
+                'visibility'  => $data['visibility']  ?? 'public',
                 'is_downloadable' => (bool)($data['is_downloadable'] ?? false),
                                 'notes'       => $data['notes']       ?? null,
                                 'source_type' => $data['source_type'] ?? 'geojson',
@@ -235,13 +230,7 @@ class LayerController extends Controller
                                 );
                         }
 
-                        // If requested active, deactivate siblings (no DB trigger dependency)
-                        if ($layer->is_active) {
-                                Layer::where('body_type', $layer->body_type)
-                                        ->where('body_id', $layer->body_id)
-                                        ->where('id', '!=', $layer->id)
-                                        ->update(['is_active' => false]);
-                        }
+            // With one-layer-per-body enforced by DB, no need to toggle actives
 
                         $fresh = Layer::whereKey($layer->id)
                                 ->select('*')
@@ -278,8 +267,7 @@ class LayerController extends Controller
                 // Save basic fields first
                 $layer->fill($data);
 
-                return DB::transaction(function () use ($layer, $data, $role) {
-                        $activating = array_key_exists('is_active', $data) && (bool)$data['is_active'] === true;
+        return DB::transaction(function () use ($layer, $data, $role) {
                         $layer->save();
 
                         // Optional geometry replacement: only superadmins may replace geometry via this endpoint
@@ -322,12 +310,7 @@ class LayerController extends Controller
                                 );
                         }
 
-                        if ($activating) {
-                                Layer::where('body_type', $layer->body_type)
-                                        ->where('body_id', $layer->body_id)
-                                        ->where('id', '!=', $layer->id)
-                                        ->update(['is_active' => false]);
-                        }
+            // No active toggling needed under one-layer-per-body
 
                         $fresh = Layer::whereKey($layer->id)
                                 ->select('*')

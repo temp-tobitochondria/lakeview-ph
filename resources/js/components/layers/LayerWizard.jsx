@@ -28,7 +28,7 @@ import PublishControls from './PublishControls';
 export default function LayerWizard({
   defaultBodyType = "lake",
   defaultVisibility = "public",
-  allowSetActive = true,
+  allowSetActive = false,
   allowedBodyTypes = ["lake", "watershed"],
   visibilityOptions = [
     { value: "public", label: "Public" },
@@ -413,7 +413,6 @@ export default function LayerWizard({
         name: form.name,
         srid: Number(form.sourceSrid) || 4326,
         visibility: form.visibility, 
-        is_active: allowSetActive ? !!form.isActive : false,
         is_downloadable: !!form.isDownloadable,
         status: "ready",
         notes: form.notes || null,
@@ -433,10 +432,10 @@ export default function LayerWizard({
       const apiData = e?.response?.data;
       const rawMsg = (typeof apiData === 'string') ? apiData : (apiData?.message || e?.message || '');
 
-      const uniqueDefaultPattern = /uq_layers_active_per_body|duplicate key value|already exists|UniqueConstraint/i;
+      const uniqueDefaultPattern = /uq_layers_active_per_body|duplicate key value|already exists|UniqueConstraint|unique.*\(body_type,\s*body_id\)/i;
       let friendly = rawMsg || 'Failed to publish layer.';
       if (uniqueDefaultPattern.test(String(rawMsg))) {
-        friendly = 'A default layer already exists for the selected body. Disable the "Default Enabled" flag on the existing layer, or uncheck "Set as Default" here before publishing.';
+        friendly = 'There is already an associated layer for this body.';
       } else {
         // If the API returned a more specific nested message, try to surface it without stack traces
         try {

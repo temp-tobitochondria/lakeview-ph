@@ -43,10 +43,10 @@ class LayerVisibilityTest extends TestCase
         $tenant = Tenant::factory()->create();
         $admin = $this->orgAdmin($tenant);
         $contributor = $this->contributor($tenant);
-        Layer::factory()->count(2)->create(['uploaded_by' => $admin->id, 'body_type' => 'lake', 'body_id' => 1]);
-        Layer::factory()->count(3)->create(['uploaded_by' => $contributor->id, 'body_type' => 'lake', 'body_id' => 1]);
+        // One layer per body enforced; create a single layer for this body (regardless of uploader)
+        Layer::factory()->create(['uploaded_by' => $contributor->id, 'body_type' => 'lake', 'body_id' => 1]);
         $resp = $this->actingAs($admin)->getJson(route('layers.index', ['body_type'=>'lake','body_id'=>1]));
-        $resp->assertStatus(200)->assertJsonCount(5, 'data');
+        $resp->assertStatus(200)->assertJsonCount(1, 'data');
     }
 
     public function test_superadmin_sees_all_layers_across_tenants()
@@ -55,9 +55,10 @@ class LayerVisibilityTest extends TestCase
         $tenantB = Tenant::factory()->create();
         $adminA = $this->orgAdmin($tenantA);
         $adminB = $this->orgAdmin($tenantB);
+        // Enforce one layer per body; create a layer for body 1 in tenant A, and another for a different body in tenant B
         Layer::factory()->create(['uploaded_by' => $adminA->id, 'body_type' => 'lake', 'body_id' => 1]);
-        Layer::factory()->create(['uploaded_by' => $adminB->id, 'body_type' => 'lake', 'body_id' => 1]);
+        Layer::factory()->create(['uploaded_by' => $adminB->id, 'body_type' => 'lake', 'body_id' => 2]);
         $resp = $this->actingAs($this->superAdmin())->getJson(route('layers.index', ['body_type'=>'lake','body_id'=>1]));
-        $resp->assertStatus(200)->assertJsonCount(2, 'data');
+        $resp->assertStatus(200)->assertJsonCount(1, 'data');
     }
 }

@@ -33,10 +33,10 @@ export function useLakeSelection({ publicFC, mapRef, setPanelOpen, setFilterWate
     if (!lakeId) { setLakeLayers([]); setLakeActiveLayerId(null); return; }
     try {
       // Phase 1: serve cached rows if available (fast paint)
-      const rowsCached = await fetchPublicLayers({ bodyType: 'lake', bodyId: lakeId });
-      setLakeLayers(rowsCached);
-      const activeCached = rowsCached.find(r => r.is_active);
-      setLakeActiveLayerId(activeCached ? activeCached.id : null);
+  const rowsCached = await fetchPublicLayers({ bodyType: 'lake', bodyId: lakeId });
+  setLakeLayers(rowsCached);
+  const activeCached = rowsCached && rowsCached.length ? rowsCached[0] : null;
+  setLakeActiveLayerId(activeCached ? activeCached.id : null);
 
       // Phase 2: revalidate from network and update if different
       try {
@@ -44,7 +44,7 @@ export function useLakeSelection({ publicFC, mapRef, setPanelOpen, setFilterWate
         const changed = JSON.stringify(rowsFresh) !== JSON.stringify(rowsCached);
         if (changed) {
           setLakeLayers(rowsFresh);
-          const active = rowsFresh.find(r => r.is_active);
+          const active = rowsFresh && rowsFresh.length ? rowsFresh[0] : null;
           setLakeActiveLayerId(active ? active.id : null);
         }
       } catch (_) { /* ignore revalidation errors */ }
@@ -196,14 +196,14 @@ export function useLakeSelection({ publicFC, mapRef, setPanelOpen, setFilterWate
     if (!selectedWatershedId) { setWatershedToggleOn(false); return; }
     try {
       // Phase 1: fast path from cache
-      const candidatesCached = await fetchPublicLayers({ bodyType: 'watershed', bodyId: selectedWatershedId });
-      let target = candidatesCached?.find(l => l.is_active) || candidatesCached?.[0];
+  const candidatesCached = await fetchPublicLayers({ bodyType: 'watershed', bodyId: selectedWatershedId });
+  let target = candidatesCached?.[0];
       if (!target) { setWatershedToggleOn(false); return; }
       await applyOverlayByLayerId(target.id, { fit: true });
       // Phase 2: revalidate from network and update overlay if active changed
       try {
-        const candidatesFresh = await fetchPublicLayers({ bodyType: 'watershed', bodyId: selectedWatershedId, forceNetwork: true });
-        const freshTarget = candidatesFresh?.find(l => l.is_active) || candidatesFresh?.[0];
+  const candidatesFresh = await fetchPublicLayers({ bodyType: 'watershed', bodyId: selectedWatershedId, forceNetwork: true });
+  const freshTarget = candidatesFresh?.[0];
         const changed = JSON.stringify(freshTarget || null) !== JSON.stringify(target || null);
         if (freshTarget && changed) {
           target = freshTarget;

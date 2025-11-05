@@ -18,11 +18,8 @@ class LayerFactory extends Factory
             'body_id'     => Lake::query()->inRandomOrder()->value('id') ?? Lake::factory(),
             'uploaded_by' => User::query()->inRandomOrder()->value('id') ?? User::factory(),
             'name'        => $this->faker->words(3, true),
-            'type'        => $this->faker->randomElement(['vector','raster']),
-            'category'    => $this->faker->randomElement(['hydrology','imagery','admin']),
             'srid'        => 4326,
             'visibility'  => $this->faker->randomElement([Layer::VIS_PUBLIC, Layer::VIS_ADMIN]),
-            'is_active'   => false,
             'status'      => 'ready',
             'version'     => 1,
             'notes'       => null,
@@ -42,6 +39,7 @@ class LayerFactory extends Factory
 
     public function active(): self
     {
-        return $this->state(fn() => ['is_active' => true]);
+        // No-op under one-layer-per-body (kept for backward factory compatibility)
+        return $this->state(fn() => []);
     }
 }

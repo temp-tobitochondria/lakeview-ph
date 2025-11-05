@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function PublishControls({ visibilityOptions, value, onChange, allowSetActive, isActive, onToggleActive, isDownloadable, onToggleDownloadable }) {
+export default function PublishControls({ visibilityOptions, value, onChange, /* allowSetActive, isActive, onToggleActive, */ isDownloadable, onToggleDownloadable }) {
   return (
     <div className="org-form">
       <div className="form-group">
@@ -15,18 +15,7 @@ export default function PublishControls({ visibilityOptions, value, onChange, al
         </select>
       </div>
 
-      {allowSetActive && (
-        <div className="form-group">
-          <label>Default Layer</label>
-          <select
-            value={isActive ? 'default' : 'not_default'}
-            onChange={(e) => { if ((e.target.value === 'default') !== isActive) onToggleActive?.(); }}
-          >
-            <option value="not_default">Not Default</option>
-            <option value="default">Default</option>
-          </select>
-        </div>
-      )}
+      {/* Default layer concept removed (one layer per body) */}
 
       <div className="form-group">
         <label>Downloadable</label>

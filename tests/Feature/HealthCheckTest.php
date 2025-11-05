@@ -1,14 +1,20 @@
 <?php
 
-use PHPUnit\Framework\TestCase;
+namespace Tests\Feature;
+
+use Tests\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class HealthCheckTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function testHealthCheck()
     {
-        $response = $this->get('/health-check');
-        $this->assertEquals(200, $response->getStatusCode());
-        $this->assertJson($response->getContent());
-        $this->assertArrayHasKey('status', json_decode($response->getContent(), true));
+        $response = $this->getJson('/api/healthz/db');
+        $response->assertStatus(200);
+        $response->assertJsonStructure(['ok','db','migrations']);
+        $payload = $response->json();
+        $this->assertTrue($payload['ok']);
     }
 }

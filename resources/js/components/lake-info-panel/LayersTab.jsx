@@ -11,7 +11,7 @@ const fmtText = (v) => (v && String(v).trim() ? String(v).trim() : "–");
 /**
  * Props
  * - layers: array of public layers
- * - activeLayerId: id of the active public layer (default layer)
+ * - activeLayerId: id of the selected lake layer
  * - selectedLayerId: id currently selected in UI
  * - onChooseLayer: (id) => void
  * - onResetToActive: () => void
@@ -140,24 +140,6 @@ function LayersTab({
       <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg);} }`}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8, fontWeight: 'bold' }}>Layers</h3>
-        <button
-          type="button"
-          onClick={onResetToActive}
-          className="btn btn-reset-default"
-          style={{
-            fontSize: 12,
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.35)",
-            background: "rgba(255,255,255,0.15)",
-            color: "#fff",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-          title="Reset to the default (active) public layer"
-        >
-          Reset to Default Layer
-        </button>
       </div>
 
       {layers.length === 0 ? (
@@ -181,34 +163,11 @@ function LayersTab({
                 <div
                   key={layer.id}
                   className="insight-card"
-                  style={{ display: "grid", gap: 6, position: "relative" }}
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                      <input
-                        type="radio"
-                        name="activeLayer"
-                        checked={isSelected}
-                        onChange={() => onChooseLayer?.(layer.id)}
-                        style={{ transform: "scale(1.1)" }}
-                      />
-                      <span style={{ fontWeight: 700 }}>{fmtText(layer.name)}</span>
-                    </label>
-                    {isActive ? (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          background: "rgba(255,255,255,0.25)",
-                          border: "1px solid rgba(255,255,255,0.4)",
-                          color: "#fff",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Default
-                      </span>
-                    ) : null}
+<span style={{ fontWeight: 700 }}>{fmtText(layer.name)}</span>
+                    {/* With one-layer-per-body, the selected layer is implicitly the lake layer */}
                   </div>
 
                   <div style={{ fontSize: 13, opacity: 0.9 }}>
@@ -226,15 +185,13 @@ function LayersTab({
                       e.stopPropagation();
                       if (!layer.is_downloadable) { await alertError('Not Downloadable','This layer does not allow downloads.'); return; }
                       if (!authed) { const ok = await ensureAuthOrPrompt(); if (!ok) return; }
-                      const choice = await promptDownloadFormat({ title: 'Download Layer', text: 'Choose a format to download this layer.' });
+                      const choice = await promptDownloadFormat({ title: 'Download Lake Layer', text: 'Choose a format to download this layer.' });
                       if (!choice) return;
                       await doDownloadVector(layer, choice);
                     }}
                     style={{
-                      position: "absolute",
-                      right: 8,
-                      bottom: 8,
-                      width: 34,
+                      alignSelf: "flex-end",
+      width: 34,
                       height: 34,
                       padding: 6,
                       borderRadius: 999,
@@ -270,30 +227,15 @@ function LayersTab({
                 </div>
                 {watershedLayers.map((layer) => {
                   const isSelected = String(selectedLayerId) === String(layer.id);
-                  const isDefaultWs = !!layer.is_active; // default within its watershed
                   return (
                     <div
                       key={`ws-${layer.id}`}
                       className="insight-card"
-                      style={{ display: "grid", gap: 6, position: "relative" }}
+                      style={{ display: "flex", flexDirection: "column", gap: 6 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <span style={{ fontWeight: 700 }}>{fmtText(layer.name)}</span>
-                        {isDefaultWs ? (
-                          <span
-                            style={{
-                              fontSize: 12,
-                              padding: "2px 8px",
-                              borderRadius: 999,
-                              background: "rgba(255,255,255,0.25)",
-                              border: "1px solid rgba(255,255,255,0.4)",
-                              color: "#fff",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Default
-                          </span>
-                        ) : null}
+                        {/* No default badge: one-layer-per-body */}
                       </div>
 
                       <div style={{ fontSize: 13, opacity: 0.9 }}>
@@ -315,10 +257,8 @@ function LayersTab({
                           await doDownloadVector(layer, choice);
                         }}
                         style={{
-                          position: "absolute",
-                          right: 8,
-                          bottom: 8,
-                          width: 34,
+                          alignSelf: "flex-end",
+      width: 34,
                           height: 34,
                           padding: 6,
                           borderRadius: 999,

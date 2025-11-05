@@ -376,12 +376,11 @@ class LakeController extends Controller
 
             // Active + public layer geometry preferred; fallback to lake.coordinates (Point)
             $q = DB::table('lakes as l')
-                ->leftJoin('layers as ly', function ($j) {
-                    $j->on('ly.body_id', '=', 'l.id')
-                      ->where('ly.body_type', 'lake')
-                      ->where('ly.is_active', true)
-                      ->where('ly.visibility', 'public');
-                })
+                                ->leftJoin('layers as ly', function ($j) {
+                                        $j->on('ly.body_id', '=', 'l.id')
+                                            ->where('ly.body_type', 'lake')
+                                            ->where('ly.visibility', 'public');
+                                })
                 ->leftJoin('watersheds as w', 'w.id', '=', 'l.watershed_id')
                 // Any PUBLIC layer uploader tenant (for org filtering), independent of active layer
                 ->leftJoin('layers as lypub', function ($j) {

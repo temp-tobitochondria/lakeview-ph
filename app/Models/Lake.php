@@ -54,7 +54,8 @@ class Lake extends Model
     
     public function activeLayer()
     {
-        return $this->morphOne(\App\Models\Layer::class, 'body')->where('is_active', true);
+    // With one-layer-per-body, simply expose the single related layer
+    return $this->morphOne(\App\Models\Layer::class, 'body');
     }
 
     public function waterQualityClass()

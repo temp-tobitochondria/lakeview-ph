@@ -57,7 +57,7 @@ class SemanticSearch
                 $sql = <<<SQL
                     SELECT l.*, ST_Area(ly.geom::geography) AS area_m2, ST_AsGeoJSON(l.coordinates) AS coordinates_geojson
                     FROM lakes l
-                    LEFT JOIN layers ly ON ly.body_type = 'lake' AND ly.body_id = l.id AND ly.is_active = true AND ly.visibility = 'public'
+                    LEFT JOIN layers ly ON ly.body_type = 'lake' AND ly.body_id = l.id AND ly.visibility = 'public'
                     WHERE ly.geom IS NOT NULL
                     ORDER BY area_m2 DESC NULLS LAST
                     LIMIT :limit
@@ -84,7 +84,7 @@ class SemanticSearch
                         SELECT l.*, ST_AsGeoJSON(l.coordinates) AS coordinates_geojson
                         FROM lakes l
                         JOIN target t ON true
-                        JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.is_active=true AND ly.visibility='public'
+                        JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.visibility='public'
                         WHERE ly.geom IS NOT NULL AND ST_Intersects(ly.geom, t.geom)
                         ORDER BY l.name ASC
                         LIMIT :limit

@@ -40,7 +40,7 @@ SELECT l.id,
        ST_AsGeoJSON(l.coordinates) AS coordinates_geojson,
        ST_Perimeter(ly.geom::geography) AS metric_value
 FROM lakes l
-LEFT JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.is_active=true AND ly.visibility='public'
+LEFT JOIN layers ly ON ly.body_type='lake' AND ly.body_id=l.id AND ly.visibility='public'
 WHERE ly.geom IS NOT NULL
 SQL;
             } else {
@@ -81,7 +81,7 @@ SELECT w.id,
        ST_AsGeoJSON(ly.geom) AS geom,
        ST_Area(ly.geom::geography) AS metric_value
 FROM watersheds w
-LEFT JOIN layers ly ON ly.body_type='watershed' AND ly.body_id=w.id AND ly.is_active=true AND ly.visibility='public'
+LEFT JOIN layers ly ON ly.body_type='watershed' AND ly.body_id=w.id AND ly.visibility='public'
 WHERE ly.geom IS NOT NULL
 SQL;
             if ($place) {

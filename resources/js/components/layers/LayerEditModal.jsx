@@ -24,7 +24,6 @@ export default function LayerEditModal({
     name: "",
     notes: "",
     visibility: "public",
-    is_active: false,
     is_downloadable: false,
   });
 
@@ -40,7 +39,6 @@ export default function LayerEditModal({
         name: layer.name || '',
         notes: layer.notes || '',
         visibility: initialEditVisibility,
-        is_active: !!layer.is_active,
         is_downloadable: !!layer.is_downloadable,
       });
     }
@@ -48,15 +46,6 @@ export default function LayerEditModal({
 
   const handleSubmit = async () => {
     try {
-      // If user is trying to enable default (changing from false to true), ensure no other layer is default
-      if (formData.is_active && !layer.is_active) {
-        const existing = allLayers.find((l) => l.is_active && l.id !== layer.id);
-        if (existing) {
-          await alertWarning('Default Layer Exists', `"${existing.name}" is already set as the default layer.\n\nPlease unset it first or turn off default for this layer.`);
-          return;
-        }
-      }
-
       // Only superadmin may change visibility or default flag per backend; org_admin limited to name/category/notes.
       const patch = {
         name: formData.name,
@@ -64,7 +53,6 @@ export default function LayerEditModal({
       };
       if (currentUserRole === 'superadmin') {
         patch.visibility = formData.visibility;
-        patch.is_active = !!formData.is_active;
         patch.is_downloadable = !!formData.is_downloadable;
       } else {
         // org_admin path: backend allows is_downloadable modification, include if changed
@@ -135,16 +123,7 @@ export default function LayerEditModal({
                   ))}
               </select>
             </div>
-            <div className="form-group">
-              <label>Default Layer</label>
-              <select
-                value={formData.is_active ? 'yes' : 'no'}
-                onChange={(e) => setFormData((f) => ({ ...f, is_active: e.target.value === 'yes' }))}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </div>
+            {/* Default layer concept removed (one layer per body) */}
             <div className="form-group">
               <label>Downloadable</label>
               <select
