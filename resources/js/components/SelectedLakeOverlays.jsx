@@ -1,5 +1,6 @@
 import React from "react";
 import { GeoJSON } from "react-leaflet";
+import * as turf from '@turf/turf';
 
 export default function SelectedLakeOverlays({ watershedOverlayFeature, lakeOverlayFeature }) {
   return (
@@ -11,7 +12,13 @@ export default function SelectedLakeOverlays({ watershedOverlayFeature, lakeOver
           style={{ color: '#16a34a', weight: 2, fillOpacity: 0.15 }}
           onEachFeature={(feat, layer) => {
             const nm = feat?.properties?.name || 'Watershed';
-            layer.bindTooltip(nm, { sticky: true });
+            let tooltip = nm;
+            try {
+              const area = turf.area(feat); // square meters
+              const areaKm2 = (area / 1e6).toFixed(2);
+              tooltip = `${nm} (${areaKm2} km²)`;
+            } catch {}
+            layer.bindTooltip(tooltip, { sticky: true });
           }}
         />
       )}

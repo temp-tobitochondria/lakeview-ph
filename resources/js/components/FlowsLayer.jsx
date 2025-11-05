@@ -45,7 +45,10 @@ export default function FlowsLayer({ show = false, flows, flowsRef }) {
             <Popup>
               <div style={{ minWidth: 160 }}>
                 {(() => { const t = f.flow_type === 'inflow' ? 'Inlet' : (f.flow_type === 'outflow' ? 'Outlet' : String(f.flow_type || '')); return (<strong>{t}</strong>); })()}<br />
-                {f.name || f.source || 'Flow Point'} {f.is_primary ? <em style={{ color: '#fbbf24' }}>★</em> : null}<br />
+                {f.name || 'Flow Point'} {f.is_primary ? <em style={{ color: '#fbbf24' }}>★</em> : null}<br />
+                                {f.alt_name && <><em>{f.alt_name}</em><br /></>}
+
+                {f.source && <>Source: {f.source}<br /></>}
                 <small>Lat: {lat} Lon: {lon}</small>
               </div>
             </Popup>
