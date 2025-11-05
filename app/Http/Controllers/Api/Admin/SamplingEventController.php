@@ -94,12 +94,22 @@ class SamplingEventController extends Controller
             $query->where('sampling_events.sampled_at', '<=', CarbonImmutable::parse($request->input('sampled_to')));
         }
 
+        // Optional created_by_user_id filter (for member filter in org/contrib views)
+        if ($request->filled('created_by_user_id')) {
+            $query->where('sampling_events.created_by_user_id', (int) $request->input('created_by_user_id'));
+        }
+
+        $perPage = (int) $request->query('per_page', 10);
+        if ($perPage <= 0) $perPage = 10;
+        if ($perPage > 100) $perPage = 100;
+
         $events = $query
             ->orderByDesc('sampling_events.sampled_at')
             ->orderBy('sampling_events.id', 'desc')
-            ->get();
+            ->paginate($perPage);
 
-        return response()->json(['data' => $events]);
+        // Return paginator directly for standard Laravel pagination structure
+        return $events;
     }
 
     public function show(Request $request, SamplingEvent $samplingEvent)

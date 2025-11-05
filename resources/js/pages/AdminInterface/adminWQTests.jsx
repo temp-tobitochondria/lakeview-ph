@@ -59,6 +59,8 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
   // Editing capability removed per request; modal will open in view-only mode.
 
   const [resetSignal, setResetSignal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     let mounted = true;
@@ -115,26 +117,63 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
     return () => { mounted = false; if (timer) clearTimeout(timer); };
   }, []);
 
-  // fetch tests
+  // fetch tests (server-side pagination)
   useEffect(() => {
     let mounted = true;
     setLoading(true);
     (async () => {
       try {
-        const path = organizationId ? `/admin/sample-events?organization_id=${encodeURIComponent(organizationId)}` : '/admin/sample-events';
+        const params = new URLSearchParams();
+        params.set('per_page', '10');
+        params.set('page', String(page));
+        if (organizationId) params.set('organization_id', String(organizationId));
+        if (lakeId) params.set('lake_id', String(lakeId));
+        if (status) params.set('status', String(status));
+        // Derive sampled_from/to from explicit range or year/quarter/month
+        const deriveRange = () => {
+          if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
+          const y = year ? Number(year) : null;
+          const qv = quarter ? Number(quarter) : null;
+          const m = month ? Number(month) : null;
+          if (!y) return { from: null, to: null };
+          if (m) {
+            const start = new Date(y, m - 1, 1);
+            const end = new Date(y, m, 0); // last day of month
+            return { from: start.toISOString(), to: end.toISOString() };
+          }
+          if (qv) {
+            const startMonth = (qv - 1) * 3; // 0-indexed
+            const start = new Date(y, startMonth, 1);
+            const end = new Date(y, startMonth + 3, 0);
+            return { from: start.toISOString(), to: end.toISOString() };
+          }
+          const start = new Date(y, 0, 1);
+          const end = new Date(y, 12, 0);
+          return { from: start.toISOString(), to: end.toISOString() };
+        };
+        const range = deriveRange();
+        if (range.from) params.set('sampled_from', range.from);
+        if (range.to) params.set('sampled_to', range.to);
+
+        const path = `/admin/sample-events?${params.toString()}`;
         const res = await cachedGet(path, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
-        const data = Array.isArray(res.data) ? res.data : [];
-        setTests(data);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : (Array.isArray(res?.data?.data) ? res.data.data : []);
+        setTests(list);
+        const cp = res?.current_page ?? 1;
+        const lp = res?.last_page ?? 1;
+        setTotalPages(Number(lp) || 1);
+        // ensure page remains in sync when backend resets (e.g., filter change)
+        if (Number(cp) !== Number(page)) setPage(Number(cp) || 1);
       } catch (e) {
         console.error('[AdminWQTests] failed to fetch tests', e);
-        if (mounted) setTests(initialTests || []);
+        if (mounted) { setTests([]); setTotalPages(1); if (page !== 1) setPage(1); }
       } finally {
         if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
-  }, [resetSignal]);
+  }, [resetSignal, page, organizationId, lakeId, status, dateFrom, dateTo, year, quarter, month]);
 
   const doRefresh = async () => {
     setLoading(true);
@@ -284,7 +323,19 @@ export default function AdminWQTests({ initialLakes = [], initialTests = [], par
             { id: 'to', label: 'To', type: 'date', value: dateTo, onChange: setDateTo, placeholder: 'To mm/dd/yyyy' },
           ]}
         />
-        <TableLayout tableId="admin-wqtests" columns={displayColumns} data={filtered} pageSize={10} actions={actions} resetSignal={resetSignal} columnPicker={false} loading={loading} loadingLabel={loading ? 'Loading tests' : null} />
+        <TableLayout
+          tableId="admin-wqtests"
+          columns={displayColumns}
+          data={filtered}
+          actions={actions}
+          resetSignal={resetSignal}
+          columnPicker={false}
+          loading={loading}
+          loadingLabel={loading ? 'Loading tests…' : null}
+          serverSide={true}
+          pagination={{ page, totalPages }}
+          onPageChange={(p) => setPage(p)}
+        />
       </div>
 
       <OrgWQTestModal open={open} onClose={() => setOpen(false)} record={selected} editable={false} parameterCatalog={paramCatalog} canPublish={canPublishAny}

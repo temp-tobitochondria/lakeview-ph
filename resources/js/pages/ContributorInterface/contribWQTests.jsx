@@ -68,6 +68,8 @@ export default function ContribWQTests() {
   const [editing, setEditing] = useState(false);
 
   const [resetSignal, setResetSignal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     let mounted = true;
@@ -171,7 +173,7 @@ export default function ContribWQTests() {
     return () => { mounted = false; if (timer) clearTimeout(timer); };
   }, []);
 
-  // fetch tests for this contributor's organization
+  // fetch tests for this contributor's organization (server-side pagination)
   useEffect(() => {
     let mounted = true;
     if (!authLoaded) return () => {};
@@ -180,27 +182,42 @@ export default function ContribWQTests() {
     (async () => {
       try {
         const basePath = `/contrib/${currentOrgId}/sample-events`;
-        const res = await cachedGet(basePath, { ttlMs: 2 * 60 * 1000 });
+        const params = new URLSearchParams();
+        params.set('per_page', '10');
+        params.set('page', String(page));
+        if (lakeId) params.set('lake_id', String(lakeId));
+        if (status) params.set('status', String(status));
+        if (memberId) params.set('created_by_user_id', String(memberId));
+        const deriveRange = () => {
+          if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
+          const y = year ? Number(year) : null;
+          const qv = quarter ? Number(quarter) : null;
+          const m = month ? Number(month) : null;
+          if (!y) return { from: null, to: null };
+          if (m) { const start = new Date(y, m - 1, 1); const end = new Date(y, m, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+          if (qv) { const sm = (qv - 1) * 3; const start = new Date(y, sm, 1); const end = new Date(y, sm + 3, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+          const start = new Date(y, 0, 1); const end = new Date(y, 12, 0); return { from: start.toISOString(), to: end.toISOString() };
+        };
+        const range = deriveRange();
+        if (range.from) params.set('sampled_from', range.from);
+        if (range.to) params.set('sampled_to', range.to);
+
+        const res = await cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
-        const data = Array.isArray(res.data) ? res.data : [];
-        // All events should already be tenant-scoped; still keep defensive filter
-        const orgId = currentOrgId;
-        const filtered = data.filter((t) => (
-          (t.organization_id && String(t.organization_id) === String(orgId)) ||
-          (t.tenant_id && String(t.tenant_id) === String(orgId)) ||
-          (t.organization && t.organization.id && String(t.organization.id) === String(orgId)) ||
-          (t.tenant && t.tenant.id && String(t.tenant.id) === String(orgId))
-        ));
-        setTests(filtered);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : (Array.isArray(res?.data?.data) ? res.data.data : []);
+        setTests(list);
+        const cp = res?.current_page ?? 1; const lp = res?.last_page ?? 1;
+        setTotalPages(Number(lp) || 1);
+        if (Number(cp) !== Number(page)) setPage(Number(cp) || 1);
       } catch (e) {
         console.error('[ContribWQTests] failed to fetch tests', e);
-        if (mounted) setTests([]);
+        if (mounted) { setTests([]); setTotalPages(1); if (page !== 1) setPage(1); }
       } finally {
         if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
-  }, [authLoaded, currentOrgId, resetSignal]);
+  }, [authLoaded, currentOrgId, resetSignal, page, lakeId, status, memberId, dateFrom, dateTo, year, quarter, month]);
 
   const doRefresh = async () => {
     setLoading(true);
@@ -208,7 +225,7 @@ export default function ContribWQTests() {
   const eventsPath = currentOrgId ? `/contrib/${currentOrgId}/sample-events` : null;
       if (!currentOrgId) return;
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        cachedGet(`/contrib/${currentOrgId}/sample-events`, { ttlMs: 2 * 60 * 1000 }),
+        cachedGet(`/contrib/${currentOrgId}/sample-events?per_page=10&page=1`, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
         cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
@@ -235,7 +252,8 @@ export default function ContribWQTests() {
       if (paramsRes.status === 'fulfilled') {
         setParamCatalog(Array.isArray(paramsRes.value) ? paramsRes.value : []);
       }
-      setResetSignal((x) => x + 1);
+  setResetSignal((x) => x + 1);
+  setPage(1);
     } catch (e) {
       console.error('[ContribWQTests] refresh failed', e);
     } finally {
@@ -376,12 +394,14 @@ export default function ContribWQTests() {
           tableId="contrib-wqtests"
           columns={displayColumns}
           data={filtered}
-          pageSize={10}
           actions={actions}
           resetSignal={resetSignal}
           columnPicker={false}
           loading={loading}
           loadingLabel={loading ? 'Loading tests…' : null}
+          serverSide={true}
+          pagination={{ page, totalPages }}
+          onPageChange={(p) => setPage(p)}
         />
       </div>
 

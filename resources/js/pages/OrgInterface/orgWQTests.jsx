@@ -161,7 +161,9 @@ export default function OrgWQTests({
   const [editing, setEditing] = useState(false);
 
   const [resetSignal, setResetSignal] = useState(0);
-  // fetch tests when the page mounts or when resetSignal increments
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  // fetch tests when the page mounts or when filters/pagination change
   useEffect(() => {
     let mounted = true;
     // Wait until authLoaded so we know whether we should use tenant path or admin fallback
@@ -170,10 +172,32 @@ export default function OrgWQTests({
     (async () => {
       try {
         const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
-        const res = await cachedGet(basePath, { ttlMs: 2 * 60 * 1000 });
+        const params = new URLSearchParams();
+        params.set('per_page', '10');
+        params.set('page', String(page));
+        if (lakeId) params.set('lake_id', String(lakeId));
+        if (status) params.set('status', String(status));
+        if (memberId) params.set('created_by_user_id', String(memberId));
+        const deriveRange = () => {
+          if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
+          const y = year ? Number(year) : null;
+          const qv = quarter ? Number(quarter) : null;
+          const m = month ? Number(month) : null;
+          if (!y) return { from: null, to: null };
+          if (m) { const start = new Date(y, m - 1, 1); const end = new Date(y, m, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+          if (qv) { const sm = (qv - 1) * 3; const start = new Date(y, sm, 1); const end = new Date(y, sm + 3, 0); return { from: start.toISOString(), to: end.toISOString() }; }
+        const start = new Date(y, 0, 1); const end = new Date(y, 12, 0); return { from: start.toISOString(), to: end.toISOString() }; };
+        const range = deriveRange();
+        if (range.from) params.set('sampled_from', range.from);
+        if (range.to) params.set('sampled_to', range.to);
+
+        const res = await cachedGet(`${basePath}?${params.toString()}`, { ttlMs: 2 * 60 * 1000 });
         if (!mounted) return;
-        const data = Array.isArray(res.data) ? res.data : [];
-        setTests(data);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : (Array.isArray(res?.data?.data) ? res.data.data : []);
+        setTests(list);
+        const cp = res?.current_page ?? 1; const lp = res?.last_page ?? 1;
+        setTotalPages(Number(lp) || 1);
+        if (Number(cp) !== Number(page)) setPage(Number(cp) || 1);
 
         // Resolve missing user names (createdBy/updatedBy) when backend didn't include relation
         (async () => {
@@ -236,14 +260,14 @@ export default function OrgWQTests({
         })();
       } catch (e) {
         console.error('[OrgWQTests] failed to fetch tests', e);
-        if (mounted) setTests(initialTests || []);
+  if (mounted) { setTests([]); setTotalPages(1); if (page !== 1) setPage(1); }
       } finally {
         if (mounted) setLoading(false);
       }
     })();
 
     return () => { mounted = false; };
-  }, [authLoaded, currentTenantId, resetSignal]);
+  }, [authLoaded, currentTenantId, resetSignal, page, lakeId, status, memberId, dateFrom, dateTo, year, quarter, month]);
 
   // Full refresh handler: reload tests, lakes and parameter catalog
   const doRefresh = async () => {
@@ -251,7 +275,7 @@ export default function OrgWQTests({
     try {
       const basePath = currentTenantId ? `/org/${currentTenantId}/sample-events` : '/admin/sample-events';
       const [testsRes, lakesOpts, paramsRes] = await Promise.allSettled([
-        cachedGet(basePath, { ttlMs: 2 * 60 * 1000 }),
+        cachedGet(`${basePath}?per_page=10&page=1`, { ttlMs: 2 * 60 * 1000 }),
         fetchLakeOptions(),
         cachedGet('/options/parameters', { ttlMs: 20 * 60 * 1000 }),
       ]);
@@ -266,7 +290,8 @@ export default function OrgWQTests({
       if (paramsRes.status === 'fulfilled') {
         setParamCatalog(Array.isArray(paramsRes.value) ? paramsRes.value : []);
       }
-      setResetSignal((x) => x + 1);
+  setResetSignal((x) => x + 1);
+  setPage(1);
     } catch (e) {
       console.error('[OrgWQTests] refresh failed', e);
     } finally {
@@ -502,12 +527,14 @@ export default function OrgWQTests({
           tableId="org-wqtests"
           columns={displayColumns}
           data={filtered}
-          pageSize={10}
           actions={actions}
           resetSignal={resetSignal}
           columnPicker={false}
           loading={loading}
           loadingLabel={loading ? 'Loading tests…' : null}
+          serverSide={true}
+          pagination={{ page, totalPages }}
+          onPageChange={(p) => setPage(p)}
         />
       </div>
       <OrgWQTestModal
