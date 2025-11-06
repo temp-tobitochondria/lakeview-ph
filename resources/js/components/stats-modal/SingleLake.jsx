@@ -21,6 +21,7 @@ import LakeSelect from './ui/LakeSelect';
 import OrgSelect from './ui/OrgSelect';
 import ParamSelect from './ui/ParamSelect';
 import LoadingSpinner from '../LoadingSpinner';
+import { fmt as fmtNum } from './formatters';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -599,26 +600,34 @@ export default function SingleLake({
       </div>
       </div>
       </div>
-      {/* Trend result badge */}
+      {/* Trend result (concise statement) */}
       {chartType === 'time' && trendEnabled && applied && smk && (
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ padding: '4px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', fontSize: 12 }}>
-            {smk.status} {` `}
-            <span style={{ opacity: 0.8 }}>
-              {`(p ${smk.mk?.p_value < 0.01 ? '<0.01' : '= ' + smk.mk?.p_value?.toFixed(3)})`}
-            </span>
-          </span>
-          {Number.isFinite(smk?.sen?.slope) && (
-            <span style={{ fontSize: 12, opacity: 0.9 }}>
-              Sen’s slope ≈ {Number(smk.sen.slope).toPrecision(3)} per year
-            </span>
-          )}
-          {(smk?.mk?.notes || []).length ? (
-            <span style={{ fontSize: 11, opacity: 0.7 }}>
-              {smk.mk.notes.join('; ')}
-            </span>
-          ) : null}
-        </div>
+        (() => {
+          const lakeLabel = nameForSelectedLake || 'this lake';
+          const paramLabel = selectedParamLabel || 'Value';
+          const unit = selectedParamUnit ? ` ${selectedParamUnit}` : '';
+          const slope = Number(smk?.sen?.slope);
+          const hasSlope = Number.isFinite(slope);
+          const slopeAbs = hasSlope ? fmtNum(Math.abs(slope)) : null;
+          const sign = slope > 0 ? '+' : (slope < 0 ? '−' : '0');
+          let sentence = '';
+          if (smk.status === 'Increasing' && hasSlope) {
+            sentence = `${paramLabel} in ${lakeLabel} is increasing by about ${slopeAbs}${unit} per year.`;
+          } else if (smk.status === 'Decreasing' && hasSlope) {
+            sentence = `${paramLabel} in ${lakeLabel} is decreasing by about ${slopeAbs}${unit} per year.`;
+          } else if (smk.status === 'Increasing' || smk.status === 'Decreasing') {
+            // Significant but slope missing for some reason
+            sentence = `${paramLabel} in ${lakeLabel} is ${smk.status.toLowerCase()}.`;
+          } else {
+            // High p-value (no significant trend): do not report slope
+            sentence = `${paramLabel} in ${lakeLabel} shows no significant trend.`;
+          }
+          return (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.95 }}>
+              {sentence}
+            </div>
+          );
+        })()
       )}
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} title={infoContent.title} sections={infoContent.sections} />
     </div>
