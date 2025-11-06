@@ -14,6 +14,22 @@ const Pill = ({ children, tone = "muted" }) => (
   </span>
 );
 
+// Keep these in sync with WQTestWizard
+const METHOD_DISPLAY = {
+  manual: "Manual Grab Sampling",
+  automatic: "Automatic Sampling",
+};
+const WEATHER_DISPLAY = {
+  sunny: "Sunny",
+  partly_cloudy: "Partly Cloudy",
+  cloudy: "Cloudy",
+  rainy: "Rainy",
+  stormy: "Stormy",
+  foggy: "Foggy",
+  windy: "Windy",
+  overcast: "Overcast",
+};
+
 function yqmFrom(record) {
   const d = record?.sampled_at ? new Date(record.sampled_at) : null;
   const y = Number(record?.year ?? (d ? d.getFullYear() : NaN));
@@ -44,6 +60,8 @@ export default function OrgWQTestModal({
   const [error, setError] = useState(null);
   const [showMap, setShowMap] = useState(false);
   const [mapVersion, setMapVersion] = useState(0);
+  const [stationOptions, setStationOptions] = useState([]);
+  const [standards, setStandards] = useState([]);
 
   const formatDepth = (d) => {
     const n = Number(d);
@@ -145,6 +163,48 @@ export default function OrgWQTestModal({
     };
   }, [open, record, basePath, parameterCatalog]);
 
+  // Fetch station options for the lake (and org) when opened
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!open) return;
+        const lakeId = sampleEvent?.lake_id || record?.lake_id;
+        if (!lakeId) { setStationOptions([]); return; }
+        const orgId = sampleEvent?.organization_id || record?.organization_id;
+        const qs = `?lake_id=${encodeURIComponent(lakeId)}${orgId ? `&organization_id=${encodeURIComponent(orgId)}` : ''}`;
+        const res = await api(`/admin/stations${qs}`);
+        const list = Array.isArray(res?.data) ? res.data : [];
+        if (!mounted) return;
+        const normalized = list.map((s) => ({
+          ...s,
+          lat: s.latitude ?? s.lat ?? null,
+          lng: s.longitude ?? s.lng ?? null,
+        }));
+        setStationOptions(normalized);
+      } catch (_) {
+        if (mounted) setStationOptions([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [open, sampleEvent?.lake_id, record?.lake_id, sampleEvent?.organization_id, record?.organization_id]);
+
+  // Fetch standards list for dropdown
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!open) return;
+        const res = await api('/options/wq-standards');
+        const rows = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        if (mounted) setStandards(rows);
+      } catch (_) {
+        if (mounted) setStandards([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [open]);
+
   // derive geographic values from multiple possible field names
   const geo = useMemo(() => {
     if (!sampleEvent) return { hasPoint: false, lat: NaN, lng: NaN, bounds: null };
@@ -180,6 +240,24 @@ export default function OrgWQTestModal({
 
   // ---- parameter edit helpers ----
   const rows = Array.isArray(sampleEvent.results) ? sampleEvent.results : [];
+
+  // Helpers for datetime-local formatting in inputs (local time)
+  const toLocalInput = (isoish) => {
+    if (!isoish) return '';
+    try {
+      const d = new Date(isoish);
+      if (Number.isNaN(d.getTime())) return '';
+      const pad = (n) => String(n).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const mm = pad(d.getMonth() + 1);
+      const dd = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mi = pad(d.getMinutes());
+      return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+    } catch {
+      return '';
+    }
+  };
 
   const updateRow = (idx, patch) => {
     const next = rows.map((r, i) => (i === idx ? { ...r, ...patch } : r));
@@ -377,15 +455,151 @@ export default function OrgWQTestModal({
             </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div><strong>Sampled At:</strong> {new Date(sampleEvent.sampled_at).toLocaleString()}</div>
-              <div><strong>Sampler:</strong> {sampleEvent.sampler_name || "—"}</div>
-              <div><strong>Method:</strong> {sampleEvent.method || "—"}</div>
-              <div><strong>Weather:</strong> {sampleEvent.weather || "—"}</div>
-              <div><strong>Standard:</strong> {sampleEvent.applied_standard_code || sampleEvent.applied_standard_name || sampleEvent.applied_standard?.code || sampleEvent.applied_standard?.name || "—"}</div>
-              <div><strong>Lake Class:</strong> {lakeClass || "—"}</div>
-              <div><strong>Period:</strong> {Number.isFinite(year) ? `${year} · Q${quarter} · M${month} · D${day}` : "—"}</div>
-              <div style={{ gridColumn: "1 / -1" }}><strong>Notes:</strong> {sampleEvent.notes || "—"}</div>
-            </div>
+                {/* Sampled at */}
+                <div>
+                  <strong>Sampled At:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <input
+                        type="datetime-local"
+                        value={toLocalInput(sampleEvent.sampled_at)}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, sampled_at: e.target.value })}
+                      />
+                    </div>
+                  ) : (
+                    new Date(sampleEvent.sampled_at).toLocaleString()
+                  )}
+                </div>
+
+                {/* Sampler */}
+                <div>
+                  <strong>Sampler:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <input
+                        type="text"
+                        value={sampleEvent.sampler_name || ''}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, sampler_name: e.target.value })}
+                      />
+                    </div>
+                  ) : (
+                    sampleEvent.sampler_name || '—'
+                  )}
+                </div>
+
+                {/* Method */}
+                <div>
+                  <strong>Method:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <select
+                        value={sampleEvent.method || ''}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, method: e.target.value })}
+                      >
+                        <option value="">Select…</option>
+                        {Object.entries(METHOD_DISPLAY).map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    (METHOD_DISPLAY[sampleEvent.method] || sampleEvent.method || '—')
+                  )}
+                </div>
+
+                {/* Weather */}
+                <div>
+                  <strong>Weather:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <select
+                        value={sampleEvent.weather || ''}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, weather: e.target.value })}
+                      >
+                        <option value="">Select…</option>
+                        {Object.entries(WEATHER_DISPLAY).map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    (WEATHER_DISPLAY[sampleEvent.weather] || sampleEvent.weather || '—')
+                  )}
+                </div>
+
+                {/* Standard */}
+                <div>
+                  <strong>Standard:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <select
+                        value={sampleEvent.applied_standard_id || ''}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, applied_standard_id: e.target.value ? Number(e.target.value) : null })}
+                      >
+                        <option value="">Select…</option>
+                        {standards.map((s) => {
+                          const base = s.code || s.name || `#${s.id}`;
+                          const withName = s.name && s.code ? `${s.code} — ${s.name}` : base;
+                          const label = s.is_current ? `${withName} (current)` : withName;
+                          return (
+                            <option key={s.id} value={s.id}>{label}</option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  ) : (
+                    sampleEvent.applied_standard_code || sampleEvent.applied_standard_name || sampleEvent.applied_standard?.code || sampleEvent.applied_standard?.name || '—'
+                  )}
+                </div>
+
+                {/* Station */}
+                <div>
+                  <strong>Station:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <select
+                        value={sampleEvent.station_id || ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : null;
+                          const sel = stationOptions.find((s) => String(s.id) === String(val));
+                          setSampleEvent({
+                            ...sampleEvent,
+                            station_id: val,
+                            station_name: sel?.name || sampleEvent.station_name || undefined,
+                            lat: sel?.lat ?? sampleEvent.lat ?? sampleEvent.latitude ?? undefined,
+                            lng: sel?.lng ?? sampleEvent.lng ?? sampleEvent.longitude ?? undefined,
+                          });
+                        }}
+                      >
+                        <option value="">Select a station…</option>
+                        {stationOptions.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name || s.code || `Station #${s.id}`}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    stationName
+                  )}
+                </div>
+
+                {/* Lake Class and Period intentionally omitted from sampling metadata */}
+
+                {/* Notes */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <strong>Notes:</strong>{' '}
+                  {editable ? (
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <textarea
+                        rows={3}
+                        value={sampleEvent.notes || ''}
+                        onChange={(e) => setSampleEvent({ ...sampleEvent, notes: e.target.value })}
+                      />
+                    </div>
+                  ) : (
+                    sampleEvent.notes || '—'
+                  )}
+                </div>
+              </div>
           </div>
         </div>
 

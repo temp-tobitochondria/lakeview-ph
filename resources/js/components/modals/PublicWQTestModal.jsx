@@ -20,6 +20,18 @@ const pfLabel = (v) => {
   return "—";
 };
 
+// Display labels for public-facing weather values
+const WEATHER_DISPLAY = {
+  sunny: "Sunny",
+  partly_cloudy: "Partly Cloudy",
+  cloudy: "Cloudy",
+  rainy: "Rainy",
+  stormy: "Stormy",
+  foggy: "Foggy",
+  windy: "Windy",
+  overcast: "Overcast",
+};
+
 export default function PublicWQTestModal({ open, onClose, record, basePath = "/public/sample-events" }) {
   const [sampleEvent, setSampleEvent] = useState(record || null);
   const [loading, setLoading] = useState(false);
@@ -175,14 +187,11 @@ export default function PublicWQTestModal({ open, onClose, record, basePath = "/
               </AppMap>
             </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, color: '#fff' }}>
-              <div><strong>Sampled At:</strong> {sampledAt}</div>
-              <div><strong>Organization:</strong> {orgName}</div>
-              <div><strong>Lake:</strong> {lakeName}</div>
-              <div><strong>Station:</strong> {stationName}</div>
-              <div><strong>Method:</strong> {sampleEvent?.method ?? sampleEvent?.sampling_method ?? '—'}</div>
-              <div><strong>Weather:</strong> {sampleEvent?.weather ?? '—'}</div>
-              <div><strong>Standard:</strong> {sampleEvent?.applied_standard_code ?? sampleEvent?.applied_standard_name ?? sampleEvent?.applied_standard?.code ?? sampleEvent?.applied_standard?.name ?? '—'}</div>
-            </div>
+                <div><strong>Sampled At:</strong> {sampledAt}</div>
+                <div><strong>Weather:</strong> {WEATHER_DISPLAY[sampleEvent?.weather] || sampleEvent?.weather || '—'}</div>
+                <div><strong>Standard:</strong> {sampleEvent?.applied_standard_code ?? sampleEvent?.applied_standard_name ?? sampleEvent?.applied_standard?.code ?? sampleEvent?.applied_standard?.name ?? '—'}</div>
+                <div><strong>Station:</strong> {stationName}</div>
+              </div>
           </div>
         </div>
 

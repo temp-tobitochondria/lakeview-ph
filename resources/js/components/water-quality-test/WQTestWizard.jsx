@@ -437,11 +437,15 @@ export default function WQTestWizard({
       err.code = 'VALIDATION';
       throw err;
     }
+    // Ensure applied standard falls back to current standard when not explicitly chosen
+    const fallbackStdId = standardsList.find(s => s.is_current)?.id || null;
+    const appliedStdId = data.applied_standard_id || fallbackStdId || null;
+
     const payload = {
       organization_id: data.organization_id ?? null,
       lake_id: data.lake_id ? Number(data.lake_id) : null,
       station_id: data.station_id ? Number(data.station_id) : null,
-      applied_standard_id: data.applied_standard_id ? Number(data.applied_standard_id) : null,
+      applied_standard_id: appliedStdId ? Number(appliedStdId) : null,
       sampled_at: data.sampled_at,
       sampler_name: data.sampler_name || null,
       method: data.method || null,
@@ -852,10 +856,6 @@ export default function WQTestWizard({
       key: STEP_LABELS[4].key,
       title: STEP_LABELS[4].title,
       render: ({ data }) => {
-        const d = data.sampled_at ? new Date(data.sampled_at) : null;
-        const yr = d ? d.getFullYear() : null;
-        const mo = d ? d.getMonth() + 1 : null;
-        const qt = d ? Math.floor((mo - 1) / 3) + 1 : null;
         const selectedStd = standardOptions.find(s => String(s.id) === String(data.applied_standard_id || standardsList.find(s => s.is_current)?.id || ""));
         return (
           <div className="wizard-pane">
@@ -865,9 +865,7 @@ export default function WQTestWizard({
                 <div><strong>Lake:</strong> {data.lake_name || "—"}</div>
                 <div><strong>Lake Class:</strong> {data.lake_class_code || "—"}</div>
                 <div><strong>Station:</strong> {data.station_id ? data.station_name : "—"}</div>
-                <div><strong>Station Coordinates:</strong> {data.geom_point && Number.isFinite(Number(data.geom_point.lat)) ? `${Number(data.geom_point.lat).toFixed(6)}, ${Number(data.geom_point.lng).toFixed(6)}` : "—"}</div>
                 <div><strong>Sampled At:</strong> {data.sampled_at ? new Date(data.sampled_at).toLocaleString(undefined, { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}</div>
-                <div><strong>Period:</strong> {d ? `${yr} · Q${qt} · M${String(mo).padStart(2,"0")}` : "—"}</div>
                 <div><strong>Sampler:</strong> {data.sampler_name || "—"}</div>
                 <div><strong>Method:</strong> {METHOD_DISPLAY[data.method] || data.method || "—"}</div>
                 <div><strong>Weather:</strong> {WEATHER_DISPLAY[data.weather] || data.weather || "—"}</div>
