@@ -16,14 +16,37 @@ class LakeController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Lake::query()->with(['watershed:id,name', 'waterQualityClass:code,name']);
+        // Tiny cache (15s) keyed by query params + version that bumps on write
+        try {
+            $ver = (int) Cache::get('ver:lakes', 1);
+            $qs = $request->query(); ksort($qs);
+            $cacheKey = 'lakes:index:v'.$ver.':'.md5(json_encode($qs));
+            if ($cached = Cache::get($cacheKey)) {
+                return response()->json($cached);
+            }
+        } catch (\Throwable $e) { /* ignore cache errors */ }
+
+        $query = Lake::query()
+            ->select([
+                'id','watershed_id','name','alt_name','region','province','municipality',
+                'surface_area_km2','elevation_m','mean_depth_m','class_code','flows_status',
+                'created_at','updated_at'
+            ])
+            ->with(['watershed:id,name', 'waterQualityClass:code,name']);
 
         // Search query
         if ($request->has('q')) {
-            $search = strtolower($request->query('q'));
-            $query->where(function ($q) use ($search) {
-                $q->where(DB::raw('LOWER(lakes.name)'), 'like', "%{$search}%")
-                    ->orWhere(DB::raw('LOWER(lakes.alt_name)'), 'like', "%{$search}%");
+            $raw = (string) $request->query('q');
+            $driver = DB::getDriverName();
+            $query->where(function ($q) use ($raw, $driver) {
+                if ($driver === 'pgsql') {
+                    $q->where('lakes.name', 'ILIKE', "%{$raw}%")
+                      ->orWhere('lakes.alt_name', 'ILIKE', "%{$raw}%");
+                } else {
+                    $search = strtolower($raw);
+                    $q->where(DB::raw('LOWER(lakes.name)'), 'like', "%{$search}%")
+                      ->orWhere(DB::raw('LOWER(lakes.alt_name)'), 'like', "%{$search}%");
+                }
             });
         }
 
@@ -124,7 +147,7 @@ class LakeController extends Controller
 
         // Pagination
         $perPage = $request->query('per_page', 10);
-        $paginated = $query->paginate($perPage);
+    $paginated = $query->paginate($perPage);
 
         // Normalize multi-location fields in the paginated result
         $paginated->getCollection()->transform(function ($lake) {
@@ -144,7 +167,10 @@ class LakeController extends Controller
             return $arr;
         });
 
-        return $paginated;
+        // Build payload and cache briefly
+        $payload = $paginated->toArray();
+        try { if (isset($cacheKey)) Cache::put($cacheKey, $payload, now()->addSeconds(15)); } catch (\Throwable $e) {}
+        return response()->json($payload);
     }
 
     public function show(Lake $lake)
