@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\WqStandard;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -12,7 +13,7 @@ class WqStandardController extends Controller
 {
     protected function ensureSuperAdmin(): void
     {
-        $user = auth()->user();
+        $user = Auth::user();
         if (!$user || ($user->highestRoleName() ?? 'public') !== 'superadmin') {
             abort(403, 'Forbidden');
         }
@@ -29,7 +30,6 @@ class WqStandardController extends Controller
         }
 
         $query = $query->orderByDesc('is_current')
-            ->orderByDesc('priority')
             ->orderBy('code');
 
         // Support optional server-side pagination. If per_page is provided, return a paginator
@@ -99,8 +99,7 @@ class WqStandardController extends Controller
             'code' => ['required', 'string', 'max:255', Rule::unique('wq_standards', 'code')->ignore($id)],
             'name' => ['nullable', 'string', 'max:255'],
             'is_current' => ['sometimes', 'boolean'],
-            'priority' => ['nullable', 'integer'],
-            'notes' => ['nullable', 'string'],
+            // priority and notes removed
         ]);
     }
 

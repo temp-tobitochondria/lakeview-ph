@@ -27,14 +27,12 @@ class SampleResult extends Model
         'evaluated_class_code',
         'threshold_id',
         'pass_fail',
-        'evaluated_at',
         'remarks',
     ];
 
     protected $casts = [
         'value' => 'float',
         'depth_m' => 'float',
-        'evaluated_at' => 'datetime',
         'pass_fail' => 'string',
     ];
 

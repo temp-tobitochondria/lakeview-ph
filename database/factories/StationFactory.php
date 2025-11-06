@@ -18,7 +18,6 @@ class StationFactory extends Factory
             'name' => $this->faker->unique()->words(3, true),
             'description' => $this->faker->sentence(),
             'geom_point' => null,
-            'is_active' => $this->faker->boolean(90),
         ];
     }
 }

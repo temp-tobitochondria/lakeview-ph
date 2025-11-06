@@ -26,7 +26,7 @@ class StatsController extends Controller
             'applied_standard_id' => 'nullable|integer|exists:wq_standards,id',
         ]);
 
-        $param = \DB::table('parameters')
+        $param = DB::table('parameters')
             ->whereRaw('LOWER(code) = ?', [strtolower($data['parameter_code'])])
             ->first();
         if (!$param) return response()->json(['error' => 'Parameter not found'], 404);
@@ -74,7 +74,7 @@ class StatsController extends Controller
             'date_to' => 'nullable|date',
         ]);
 
-        $param = \DB::table('parameters')
+        $param = DB::table('parameters')
             ->whereRaw('LOWER(code) = ?', [strtolower($data['parameter_code'])])
             ->first(['id']);
         if (!$param) return response()->json(['depths' => []]);
@@ -82,7 +82,7 @@ class StatsController extends Controller
         $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
         $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
 
-        $q = \DB::table('sample_results as sr')
+        $q = DB::table('sample_results as sr')
             ->join('sampling_events as se', 'sr.sampling_event_id', '=', 'se.id')
             ->join('parameters as p', 'sr.parameter_id', '=', 'p.id')
             ->where('p.code', '=', $data['parameter_code'])
@@ -100,7 +100,7 @@ class StatsController extends Controller
         if ($to) $q->where('se.sampled_at', '<=', $to->copy()->timezone('UTC'));
 
         // Round depths to 2 decimals for grouping stability (avoid floating drift)
-        $driver = \DB::getDriverName();
+    $driver = DB::getDriverName();
         if ($driver === 'pgsql') {
             $q->selectRaw('ROUND(sr.depth_m::numeric, 2) as d')
               ->groupBy('d')
@@ -143,7 +143,7 @@ class StatsController extends Controller
         $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
         $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
 
-        $q = \DB::table('sample_results as sr')
+        $q = DB::table('sample_results as sr')
             ->join('sampling_events as se', 'sr.sampling_event_id', '=', 'se.id')
             ->join('stations as st', 'se.station_id', '=', 'st.id')
             ->whereNotNull('sr.value')
@@ -206,7 +206,7 @@ class StatsController extends Controller
             'class_code' => 'nullable|string',
         ]);
 
-        $param = \DB::table('parameters')
+        $param = DB::table('parameters')
             ->whereRaw('LOWER(code) = ?', [strtolower($data['parameter_code'])])
             ->first();
         if (!$param) return response()->json(['error' => 'Parameter not found'], 404);
@@ -214,13 +214,13 @@ class StatsController extends Controller
         $from = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : null;
         $to = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : null;
 
-        $query = \DB::table('sample_results as sr')
+        $query = DB::table('sample_results as sr')
             ->join('sampling_events as se', 'sr.sampling_event_id', '=', 'se.id')
             ->leftJoin('stations as st', 'se.station_id', '=', 'st.id')
             ->join('parameters as p', 'sr.parameter_id', '=', 'p.id')
             ->where('p.code', '=', $data['parameter_code'])
             ->whereNotNull('sr.value');
-        $driver = \DB::getDriverName();
+        $driver = DB::getDriverName();
         if (isset($data['depth_m']) && $data['depth_m'] !== null) {
             $target = (float)$data['depth_m'];
             if ($driver === 'pgsql') {
@@ -318,7 +318,7 @@ class StatsController extends Controller
             // Determine which class to use for threshold lookup: explicit override wins; else lake's own class
             $class = $data['class_code'] ?? null;
             if (!$class) {
-                $class = \DB::table('lakes')->where('id', $data['lake_id'])->value('class_code');
+                $class = DB::table('lakes')->where('id', $data['lake_id'])->value('class_code');
             }
             $requestedStdId = $data['applied_standard_id'] ?? null;
             $allowClassFallback = empty($data['class_code']);
@@ -391,7 +391,7 @@ class StatsController extends Controller
         if (!$thrRow) {
             $thrRow = $base(true)
                 ->orderByDesc('ws.is_current')
-                ->orderBy('ws.priority')
+                ->orderByDesc('ws.id')
                 ->orderByRaw('pt.min_value IS NULL')
                 ->orderByRaw('pt.max_value IS NULL')
                 ->first(['pt.*','ws.code as standard_code','ws.is_current']);
@@ -399,7 +399,7 @@ class StatsController extends Controller
         if (!$thrRow && $class && $allowClassFallback) {
             $thrRow = $base(false)
                 ->orderByDesc('ws.is_current')
-                ->orderBy('ws.priority')
+                ->orderByDesc('ws.id')
                 ->orderByRaw('pt.min_value IS NULL')
                 ->orderByRaw('pt.max_value IS NULL')
                 ->first(['pt.*','ws.code as standard_code','ws.is_current']);

@@ -20,7 +20,6 @@ class WaterQualityClass extends Model
     protected $fillable = [
         'code',
         'name',
-        'notes',
     ];
 
     public function thresholds()

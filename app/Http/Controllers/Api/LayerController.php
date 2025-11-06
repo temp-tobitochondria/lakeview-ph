@@ -124,7 +124,7 @@ class LayerController extends Controller
         $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
 
         if ($include->contains('geom'))   $query->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
-        if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
+    if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(ST_Envelope(geom))  AS bbox_geojson');
 
         // Sorting (default newest first)
         $allowedSort = [
@@ -136,8 +136,6 @@ class LayerController extends Controller
             'is_downloadable' => 'layers.is_downloadable',
             'creator' => 'users.name',
             'uploaded_by_name' => 'users.name',
-            'area' => 'layers.area_km2',
-            'area_km2' => 'layers.area_km2',
             'updated' => 'layers.updated_at',
             'updated_at' => 'layers.updated_at',
             'created_at' => 'layers.created_at',
@@ -178,7 +176,7 @@ class LayerController extends Controller
     $query->select(['layers.id','layers.name','layers.notes','layers.is_downloadable','layers.created_at','layers.updated_at']);
         $query->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
 
-        if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(bbox) AS bbox_geojson');
+    if ($include->contains('bounds')) $query->selectRaw('ST_AsGeoJSON(ST_Envelope(geom)) AS bbox_geojson');
         // Cache list per body + include with version bump
         $ver = (int) Cache::get('ver:public:layers', 1);
         $bt = strtolower((string)$request->query('body_type'));
@@ -204,7 +202,7 @@ class LayerController extends Controller
     $q->select(['layers.id','layers.body_type','layers.body_id','layers.name','layers.notes','layers.is_downloadable','layers.created_at','layers.updated_at']);
         $q->addSelect(DB::raw("COALESCE(users.name, '') AS uploaded_by_name"));
         if ($include->contains('geom'))   $q->selectRaw('ST_AsGeoJSON(geom)  AS geom_geojson');
-        if ($include->contains('bounds')) $q->selectRaw('ST_AsGeoJSON(bbox)  AS bbox_geojson');
+    if ($include->contains('bounds')) $q->selectRaw('ST_AsGeoJSON(ST_Envelope(geom))  AS bbox_geojson');
         $ver = (int) Cache::get('ver:public:layers', 1);
         $inc = (string)$request->query('include');
         $key = sprintf('public:layers:geo:v%d:%d:%s', $ver, (int)$id, md5($inc));

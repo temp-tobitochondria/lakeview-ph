@@ -10,7 +10,7 @@ class LakeFlow extends Model
     use HasFactory, \App\Support\Audit\Auditable;
 
     protected $fillable = [
-        'lake_id','flow_type','name','alt_name','source','is_primary','notes','coordinates','latitude','longitude','created_by'
+        'lake_id','flow_type','name','alt_name','source','is_primary','notes','coordinates','created_by'
     ];
 
     protected $casts = [

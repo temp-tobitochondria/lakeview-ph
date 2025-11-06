@@ -15,8 +15,6 @@ class WqStandard extends Model
         'code',
         'name',
         'is_current',
-        'priority',
-        'notes',
     ];
 
     protected $casts = [

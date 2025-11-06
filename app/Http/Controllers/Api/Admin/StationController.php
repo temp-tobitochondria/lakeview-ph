@@ -41,9 +41,7 @@ class StationController extends Controller
             $query->where('lake_id', (int) $request->input('lake_id'));
         }
 
-        if ($request->filled('is_active')) {
-            $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN));
-        }
+        // is_active filter removed (column dropped)
 
         // Org members (org_admin and contributor) see all stations for the organization.
         $stations = $query->orderBy('name')->get();
@@ -66,7 +64,6 @@ class StationController extends Controller
                 'lake_id' => $data['lake_id'],
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
-                'is_active' => $data['is_active'] ?? true,
             ];
 
             // record creator intentionally omitted — not tracking creator on stations
@@ -121,9 +118,7 @@ class StationController extends Controller
             if (array_key_exists('description', $data)) {
                 $updates['description'] = $data['description'];
             }
-            if (array_key_exists('is_active', $data)) {
-                $updates['is_active'] = $data['is_active'];
-            }
+            // is_active removed (column dropped)
 
             if (!empty($updates)) {
                 $station->update($updates);
@@ -156,7 +151,6 @@ class StationController extends Controller
             'lake_id' => [$isUpdate ? 'sometimes' : 'required', 'integer', 'exists:lakes,id'],
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
-            'is_active' => ['sometimes', 'boolean'],
             'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
         ];

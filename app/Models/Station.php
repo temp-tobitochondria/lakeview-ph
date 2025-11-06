@@ -21,11 +21,9 @@ class Station extends Model
         'name',
         'description',
         'geom_point',
-        'is_active',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
     ];
 
     public function organization()

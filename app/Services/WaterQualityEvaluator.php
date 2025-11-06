@@ -111,7 +111,6 @@ class WaterQualityEvaluator
         $result->evaluated_class_code = $lakeClass;
         $result->threshold_id = $threshold->id;
         $result->pass_fail = $outcome ? 'pass' : 'fail';
-    $result->evaluated_at = now();
 
         if ($save) {
             $result->save();
@@ -131,7 +130,6 @@ class WaterQualityEvaluator
         }
 
         $current = WqStandard::where('is_current', true)
-            ->orderByDesc('priority')
             ->orderByDesc('id')
             ->first();
 
@@ -139,7 +137,7 @@ class WaterQualityEvaluator
             return $current;
         }
 
-        return WqStandard::orderByDesc('priority')->orderByDesc('id')->first();
+    return WqStandard::orderByDesc('id')->first();
     }
 
     protected function resolveThreshold(int $parameterId, string $classCode, ?int $standardId): ?ParameterThreshold
@@ -170,7 +168,6 @@ class WaterQualityEvaluator
     protected function markNotApplicable(SampleResult $result, bool $save, string $reason, ?ParameterThreshold $threshold = null): SampleResult
     {
         $result->pass_fail = 'not_applicable';
-    $result->evaluated_at = now();
         $result->evaluated_class_code = $threshold?->class_code;
         $result->threshold_id = $threshold?->id;
 

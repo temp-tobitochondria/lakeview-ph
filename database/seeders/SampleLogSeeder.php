@@ -35,7 +35,7 @@ class SampleLogSeeder extends Seeder
 
             $standard = WqStandard::query()
                 ->orderByDesc('is_current')
-                ->orderByDesc('priority')
+                ->orderByDesc('id')
                 ->first();
 
             $parameters = Parameter::query()
@@ -236,7 +236,6 @@ class SampleLogSeeder extends Seeder
                             'lake_id' => $lake->id,
                             'name' => $stationData['name'],
                             'description' => $stationData['description'] ?? null,
-                            'is_active' => true,
                         ])
                         ->raw();
                     $station = Station::updateOrCreate(
@@ -308,7 +307,6 @@ class SampleLogSeeder extends Seeder
                                     'evaluated_class_code' => $evaluation['evaluated_class_code'],
                                     'threshold_id' => $evaluation['threshold_id'],
                                     'pass_fail' => $evaluation['pass_fail'],
-                                    'evaluated_at' => $sampledAt->copy()->addHours(2),
                                     'remarks' => $this->remarksFor($evaluation['pass_fail'], $threshold, $standard),
                                 ])
                                 ->raw();

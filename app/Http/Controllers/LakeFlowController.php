@@ -99,7 +99,7 @@ class LakeFlowController extends Controller
         $lat = $data['lat'] ?? null; $lon = $data['lon'] ?? null; unset($data['lat'],$data['lon']);
         if ($lat !== null && $lon !== null) {
             $data['coordinates'] = DB::raw("ST_SetSRID(ST_MakePoint($lon,$lat),4326)");
-            $data['latitude'] = $lat; $data['longitude'] = $lon;
+            // latitude/longitude columns removed; derive on the fly when serializing
         }
         $data['created_by'] = Auth::id();
         $flow = LakeFlow::create($data);
@@ -123,7 +123,7 @@ class LakeFlowController extends Controller
         $lat = $data['lat'] ?? null; $lon = $data['lon'] ?? null; unset($data['lat'],$data['lon']);
         if ($lat !== null && $lon !== null) {
             $data['coordinates'] = DB::raw("ST_SetSRID(ST_MakePoint($lon,$lat),4326)");
-            $data['latitude'] = $lat; $data['longitude'] = $lon;
+            // latitude/longitude columns removed; derive on the fly when serializing
         }
         $flow->update($data);
         $flow->load(['lake:id,name','creator:id,name']);

@@ -100,14 +100,13 @@ class OptionsController extends Controller
 
     /**
      * GET /api/options/wq-standards
-     * Returns available standards ordered by current + priority.
+     * Returns available standards ordered by current then code.
      */
     public function standards()
     {
         $rows = WqStandard::query()
-            ->select(['id', 'code', 'name', 'is_current', 'priority'])
+            ->select(['id', 'code', 'name', 'is_current'])
             ->orderByDesc('is_current')
-            ->orderByDesc('priority')
             ->orderBy('code')
             ->get();
 
@@ -116,14 +115,14 @@ class OptionsController extends Controller
 
     /**
      * GET /api/options/water-quality-classes
-     * Returns [{ code, name, notes }, ...] ordered by code.
+     * Returns [{ code, name }, ...] ordered by code.
      */
     public function waterQualityClasses()
     {
-        $key = 'options:wq-classes:v1';
+        $key = 'options:wq-classes:v2';
         if ($hit = Cache::get($key)) return response()->json($hit);
         $rows = WaterQualityClass::query()
-            ->select(['code', 'name', 'notes'])
+            ->select(['code', 'name'])
             ->orderBy('code')
             ->get();
         Cache::put($key, $rows, now()->addDays(7));

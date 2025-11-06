@@ -21,7 +21,6 @@ class SampleResultFactory extends Factory
             'evaluated_class_code' => null,
             'threshold_id' => null,
             'pass_fail' => $this->faker->randomElement(['pass', 'fail']),
-            'evaluated_at' => $this->faker->dateTimeBetween('-6 months', 'now'),
             'remarks' => $this->faker->optional()->sentence(),
         ];
     }

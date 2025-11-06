@@ -27,7 +27,7 @@ class Layer extends Model
     protected $casts = [
         'body_id'   => 'integer',
         'srid'      => 'integer',
-    'is_downloadable' => 'boolean',
+        'is_downloadable' => 'boolean',
         'created_at'=> 'datetime',
         'updated_at'=> 'datetime',
     ];
