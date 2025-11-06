@@ -10,9 +10,8 @@ export default function DepthSelect({
   onChange = () => {},
   style = {},
 }) {
-  // Disable when no parameter is selected, or when comparing against Class thresholds.
-  const disableForClass = compareValue && String(compareValue).startsWith('class:');
-  const disabled = disableForClass || !paramCode || !(inferredTest === 'one-sample' || (inferredTest === 'two-sample' && compareValue && String(compareValue).startsWith('lake:')));
+  // Disable when no parameter is selected.
+  const disabled = !paramCode || !(inferredTest === 'one-sample' || (inferredTest === 'two-sample' && compareValue && String(compareValue).startsWith('lake:')));
 
   const handleChange = (e) => {
     const v = e.target.value;
