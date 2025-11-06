@@ -7,7 +7,7 @@
 .ds-summary { 
   /* Keep content width comfortable and align with modal spacing */
   width: 100%;
-  max-width: min(1200px, 95vw);
+  max-width: min(1600px, 95vw);
 }
 
 .ds-controls-row {

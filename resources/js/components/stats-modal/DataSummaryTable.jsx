@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import Popover from '../common/Popover';
 import Swal from 'sweetalert2';
 import Modal from '../Modal';
 import useStationsCache from './hooks/useStationsCache';
@@ -9,6 +8,7 @@ import api, { getToken } from '../../lib/api';
 import { cachedGet } from '../../lib/httpCache';
 import LakeSelect from './ui/LakeSelect';
 import OrgSelect from './ui/OrgSelect';
+import { confirm as confirmAlert } from '../../lib/alerts';
 
 function getThresholdClass(value, threshold) {
   const num = Number(value);
@@ -43,18 +43,14 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
   const stationsList = useMemo(() => (!orgId ? (allStations || []) : (stationsByOrg?.[String(orgId)] || [])), [orgId, allStations, stationsByOrg]);
   const [selectedStation, setSelectedStation] = useState('');
   const [selectedYear, setSelectedYear] = useState('');
-  const exportBtnRef = useRef(null);
-  const [exportOpen, setExportOpen] = useState(false);
   const tableRef = useRef(null);
   
 
-  // load events when lake and org are selected (we need years per dataset source)
   const shouldLoadEvents = Boolean(lakeId && orgId);
   const effectiveLake = shouldLoadEvents ? lakeId : '';
   const effectiveOrg = shouldLoadEvents ? orgId : '';
   const { events, loading } = useSampleEvents(effectiveLake, effectiveOrg, 'all');
 
-  // Sync state with initial props
   useEffect(() => {
     setLakeId(initialLake);
   }, [initialLake]);
@@ -63,7 +59,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     setOrgId(initialOrg);
   }, [initialOrg]);
 
-  // derive station options from events so we can prefer station id matching
   const stationOptions = useMemo(() => {
     if (!Array.isArray(events) || events.length === 0) {
       return stationsList.map(s => ({ id: s, name: s }));
@@ -81,7 +76,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [events, stationsList]);
 
-  // derive available years from events (descending)
   const yearOptions = useMemo(() => {
     if (!Array.isArray(events) || events.length === 0) return [];
     const set = new Set();
@@ -94,8 +88,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
   }, [events]);
 
   useEffect(() => {
-    // Clear selected station when lake or org changes to avoid stale selection
-    // But not when opening with initialStation
     if (!(open && initialStation)) {
       setSelectedStation('');
       setSelectedYear('');
@@ -110,7 +102,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
 
   useEffect(() => {
     if (open && initialStation && Array.isArray(events) && events.length > 0) {
-      // Find the most recent year for this station
       let maxYear = null;
       for (const ev of events) {
         const stationName = ev.station?.name || ev.station_name || '';
@@ -131,8 +122,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
   }, [open, initialStation, events]);
 
   async function isSignedIn() {
-    // quick check for global, fallback to API
-    // prefer token presence (same gating pattern as StatsModal)
     try {
       const tok = typeof getToken === 'function' ? getToken() : null;
       if (tok) return true;
@@ -146,44 +135,96 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     }
   }
 
-  function rowsToCsv(rows) {
-    if (!Array.isArray(rows) || rows.length === 0) return '';
-    const headers = Object.keys(rows[0]);
-    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [headers.map(esc).join(',')];
-    for (const r of rows) lines.push(headers.map(h => esc(r[h])).join(','));
-    return lines.join('\n');
-  }
-
-  function pivotToRowsForCsv(pivot) {
-    if (!pivot || !Array.isArray(pivot.params)) return [];
+  function toFiniteNumbers(arr) {
     const out = [];
-    for (const p of pivot.params) {
-      for (let i = 0; i < pivot.months.length; i++) {
-        const cell = p.cells[i];
-        out.push({ parameter: p.name, month: MONTH_NAMES[pivot.months[i]] ?? pivot.months[i], value: cell ? cell.value : '' });
-      }
+    for (const v of arr) {
+      const n = Number(v);
+      if (Number.isFinite(n)) out.push(n);
     }
     return out;
   }
 
-  function downloadCsv(text, filename = 'data-summary.csv') {
-    const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  function arithmeticMean(values) {
+    const nums = toFiniteNumbers(values);
+    if (nums.length === 0) return null;
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return sum / nums.length;
+  }
+
+  function geometricMean(values) {
+    const nums = toFiniteNumbers(values);
+    if (nums.length === 0) return null;
+    if (!nums.every(n => n > 0)) return null;
+    const logSum = nums.reduce((a, b) => a + Math.log(b), 0);
+    return Math.exp(logSum / nums.length);
+  }
+
+  function median(values) {
+    const nums = toFiniteNumbers(values).sort((a, b) => a - b);
+    const n = nums.length;
+    if (n === 0) return null;
+    const mid = Math.floor(n / 2);
+    if (n % 2 === 0) return (nums[mid - 1] + nums[mid]) / 2;
+    return nums[mid];
+  }
+
+  function hasOutliers(values) {
+    const nums = toFiniteNumbers(values).sort((a, b) => a - b);
+    const n = nums.length;
+    if (n < 4) return false;
+    const q1 = quantile(nums, 0.25);
+    const q3 = quantile(nums, 0.75);
+    const iqr = q3 - q1;
+    const lo = q1 - 1.5 * iqr;
+    const hi = q3 + 1.5 * iqr;
+    return nums.some(v => v < lo || v > hi);
+  }
+
+  function quantile(sortedNums, p) {
+    if (!sortedNums.length) return NaN;
+    const pos = (sortedNums.length - 1) * p;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sortedNums[base + 1] !== undefined) {
+      return sortedNums[base] + rest * (sortedNums[base + 1] - sortedNums[base]);
+    } else {
+      return sortedNums[base];
+    }
+  }
+
+  function meetsThreshold(value, threshold) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || !threshold) return false;
+    const min = threshold.min_value != null ? Number(threshold.min_value) : null;
+    const max = threshold.max_value != null ? Number(threshold.max_value) : null;
+    if (min == null && max == null) return false;
+    if (min != null && num < min) return false;
+    if (max != null && num > max) return false;
+    return true;
+  }
+
+  function formatPct(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return `${n.toFixed(0)}%`;
+  }
+
+  function getComplianceClass(pct) {
+    if (!Number.isFinite(pct)) return '';
+    if (pct >= 90) return 'ds-comp-high';
+    if (pct >= 50) return 'ds-comp-mid';
+    return 'ds-comp-low';
+  }
+
+  function getComplianceLabel(pct) {
+    if (!Number.isFinite(pct)) return '';
+    if (pct >= 90) return 'High Compliance';
+    if (pct >= 50) return 'Marginal Compliance';
+    return 'Low Compliance / Non-Attainment';
   }
 
   function exportPdfHtml(html, meta = {}) {
     const w = window.open('', '_blank');
     if (!w) { alert('Unable to open print window'); return; }
-    // Inject a small print stylesheet so the table renders with outlines and
-    // preserves background colors for threshold highlights when printed to PDF.
     const css = `
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; color: #111; margin: 18pt; }
       .pv-header { margin-bottom: 12px; }
@@ -192,18 +233,18 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; }
       th, td { padding: 6px 8px; border: 1px solid #ddd; }
       thead th { background: #f3f4f6; font-weight: 700; }
-      /* threshold backgrounds */
       .ds-cell-exceed { background: rgba(239,68,68,0.12) !important; color: #ef4444 !important; }
       .ds-cell-ok { background: rgba(16,185,129,0.12) !important; color: #10b981 !important; }
-      /* ensure small modal-like header spacing */
       .ds-summary { max-width: 100%; }
+      .ds-comp-high { background: rgba(16,185,129,0.12) !important; color: #10b981 !important; }
+      .ds-comp-mid { background: rgba(234,179,8,0.12) !important; color: #ca8a04 !important; }
+      .ds-comp-low { background: rgba(239,68,68,0.12) !important; color: #ef4444 !important; }
       @media print { 
         body { margin: 6mm; }
         .no-print { display: none !important; }
       }
     `;
 
-    // Build a concise header using meta fields (lake, dataset, year, station)
     const lakeLabel = meta.lakeName ? `<div class="pv-title">${meta.lakeName}</div>` : '';
     const metaParts = [];
     if (meta.datasetName) metaParts.push(`Dataset: ${meta.datasetName}`);
@@ -213,16 +254,13 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
 
     const header = `<div class="pv-header">${lakeLabel}${metaLine}</div>`;
 
-    // Only include the table/content part passed in; avoid copying modal footer or links.
     w.document.write(`<!doctype html><html><head><title>Data Summary</title><meta charset="utf-8"><style>${css}</style></head><body>${header}${html}</body></html>`);
     w.document.close();
     w.focus();
-    // allow rendering
     setTimeout(() => { w.print(); }, 250);
   }
 
-  async function handleExport(type) {
-    setExportOpen(false);
+  async function handleExportPdfViaSweetAlert() {
     const signed = await isSignedIn();
     if (!signed) {
       if (Swal && typeof Swal.fire === 'function') {
@@ -232,34 +270,29 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       }
       return;
     }
-    if (type === 'csv') {
-      const csvRows = pivot ? pivotToRowsForCsv(pivot) : rows;
-      const csv = rowsToCsv(csvRows);
-      if (!csv) {
-        if (Swal && typeof Swal.fire === 'function') Swal.fire({ icon: 'info', title: 'No data', text: 'No data to export' }); else window.alert('No data to export');
-        return;
-      }
-      downloadCsv(csv);
-    } else if (type === 'pdf') {
-      // print only the table HTML (avoid copying modal footer/links). Collect meta for header.
-      const wrapper = tableRef.current || document.querySelector('.modal');
-      if (!wrapper) {
-        if (Swal && typeof Swal.fire === 'function') Swal.fire({ icon: 'info', title: 'No table', text: 'No table to export' }); else window.alert('No table to export');
-        return;
-      }
-      // prefer the inner table element if available
-      const tbl = wrapper.querySelector ? (wrapper.querySelector('table') || wrapper) : wrapper;
-      const htmlToPrint = tbl.outerHTML || tbl.innerHTML || '';
-      // build metadata
-      const lakeName = (lakeOptions.find(l => String(l.id) === String(lakeId)) || {}).name || '';
-      const datasetName = (orgOptions || []).find(o => String(o.id) === String(orgId))?.name || '';
-      const stationName = (stationOptions || []).find(s => String(s.id) === String(selectedStation))?.name || (stationsList.find(s => String(s) === String(selectedStation)) || '') || '';
-      const meta = { lakeName, datasetName, year: selectedYear, stationName };
-      try {
-        exportPdfHtml(htmlToPrint, meta);
-      } catch (e) {
-        if (Swal && typeof Swal.fire === 'function') Swal.fire({ icon: 'error', title: 'Export failed', text: 'Unable to open print window' }); else window.alert('Unable to open print window');
-      }
+    const wrapper = tableRef.current || document.querySelector('.modal');
+    if (!wrapper) {
+      if (Swal && typeof Swal.fire === 'function') Swal.fire({ icon: 'info', title: 'No table', text: 'No table to export' }); else window.alert('No table to export');
+      return;
+    }
+    const confirm = await confirmAlert({
+      title: 'Export PDF',
+      text: 'Do you want to download this summary as a PDF?',
+      confirmButtonText: 'Download PDF',
+      cancelButtonText: 'Cancel',
+      icon: 'info',
+    });
+    if (!confirm) return;
+    const tbl = wrapper.querySelector ? (wrapper.querySelector('table') || wrapper) : wrapper;
+    const htmlToPrint = tbl.outerHTML || tbl.innerHTML || '';
+    const lakeName = (lakeOptions.find(l => String(l.id) === String(lakeId)) || {}).name || '';
+    const datasetName = (orgOptions || []).find(o => String(o.id) === String(orgId))?.name || '';
+    const stationName = (stationOptions || []).find(s => String(s.id) === String(selectedStation))?.name || (stationsList.find(s => String(s) === String(selectedStation)) || '') || '';
+    const meta = { lakeName, datasetName, year: selectedYear, stationName };
+    try {
+      exportPdfHtml(htmlToPrint, meta);
+    } catch (e) {
+      if (Swal && typeof Swal.fire === 'function') Swal.fire({ icon: 'error', title: 'Export failed', text: 'Unable to open print window' }); else window.alert('Unable to open print window');
     }
   }
 
@@ -267,15 +300,13 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     let mounted = true;
     (async () => {
       try {
-        // Prefer unified lake options helper (includes class_code)
         const { fetchLakeOptions } = await import('../../lib/layers');
         const lakes = await fetchLakeOptions();
         if (!mounted) return;
         const base = Array.isArray(lakes) ? lakes : [];
         setLakeOptions(base);
-        return; // done
+        return;
       } catch (e) {
-        // fallback to generic API
       }
       try {
         const res = await cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false });
@@ -291,7 +322,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     if (!Array.isArray(events)) return [];
     const out = [];
     for (const ev of events) {
-      // filter by year when selected
       if (selectedYear) {
         const evYear = ev.sampled_at ? new Date(ev.sampled_at).getFullYear() : null;
         if (evYear == null || String(evYear) !== String(selectedYear)) continue;
@@ -300,7 +330,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       const stationName = ev.station?.name || ev.station_name || '';
       const stationId = ev.station?.id != null ? String(ev.station.id) : null;
       if (selectedStation && selectedStation !== '') {
-        // match by station id or name label
         if (!(stationId === selectedStation || stationName === selectedStation)) continue;
       }
       const org = ev.organization_name || '';
@@ -322,7 +351,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     return out;
   }, [events, selectedStation, selectedYear]);
 
-  // Pivot table for single-station monthly summary
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const pivot = useMemo(() => {
     if (!selectedStation) return null;
@@ -332,14 +360,12 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       const id = ev.station?.id != null ? String(ev.station.id) : null;
       return id === selectedStation || name === selectedStation;
     });
-    // if a year is selected, only include events from that year
     const filteredEvents = selectedYear ? stationEvents.filter(ev => {
       if (!ev.sampled_at) return false;
       const y = new Date(ev.sampled_at).getFullYear();
       return String(y) === String(selectedYear);
     }) : stationEvents;
   const monthSet = new Set();
-  // paramMap will map a key (param or param+depth) -> { meta: { displayName, hasDepthExplicit, depthValue }, cells: { [monthIndex]: cell } }
   const paramMap = new Map();
   for (const ev of filteredEvents) {
       if (!ev.sampled_at) continue;
@@ -350,7 +376,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       const results = Array.isArray(ev.results) ? ev.results : [];
       for (const r of results) {
         const pName = r.parameter?.name || r.parameter?.code || String(r.parameter_id || '');
-        // detect depth presence: explicit depth field is depth_m
         const hasDepthExplicit = Object.prototype.hasOwnProperty.call(r, 'depth_m');
         const depthValue = hasDepthExplicit ? (r.depth_m == null ? 0 : r.depth_m) : undefined;
         const key = hasDepthExplicit ? `${pName}::depth:${depthValue}` : pName;
@@ -360,9 +385,7 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
         const entry = paramMap.get(key);
         const cellMap = entry.cells;
         const prev = cellMap[m];
-        // include threshold object if present
         const threshold = r.threshold || null;
-        // store the most recent sample for the month
         if (!prev || sampled > prev.date) {
           cellMap[m] = {
             date: sampled,
@@ -373,16 +396,12 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
             depthValue: entry.meta.depthValue,
           };
         }
-        // capture a representative threshold for the parameter if available
         if (threshold && !entry.meta.threshold) entry.meta.threshold = threshold;
-        // capture representative unit if missing
         if (!entry.meta.unit && (r.parameter?.unit || r.unit)) entry.meta.unit = r.parameter?.unit || r.unit || '';
       }
     }
   const months = Array.from(monthSet).sort((a,b)=>a-b);
 
-    // Decide whether to show depth in the parameter column.
-    // If a parameter only has a single depth row and that depth was null (recorded as depthWasNull), hide the depth.
     const depthGroups = new Map();
     for (const [key, obj] of paramMap.entries()) {
       const base = key.includes('::depth:') ? key.split('::depth:')[0] : key;
@@ -399,7 +418,6 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
       } else {
         obj.meta.showDepth = false;
       }
-      // Always keep base name without depth in the parameter column.
       obj.meta.displayName = base;
     }
 
@@ -412,13 +430,52 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     return { months, params };
   }, [events, selectedStation, selectedYear]);
 
+  const selectedLake = useMemo(() => {
+    if (!lakeId) return null;
+    return (lakeOptions || []).find(l => String(l.id) === String(lakeId)) || null;
+  }, [lakeId, lakeOptions]);
+
+  function getThresholdStdLabel(th) {
+    if (!th) return '';
+    const coerce = (v) => {
+      if (v == null) return '';
+      if (typeof v === 'string' || typeof v === 'number') return String(v);
+      if (typeof v === 'object') {
+        const keys = ['code', 'short_code', 'standard_code', 'dao_code', 'id', 'name', 'title', 'label'];
+        for (const k of keys) {
+          if (v[k] != null && v[k] !== '') return String(v[k]);
+        }
+      }
+      return '';
+    };
+    const candidates = [
+      th.standard,
+      th.standard_name,
+      th.source,
+      th.reference,
+      th.name,
+      th.code,
+      th.standard_code,
+      th.dao_code,
+    ];
+    for (const c of candidates) {
+      const s = coerce(c);
+      if (s) return s;
+    }
+    return '';
+  }
+
+  function hasThresholdBounds(th) {
+    return !!(th && (th.min_value != null || th.max_value != null));
+  }
+
   return (
   <Modal
     open={open}
     onClose={onClose}
     title={<span style={{ color: '#fff' }}>Data Summary</span>}
     ariaLabel="Data Summary Table"
-    width={1200}
+    width={1600}
     style={modalStyle}
     footerStyle={{
       background: 'transparent',
@@ -428,30 +485,7 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
     footer={
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
         <button className="pill-btn" onClick={() => { setLakeId(''); setOrgId(''); setSelectedYear(''); setSelectedStation(''); }}>Clear</button>
-        <div>
-          <button
-            ref={exportBtnRef}
-            className="pill-btn"
-            onClick={async () => {
-              const signed = await isSignedIn();
-              if (!signed) {
-                if (Swal && typeof Swal.fire === 'function') {
-                  Swal.fire({ icon: 'warning', title: 'Sign in required', text: 'Please sign in to export data.' });
-                } else {
-                  window.alert('Please sign in to export data.');
-                }
-                return;
-              }
-              setExportOpen(v => !v);
-            }}
-          >Export</button>
-          <Popover anchorRef={exportBtnRef} open={exportOpen} onClose={() => setExportOpen(false)} minWidth={160}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="pill-btn" onClick={() => handleExport('csv')}>Export CSV</button>
-              <button className="pill-btn" onClick={() => handleExport('pdf')}>Export PDF</button>
-            </div>
-          </Popover>
-        </div>
+        <button className="pill-btn" onClick={handleExportPdfViaSweetAlert}>Export PDF</button>
       </div>
     }
   >
@@ -485,7 +519,7 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
           </div>
         </div>
 
-  <div className="ds-table-wrap modern-scrollbar" ref={tableRef}>
+  <div className="ds-table-wrap modern-scrollbar" ref={tableRef} style={{ width: '100%', maxWidth: 'none' }}>
           {(loading && lakeId && orgId && selectedYear && selectedStation) ? (
             <div className="ds-center-loading"><LoadingSpinner label="Loading table…" size={28} /></div>
           ) : (!lakeId || !orgId || !selectedYear || !selectedStation) ? (
@@ -500,11 +534,14 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
                   ) : pivot.months.map(m => (
                     <th key={m}>{MONTH_NAMES[m]}</th>
                   ))}
+                  <th>Year Average</th>
+                  <th>Median</th>
+                  <th>% Compliance</th>
                 </tr>
               </thead>
               <tbody>
                 {pivot.params.length === 0 ? (
-                  <tr><td style={{ padding: 10 }} colSpan={pivot.months.length + 1}>No data for this station.</td></tr>
+                  <tr><td style={{ padding: 10 }} colSpan={pivot.months.length + 4}>No data for this station.</td></tr>
                 ) : pivot.params.map(p => (
                   <tr key={p.name}>
                     <td className="ds-param-col">
@@ -522,7 +559,11 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
                                 const parts = [];
                                 if (t.min_value != null) parts.push(`≥ ${t.min_value}`);
                                 if (t.max_value != null) parts.push(`≤ ${t.max_value}`);
-                                return `Threshold: ${parts.join(' — ')}`;
+                                const std = getThresholdStdLabel(t);
+                                const lakeClass = (selectedLake?.class_code || selectedLake?.classification || '').toString();
+                                const classDisplay = lakeClass ? (lakeClass.startsWith('Class') ? lakeClass : `Class ${lakeClass}`) : '';
+                                const suffix = (std || classDisplay) ? ` (${[std, classDisplay].filter(Boolean).join(' - ')})` : '';
+                                return `Threshold: ${parts.join(' — ')}${suffix}`;
                               })()}
                             </div>
                           </div>
@@ -535,9 +576,8 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
                     {p.cells.map((c, i) => {
                       const empty = !c;
                       if (empty) return (<td key={i}>—</td>);
-                      // threshold detection
                       const num = Number(c.value);
-                      const t = c.threshold ?? p.meta?.threshold ?? null;
+                      const t = hasThresholdBounds(c?.threshold) ? c.threshold : (hasThresholdBounds(p.meta?.threshold) ? p.meta.threshold : null);
                       const cls = getThresholdClass(c.value, t);
                       return (
                         <td key={i} className={cls}>
@@ -545,6 +585,45 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
                         </td>
                       );
                     })}
+                    {(() => {
+                      const values = p.cells.map(c => (c ? Number(c.value) : null)).filter(v => Number.isFinite(Number(v))).map(Number);
+                      const outlierFlag = hasOutliers(values);
+                      let avg = null;
+                      if (outlierFlag) {
+                        const g = geometricMean(values);
+                        avg = g != null ? g : arithmeticMean(values);
+                      } else {
+                        avg = arithmeticMean(values);
+                      }
+                      const med = median(values);
+                      const paramT = p.meta?.threshold || null;
+                      let meet = 0, total = 0;
+                      for (const c of p.cells) {
+                        if (!c || !Number.isFinite(Number(c.value))) continue;
+                        const effT = hasThresholdBounds(c?.threshold) ? c.threshold : (hasThresholdBounds(paramT) ? paramT : null);
+                        if (!effT) continue;
+                        total += 1;
+                        if (meetsThreshold(c.value, effT)) meet += 1;
+                      }
+                      const pct = total > 0 ? (meet / total) * 100 : null;
+                      const compCls = getComplianceClass(pct);
+                      const compLabel = getComplianceLabel(pct);
+                      const compStyle = (() => {
+                        if (!Number.isFinite(pct)) return {};
+                        if (pct >= 90) return { background: 'rgba(16,185,129,0.12)', color: '#10b981' };
+                        if (pct >= 50) return { background: 'rgba(234,179,8,0.12)', color: '#ca8a04' };
+                        return { background: 'rgba(239,68,68,0.12)', color: '#ef4444' };
+                      })();
+                      const avgCls = hasThresholdBounds(paramT) ? getThresholdClass(avg, paramT) : '';
+                      const medCls = hasThresholdBounds(paramT) ? getThresholdClass(med, paramT) : '';
+                      return (
+                        <>
+                          <td className={avgCls}>{avg == null ? '—' : avg.toFixed(2)}</td>
+                          <td className={medCls}>{med == null ? '—' : med.toFixed(2)}</td>
+                          <td className={compCls} style={compStyle}>{pct == null ? '—' : `${formatPct(pct)}`}</td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>
