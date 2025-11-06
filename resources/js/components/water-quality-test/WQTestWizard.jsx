@@ -18,6 +18,32 @@ const fmtDateLocal = (d = new Date()) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+// Returns a local Date representing today at 23:59
+const endOfTodayLocal = () => {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 0, 0);
+  return end;
+};
+
+// Returns true if the provided datetime-local string is not later than today's date (ignores time of day)
+const isNotLaterThanTodayDate = (dtStr) => {
+  if (!dtStr || typeof dtStr !== 'string') return false;
+  const [ymd] = dtStr.split('T');
+  if (!ymd) return false;
+  const [y, m, d] = ymd.split('-').map((x) => Number(x));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const today = new Date();
+  const ty = today.getFullYear();
+  const tm = today.getMonth() + 1;
+  const td = today.getDate();
+  if (y < ty) return true;
+  if (y > ty) return false;
+  if (m < tm) return true;
+  if (m > tm) return false;
+  return d <= td;
+};
+
 const INITIAL_DATA = {
   organization_id: null,
   organization_name: "",
@@ -437,6 +463,12 @@ export default function WQTestWizard({
       err.code = 'VALIDATION';
       throw err;
     }
+    if (!data?.sampled_at || !isNotLaterThanTodayDate(data.sampled_at)) {
+      alertError('Invalid date/time', 'The sampling date must not be later than today.');
+      const err = new Error('Invalid sampled_at');
+      err.code = 'VALIDATION';
+      throw err;
+    }
     // Ensure applied standard falls back to current standard when not explicitly chosen
     const fallbackStdId = standardsList.find(s => s.is_current)?.id || null;
     const appliedStdId = data.applied_standard_id || fallbackStdId || null;
@@ -652,16 +684,25 @@ export default function WQTestWizard({
     {
       key: STEP_LABELS[1].key,
       title: STEP_LABELS[1].title,
-      canNext: (d) => !!d.sampled_at && !!d.method && !!d.weather && !!d.sampler_name,
-      render: ({ data, setData }) => (
+      canNext: (d) => !!d.sampled_at && isNotLaterThanTodayDate(d.sampled_at) && !!d.method && !!d.weather && !!d.sampler_name,
+      render: ({ data, setData }) => {
+        const maxDt = fmtDateLocal(endOfTodayLocal());
+        const dateInvalid = !!data.sampled_at && !isNotLaterThanTodayDate(data.sampled_at);
+        return (
         <div className="wizard-pane">
           <FormRow>
             <FG label="Date & Time *">
               <input
                 type="datetime-local"
+                max={maxDt}
                 value={data.sampled_at}
                 onChange={(e) => setData({ ...data, sampled_at: e.target.value })}
               />
+              {dateInvalid ? (
+                <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 6 }}>
+                  Date must not be later than today.
+                </div>
+              ) : null}
             </FG>
             <FG label="Method *">
               <select
@@ -697,7 +738,8 @@ export default function WQTestWizard({
             </FG>
           </FormRow>
         </div>
-      ),
+        );
+      },
     },
 
     // Step 3: Parameters

@@ -22,6 +22,7 @@ export default function AdminPopulationData() {
   const [file, setFile] = useState(null);
   const [yearFilter, setYearFilter] = useState('');
   const [actingIds, setActingIds] = useState({}); // { [id]: 'processing' | 'makingDefault' }
+  const [awaitingCompletionId, setAwaitingCompletionId] = useState(null); // For tracking ingestion completion
   const pollRef = useRef(null);
 
   // showError: whether errors should be surfaced to the UI (we avoid showing on initial auto-load)
@@ -60,6 +61,31 @@ export default function AdminPopulationData() {
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [rows, load]);
 
+  // Handle ingestion completion modal
+  useEffect(() => {
+    if (awaitingCompletionId) {
+      const row = rows.find(r => r.id === awaitingCompletionId);
+      if (row && row.status !== 'ingesting') {
+        Swal.close(); // Close loading modal
+        if (row.status === 'ready') {
+          Swal.fire({
+            icon: 'success',
+            title: 'Ingestion Complete',
+            text: 'Raster successfully ingested and ready for use.',
+          });
+        } else {
+          // If status is 'error' or reverted to 'uploaded' or other, treat as failure
+          Swal.fire({
+            icon: 'error',
+            title: 'Ingestion Failed',
+            text: 'Ingestion did not complete successfully.',
+          });
+        }
+        setAwaitingCompletionId(null);
+      }
+    }
+  }, [awaitingCompletionId, rows]);
+
   const resetMessages = () => { setError(''); setNotice(''); };
 
   const onUpload = async (e) => {
@@ -67,35 +93,42 @@ export default function AdminPopulationData() {
     resetMessages();
     if (!file) return;
     setUploading(true);
+    // Show loading modal
+    Swal.fire({
+      title: 'Uploading Raster',
+      text: 'Please wait...',
+      allowOutsideClick: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
     try {
       const form = new FormData();
       form.append('year', String(year));
       form.append('raster', file);
       if (citation) form.append('notes', citation);
-  if (link) form.append('link', link);
+      if (link) form.append('link', link);
       const resp = await api.upload('/admin/population-rasters', form);
       const created = resp?.data || null;
       setRows(r => [created, ...r].filter(Boolean));
       // Also refresh from server to ensure we reflect canonical DB state
       try { invalidateHttpCache('/admin/population-rasters'); } catch {}
       await load(true, true);
-      // show a success toast
+      // Close loading modal and show success
+      Swal.close();
       Swal.fire({
-        toast: true,
-        position: 'top-end',
         icon: 'success',
-        title: 'Upload complete',
+        title: 'Upload Complete',
         text: 'File stored and awaiting ingestion.',
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
       });
       setFile(null);
       setCitation('');
-  setLink('');
+      setLink('');
     } catch (e) {
+      Swal.close();
       const msg = e?.response?.data?.message || 'Upload failed';
-      Swal.fire({ icon: 'error', title: 'Upload failed', text: msg });
+      Swal.fire({ icon: 'error', title: 'Upload Failed', text: msg });
       setError(msg);
     } finally {
       setUploading(false);
@@ -127,13 +160,23 @@ export default function AdminPopulationData() {
   const processRaster = async (id, makeDefault = false) => {
     setActingIds(a => ({ ...a, [id]: 'processing' }));
     try {
-  await api.post(`/admin/population-rasters/${id}/process${makeDefault ? '?make_default=1' : ''}`);
+      await api.post(`/admin/population-rasters/${id}/process${makeDefault ? '?make_default=1' : ''}`);
+      // Set awaiting completion and show loading modal
+      setAwaitingCompletionId(id);
+      Swal.fire({
+        title: 'Processing Raster',
+        text: 'Ingestion in progress...',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
       // optimistic state change
       setRows(rs => rs.map(r => r.id === id ? { ...r, status: 'ingesting' } : r));
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Queued for ingestion', showConfirmButton: false, timer: 2200 });
     } catch (e) {
       const msg = e?.response?.data?.message || 'Failed to queue ingestion';
-      Swal.fire({ icon: 'error', title: 'Failed to queue ingestion', text: msg });
+      Swal.fire({ icon: 'error', title: 'Failed to Queue Ingestion', text: msg });
       setError(msg);
     } finally {
       setActingIds(a => { const c = { ...a }; delete c[id]; return c; });
@@ -147,7 +190,11 @@ export default function AdminPopulationData() {
       try { invalidateHttpCache('/admin/population-rasters'); } catch {}
       // Force a refresh to pick up catalog changes (and possibly ready status)
       await load(true, true);
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Set as default', showConfirmButton: false, timer: 2000 });
+      Swal.fire({
+        icon: 'success',
+        title: 'Set as Default',
+        text: 'The raster has been set as the default.',
+      });
     } catch (e) {
       const msg = e?.response?.data?.message || 'Failed to make default';
       Swal.fire({ icon: 'error', title: 'Failed to make default', text: msg });
@@ -173,7 +220,11 @@ export default function AdminPopulationData() {
   await api.delete(`/admin/population-rasters/${id}`);
       setRows(rs => rs.filter(r => r.id !== id));
       try { invalidateHttpCache('/admin/population-rasters'); } catch {}
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Deleted', showConfirmButton: false, timer: 1800 });
+      Swal.fire({
+        icon: 'success',
+        title: 'Deleted',
+        text: 'The raster has been successfully deleted.',
+      });
     } catch (e) {
       const msg = e?.response?.data?.message || 'Failed to delete raster';
       Swal.fire({ icon: 'error', title: 'Delete failed', text: msg });
@@ -253,7 +304,6 @@ export default function AdminPopulationData() {
             >
               <FiUploadCloud /> {uploading ? 'Uploading…' : 'Upload Raster'}
             </button>
-            {uploading && <LoadingSpinner size={20} />}
             {error && <span style={{ color: '#b91c1c', fontSize: 13 }}>{error}</span>}
             {notice && !error && <span style={{ color: '#15803d', fontSize: 13 }}>{notice}</span>}
           </div>
@@ -375,3 +425,4 @@ const inputStyle = {
 
 const th = { textAlign: 'left', padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' };
 const td = { padding: '6px 10px', fontSize: 13, verticalAlign: 'middle' };
+
