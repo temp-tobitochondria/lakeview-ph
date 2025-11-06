@@ -93,7 +93,7 @@ export default function PublicWQTestModal({ open, onClose, record, basePath = "/
   if (!open || !sampleEvent) return null;
 
   const headerDate = (() => { try { return new Date(sampleEvent.sampled_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return sampleEvent.sampled_at || '—'; } })();
-  const sampledAt = (() => { try { return new Date(sampleEvent.sampled_at).toLocaleString(); } catch { return sampleEvent.sampled_at || '—'; } })();
+  const sampledAt = (() => { try { return new Date(sampleEvent.sampled_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return sampleEvent.sampled_at || '—'; } })();
   const lakeName = sampleEvent?.lake?.name ?? sampleEvent?.lake_name ?? '—';
   const stationName = sampleEvent?.station?.name ?? sampleEvent?.station_name ?? ((Number.isFinite(geo.lat) && Number.isFinite(geo.lng)) ? `${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}` : '—');
   const orgName = sampleEvent?.organization?.name ?? sampleEvent?.organization_name ?? '—';

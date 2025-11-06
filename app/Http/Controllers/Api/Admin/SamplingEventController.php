@@ -234,16 +234,8 @@ class SamplingEventController extends Controller
     $this->assertStationOwnership($tenantId, $data['station_id'] ?? null);
 
     $event = DB::transaction(function () use ($tenantId, $data, $request) {
-            // Note on sampled_at parsing:
-            // The wizard sends a "datetime-local" string (e.g., 2025-11-06T21:12) WITHOUT a timezone.
-            // Carbon::parse() would assume the APP timezone (UTC here) and shift it, causing an 8–16h drift
-            // for PH users. To preserve the user's intended local clock time, treat inputs WITHOUT an
-            // explicit offset as Asia/Manila (UTC+8). If an offset/Z is present, honor it as-is.
-            $sampledAtRaw = (string) ($data['sampled_at'] ?? '');
-            $hasTz = preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $sampledAtRaw) === 1;
-            $sampledAt = $hasTz
-                ? CarbonImmutable::parse($sampledAtRaw)
-                : CarbonImmutable::parse($sampledAtRaw, 'Asia/Manila');
+        // sampled_at is date-only (YYYY-MM-DD). No timezone handling needed.
+        $sampledAt = (string) ($data['sampled_at'] ?? '');
 
             $attributes = [
                 'organization_id' => $tenantId,
@@ -319,13 +311,10 @@ class SamplingEventController extends Controller
                 }
             }
 
-            if (array_key_exists('sampled_at', $data)) {
-                $sampledAtRaw = (string) $data['sampled_at'];
-                $hasTz = preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $sampledAtRaw) === 1;
-                $updates['sampled_at'] = $hasTz
-                    ? CarbonImmutable::parse($sampledAtRaw)
-                    : CarbonImmutable::parse($sampledAtRaw, 'Asia/Manila');
-            }
+                if (array_key_exists('sampled_at', $data)) {
+                    // sampled_at is date-only (YYYY-MM-DD). Store the string as-is.
+                    $updates['sampled_at'] = (string) $data['sampled_at'];
+                }
 
             if (!empty($updates)) {
                 $updates['updated_by_user_id'] = $request->user()->id ?? null;

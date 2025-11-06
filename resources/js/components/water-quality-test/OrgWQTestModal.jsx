@@ -241,22 +241,11 @@ export default function OrgWQTestModal({
   // ---- parameter edit helpers ----
   const rows = Array.isArray(sampleEvent.results) ? sampleEvent.results : [];
 
-  // Helpers for datetime-local formatting in inputs (local time)
+  // Helper for date-only input: ensure value is YYYY-MM-DD
   const toLocalInput = (isoish) => {
     if (!isoish) return '';
-    try {
-      const d = new Date(isoish);
-      if (Number.isNaN(d.getTime())) return '';
-      const pad = (n) => String(n).padStart(2, '0');
-      const yyyy = d.getFullYear();
-      const mm = pad(d.getMonth() + 1);
-      const dd = pad(d.getDate());
-      const hh = pad(d.getHours());
-      const mi = pad(d.getMinutes());
-      return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-    } catch {
-      return '';
-    }
+    const s = String(isoish);
+    return s.includes('T') ? s.split('T')[0] : s;
   };
 
   const updateRow = (idx, patch) => {
@@ -461,13 +450,13 @@ export default function OrgWQTestModal({
                   {editable ? (
                     <div className="form-group" style={{ marginTop: 6 }}>
                       <input
-                        type="datetime-local"
+                        type="date"
                         value={toLocalInput(sampleEvent.sampled_at)}
                         onChange={(e) => setSampleEvent({ ...sampleEvent, sampled_at: e.target.value })}
                       />
                     </div>
                   ) : (
-                    new Date(sampleEvent.sampled_at).toLocaleString()
+                    formattedDate
                   )}
                 </div>
 

@@ -13,20 +13,12 @@ import StationModal from "../../components/modals/StationModal";
 import { GeoJSON, Marker, Popup, CircleMarker } from "react-leaflet";
 import L from "leaflet";
 
-const fmtDateLocal = (d = new Date()) => {
+const fmtDate = (d = new Date()) => {
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-// Returns a local Date representing today at 23:59
-const endOfTodayLocal = () => {
-  const now = new Date();
-  const end = new Date(now);
-  end.setHours(23, 59, 0, 0);
-  return end;
-};
-
-// Returns true if the provided datetime-local string is not later than today's date (ignores time of day)
+// Returns true if the provided date or datetime-local string is not later than today's date (ignores time of day)
 const isNotLaterThanTodayDate = (dtStr) => {
   if (!dtStr || typeof dtStr !== 'string') return false;
   const [ymd] = dtStr.split('T');
@@ -56,7 +48,7 @@ const INITIAL_DATA = {
   station_name: "",
   station_desc: "",
   geom_point: null,
-  sampled_at: fmtDateLocal(),
+  sampled_at: fmtDate(),
   method: "",
   sampler_name: "",
   weather: "",
@@ -686,14 +678,14 @@ export default function WQTestWizard({
       title: STEP_LABELS[1].title,
       canNext: (d) => !!d.sampled_at && isNotLaterThanTodayDate(d.sampled_at) && !!d.method && !!d.weather && !!d.sampler_name,
       render: ({ data, setData }) => {
-        const maxDt = fmtDateLocal(endOfTodayLocal());
+        const maxDt = fmtDate(new Date());
         const dateInvalid = !!data.sampled_at && !isNotLaterThanTodayDate(data.sampled_at);
         return (
         <div className="wizard-pane">
           <FormRow>
-            <FG label="Date & Time *">
+            <FG label="Date *">
               <input
-                type="datetime-local"
+                type="date"
                 max={maxDt}
                 value={data.sampled_at}
                 onChange={(e) => setData({ ...data, sampled_at: e.target.value })}
@@ -907,7 +899,7 @@ export default function WQTestWizard({
                 <div><strong>Lake:</strong> {data.lake_name || "—"}</div>
                 <div><strong>Lake Class:</strong> {data.lake_class_code || "—"}</div>
                 <div><strong>Station:</strong> {data.station_id ? data.station_name : "—"}</div>
-                <div><strong>Sampled At:</strong> {data.sampled_at ? new Date(data.sampled_at).toLocaleString(undefined, { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}</div>
+                <div><strong>Sampled On:</strong> {data.sampled_at ? new Date(data.sampled_at).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' }) : "—"}</div>
                 <div><strong>Sampler:</strong> {data.sampler_name || "—"}</div>
                 <div><strong>Method:</strong> {METHOD_DISPLAY[data.method] || data.method || "—"}</div>
                 <div><strong>Weather:</strong> {WEATHER_DISPLAY[data.weather] || data.weather || "—"}</div>

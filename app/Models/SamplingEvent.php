@@ -34,7 +34,7 @@ class SamplingEvent extends Model
     ];
 
     protected $casts = [
-        'sampled_at' => 'datetime',
+        'sampled_at' => 'date',
         'status' => 'string',
     ];
 
