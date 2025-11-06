@@ -234,12 +234,23 @@ class SamplingEventController extends Controller
     $this->assertStationOwnership($tenantId, $data['station_id'] ?? null);
 
     $event = DB::transaction(function () use ($tenantId, $data, $request) {
+            // Note on sampled_at parsing:
+            // The wizard sends a "datetime-local" string (e.g., 2025-11-06T21:12) WITHOUT a timezone.
+            // Carbon::parse() would assume the APP timezone (UTC here) and shift it, causing an 8–16h drift
+            // for PH users. To preserve the user's intended local clock time, treat inputs WITHOUT an
+            // explicit offset as Asia/Manila (UTC+8). If an offset/Z is present, honor it as-is.
+            $sampledAtRaw = (string) ($data['sampled_at'] ?? '');
+            $hasTz = preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $sampledAtRaw) === 1;
+            $sampledAt = $hasTz
+                ? CarbonImmutable::parse($sampledAtRaw)
+                : CarbonImmutable::parse($sampledAtRaw, 'Asia/Manila');
+
             $attributes = [
                 'organization_id' => $tenantId,
                 'lake_id' => $data['lake_id'],
                 'station_id' => $data['station_id'],
                 'applied_standard_id' => $data['applied_standard_id'] ?? null,
-                'sampled_at' => CarbonImmutable::parse($data['sampled_at']),
+                'sampled_at' => $sampledAt,
                 'sampler_name' => $data['sampler_name'] ?? null,
                 'method' => $data['method'] ?? null,
                 'weather' => $data['weather'] ?? null,
@@ -309,7 +320,11 @@ class SamplingEventController extends Controller
             }
 
             if (array_key_exists('sampled_at', $data)) {
-                $updates['sampled_at'] = CarbonImmutable::parse($data['sampled_at']);
+                $sampledAtRaw = (string) $data['sampled_at'];
+                $hasTz = preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $sampledAtRaw) === 1;
+                $updates['sampled_at'] = $hasTz
+                    ? CarbonImmutable::parse($sampledAtRaw)
+                    : CarbonImmutable::parse($sampledAtRaw, 'Asia/Manila');
             }
 
             if (!empty($updates)) {
