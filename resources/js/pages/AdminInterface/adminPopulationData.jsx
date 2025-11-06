@@ -159,9 +159,20 @@ export default function AdminPopulationData() {
 
   const processRaster = async (id, makeDefault = false) => {
     setActingIds(a => ({ ...a, [id]: 'processing' }));
+    // Show loading modal for queuing
+    Swal.fire({
+      title: 'Queueing Ingestion',
+      text: 'Please wait...',
+      allowOutsideClick: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
     try {
       await api.post(`/admin/population-rasters/${id}/process${makeDefault ? '?make_default=1' : ''}`);
-      // Set awaiting completion and show loading modal
+      // Close queuing modal and show ingestion modal
+      Swal.close();
       setAwaitingCompletionId(id);
       Swal.fire({
         title: 'Processing Raster',
@@ -175,6 +186,7 @@ export default function AdminPopulationData() {
       // optimistic state change
       setRows(rs => rs.map(r => r.id === id ? { ...r, status: 'ingesting' } : r));
     } catch (e) {
+      Swal.close();
       const msg = e?.response?.data?.message || 'Failed to queue ingestion';
       Swal.fire({ icon: 'error', title: 'Failed to Queue Ingestion', text: msg });
       setError(msg);
@@ -216,16 +228,28 @@ export default function AdminPopulationData() {
     });
     if (!result.isConfirmed) return;
     setActingIds(a => ({ ...a, [id]: 'deleting' }));
+    // Show loading modal for deleting
+    Swal.fire({
+      title: 'Deleting Raster',
+      text: 'Please wait...',
+      allowOutsideClick: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
     try {
-  await api.delete(`/admin/population-rasters/${id}`);
+      await api.delete(`/admin/population-rasters/${id}`);
       setRows(rs => rs.filter(r => r.id !== id));
       try { invalidateHttpCache('/admin/population-rasters'); } catch {}
+      Swal.close();
       Swal.fire({
         icon: 'success',
         title: 'Deleted',
         text: 'The raster has been successfully deleted.',
       });
     } catch (e) {
+      Swal.close();
       const msg = e?.response?.data?.message || 'Failed to delete raster';
       Swal.fire({ icon: 'error', title: 'Delete failed', text: msg });
       setError(msg);
@@ -339,13 +363,10 @@ export default function AdminPopulationData() {
             <table className="lv-table" style={{ borderCollapse: 'collapse', minWidth: 880, width: '100%', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, width: '4%', textAlign: 'center' }}>ID</th>
                   <th style={{ ...th, width: '6%', textAlign: 'center' }}>Year</th>
                   <th style={{ ...th, width: '18%' }}>Original Filename</th>
-                  <th style={{ ...th, width: '20%' }}>Stored Path</th>
                   <th style={{ ...th, width: '10%', textAlign: 'center' }}>Status</th>
                   <th style={{ ...th, width: '12%', textAlign: 'center' }}>Actions</th>
-                  <th style={{ ...th, width: '12%' }}>Uploaded</th>
                   <th style={{ ...th, width: '18%' }}>Citation</th>
                   <th style={{ ...th, width: '4%', textAlign: 'center' }}>Link</th>
                 </tr>
@@ -353,10 +374,8 @@ export default function AdminPopulationData() {
               <tbody>
                 {rows.filter(Boolean).map(r => (
                   <tr key={r.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ ...td, textAlign: 'center' }}>{r.id}</td>
                     <td style={{ ...td, textAlign: 'center' }}>{r.year}</td>
                     <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.filename}</td>
-                    <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.path}</td>
                     <td style={{ ...td, textAlign: 'center' }}>{statusPill(r)}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap', textAlign: 'center' }}>
                       <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -395,7 +414,6 @@ export default function AdminPopulationData() {
                         )}
                       </div>
                     </td>
-                    <td style={{ ...td }}>{new Date(r.created_at).toLocaleString()}</td>
                     <td style={{ ...td, maxWidth: 1200, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{r.notes}</td>
                     <td style={{ ...td, textAlign: 'center' }}>
                       {r.link ? (
