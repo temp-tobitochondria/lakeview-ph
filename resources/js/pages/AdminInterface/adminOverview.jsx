@@ -88,70 +88,64 @@ export default function AdminOverview() {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    // Organizations (admin endpoint - requires auth)
+    // Mark all as loading (UI stays stable if cached values appear immediately below)
     publish('orgs', { loading: true });
     publish('users', { loading: true });
     publish('lakes', { loading: true });
     publish('events', { loading: true });
 
+    // 1) Try consolidated summary endpoint with composite cache
+    const compositeKey = 'admin:kpis:summary';
+    const compositeCached = kpiCache.getKpi(compositeKey);
+    if (compositeCached && typeof compositeCached === 'object') {
+      const { orgs, users, lakes, events } = compositeCached;
+      if (orgs != null) publish('orgs', { value: orgs, loading: false });
+      if (users != null) publish('users', { value: users, loading: false });
+      if (lakes != null) publish('lakes', { value: lakes, loading: false });
+      if (events != null) publish('events', { value: events, loading: false });
+    }
+
     try {
-      // orgs: use a lightweight KPI endpoint that returns { count }
-      const key = 'admin:orgs';
-      const cached = kpiCache.getKpi(key);
-      if (cached !== null) {
-        publish('orgs', { value: cached, loading: false });
-      } else {
-        const orgRes = await api.get('/admin/kpis/orgs');
-        const orgTotal = orgRes?.data?.count ?? (orgRes?.count ?? null);
-        kpiCache.setKpi(key, orgTotal);
-        publish('orgs', { value: orgTotal, loading: false });
-      }
+      const res = await api.get('/admin/kpis/summary');
+      const data = res?.data || res; // tolerate either wrappers
+      const payload = {
+        orgs: data?.orgs?.count ?? data?.data?.orgs?.count ?? null,
+        users: data?.users?.count ?? data?.data?.users?.count ?? null,
+        lakes: data?.lakes?.count ?? data?.data?.lakes?.count ?? null,
+        events: data?.events?.count ?? data?.data?.events?.count ?? null,
+      };
+      // Update cache and UI
+      kpiCache.setKpi(compositeKey, payload, 60 * 1000);
+      if (payload.orgs != null) publish('orgs', { value: payload.orgs, loading: false });
+      if (payload.users != null) publish('users', { value: payload.users, loading: false });
+      if (payload.lakes != null) publish('lakes', { value: payload.lakes, loading: false });
+      if (payload.events != null) publish('events', { value: payload.events, loading: false });
+      return;
+    } catch (e) {
+      // Fall back to parallel legacy endpoints
+    }
+
+    try {
+      const [orgRes, userRes, lakeRes, evRes] = await Promise.all([
+        api.get('/admin/kpis/orgs'),
+        api.get('/admin/kpis/users'),
+        api.get('/admin/kpis/lakes'),
+        api.get('/admin/kpis/tests'),
+      ]);
+      const orgTotal = orgRes?.data?.count ?? orgRes?.count ?? null;
+      const userTotal = userRes?.data?.count ?? userRes?.count ?? null;
+      const lakeTotal = lakeRes?.data?.count ?? lakeRes?.count ?? null;
+      const evTotal = evRes?.data?.count ?? evRes?.count ?? null;
+      const payload = { orgs: orgTotal, users: userTotal, lakes: lakeTotal, events: evTotal };
+      kpiCache.setKpi(compositeKey, payload, 60 * 1000);
+      publish('orgs', { value: orgTotal, loading: false });
+      publish('users', { value: userTotal, loading: false });
+      publish('lakes', { value: lakeTotal, loading: false });
+      publish('events', { value: evTotal, loading: false });
     } catch (e) {
       publish('orgs', { value: null, loading: false, error: true });
-    }
-
-    try {
-      const key = 'admin:users';
-      const cached = kpiCache.getKpi(key);
-      if (cached !== null) {
-        publish('users', { value: cached, loading: false });
-      } else {
-        const userRes = await api.get('/admin/kpis/users');
-        const userTotal = userRes?.data?.count ?? (userRes?.count ?? null);
-        kpiCache.setKpi(key, userTotal);
-        publish('users', { value: userTotal, loading: false });
-      }
-    } catch (e) {
       publish('users', { value: null, loading: false, error: true });
-    }
-
-    try {
-      const key = 'admin:lakes';
-      const cached = kpiCache.getKpi(key);
-      if (cached !== null) {
-        publish('lakes', { value: cached, loading: false });
-      } else {
-        const lakeRes = await api.get('/admin/kpis/lakes');
-        const lakeTotal = lakeRes?.data?.count ?? lakeRes?.count ?? null;
-        kpiCache.setKpi(key, lakeTotal);
-        publish('lakes', { value: lakeTotal, loading: false });
-      }
-    } catch (e) {
       publish('lakes', { value: null, loading: false, error: true });
-    }
-
-    try {
-      const key = 'admin:events';
-      const cached = kpiCache.getKpi(key);
-      if (cached !== null) {
-        publish('events', { value: cached, loading: false });
-      } else {
-        const evRes = await api.get('/admin/kpis/tests');
-        const evTotal = evRes?.data?.count ?? evRes?.count ?? null;
-        kpiCache.setKpi(key, evTotal);
-        publish('events', { value: evTotal, loading: false });
-      }
-    } catch (e) {
       publish('events', { value: null, loading: false, error: true });
     }
   }, [publish]);
@@ -160,7 +154,10 @@ export default function AdminOverview() {
     fetchAll();
     const onRefresh = () => fetchAll();
     window.addEventListener('lv:kpi:refresh', onRefresh);
-    const interval = setInterval(fetchAll, 60 * 1000); // refresh every minute
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // pause when tab hidden
+      fetchAll();
+    }, 60 * 1000); // refresh every minute (paused when hidden)
     return () => { window.removeEventListener('lv:kpi:refresh', onRefresh); clearInterval(interval); };
   }, [fetchAll]);
 

@@ -1,5 +1,5 @@
 // resources/js/pages/AdminInterface/AdminDashboard.jsx
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import {
   FiHome,
@@ -16,18 +16,18 @@ import {
 } from "react-icons/fi";
 
 import DashboardLayout from "../../layouts/DashboardLayout";
-import AdminOverview from "./adminOverview";
-import AdminOrganizations from "./adminOrganizations";
-import AdminUsers from "./adminUsers";
-import AdminWaterCat from "./adminWaterCat";
-import AdminLayers from "./adminLayers";
-import AdminParameters from "./adminParams";
-import AdminWQTests from "./adminWQTests";
-import AdminSettingsPage from "./adminSettings.jsx";
-import AdminFeedback from './AdminFeedback';
-import AdminAuditLogsPage from './adminLogs';
-import AdminPopulationData from './adminPopulationData';
-import AdminOrgApplications from './AdminOrgApplications';
+const AdminOverview = lazy(() => import("./adminOverview"));
+const AdminOrganizations = lazy(() => import("./adminOrganizations"));
+const AdminUsers = lazy(() => import("./adminUsers"));
+const AdminWaterCat = lazy(() => import("./adminWaterCat"));
+const AdminLayers = lazy(() => import("./adminLayers"));
+const AdminParameters = lazy(() => import("./adminParams"));
+const AdminWQTests = lazy(() => import("./adminWQTests"));
+const AdminSettingsPage = lazy(() => import("./adminSettings.jsx"));
+const AdminFeedback = lazy(() => import('./AdminFeedback'));
+const AdminAuditLogsPage = lazy(() => import('./adminLogs'));
+const AdminPopulationData = lazy(() => import('./adminPopulationData'));
+const AdminOrgApplications = lazy(() => import('./AdminOrgApplications'));
 
 const Page = ({ title }) => <h2>{title}</h2>;
 
@@ -62,6 +62,7 @@ export default function AdminDashboard() {
 
   return (
     <DashboardLayout links={links}>
+      <Suspense fallback={<div style={{padding: 16}}>Loading…</div>}>
       <Routes>
         {/* Overview */}
         <Route index element={<AdminOverview />} />
@@ -99,6 +100,7 @@ export default function AdminDashboard() {
         {/* Population Rasters */}
         <Route path="population-data" element={<AdminPopulationData />} />
       </Routes>
+      </Suspense>
     </DashboardLayout>
   );
 }

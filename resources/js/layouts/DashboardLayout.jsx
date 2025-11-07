@@ -8,7 +8,7 @@ import {
   FiChevronsLeft,
   FiChevronsRight,
 } from "react-icons/fi";
-import { api, clearToken, getToken } from "../lib/api";
+import { api, clearToken, getToken, getUser } from "../lib/api";
 import { confirm, alertSuccess } from "../lib/alerts"; // ⬅️ SweetAlert2 helpers
 
 export default function DashboardLayout({ links, user, children }) {
@@ -22,7 +22,10 @@ export default function DashboardLayout({ links, user, children }) {
     (async () => {
       try {
         if (!getToken()) return; // gate
-        const u = await api("/auth/me");
+        // Prefer cached user
+        const cached = getUser();
+        if (cached) { if (mounted) setMe(cached); return; }
+        const u = await api("/auth/me"); // fallback fetch
         if (mounted) setMe(u);
       } catch {}
     })();

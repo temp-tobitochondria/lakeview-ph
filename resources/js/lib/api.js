@@ -4,6 +4,7 @@
 
 // --- Config ---------------------------------------------------------------
 const STORAGE_KEY = "auth.token";
+const USER_STORAGE_KEY = "auth.user";
 const API_BASE =
   (typeof window !== "undefined" && window.__API_BASE__) ||
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_BASE) ||
@@ -17,6 +18,13 @@ try {
 } catch (_) {
   _token = null;
 }
+
+// --- User caching --------------------------------------------------------
+let _user = null;
+try {
+  const raw = localStorage.getItem(USER_STORAGE_KEY);
+  _user = raw ? JSON.parse(raw) : null;
+} catch (_) { _user = null; }
 
 export function setToken(token /*, opts */) {
   _token = token || null;
@@ -36,6 +44,25 @@ export function getToken() {
 
 export function clearToken() {
   setToken(null);
+}
+
+export function setUser(user) {
+  _user = user || null;
+  try {
+    if (_user) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(_user));
+    else localStorage.removeItem(USER_STORAGE_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lv-user-change'));
+    }
+  } catch (_) {}
+}
+
+export function getUser() {
+  return _user;
+}
+
+export function clearUser() {
+  setUser(null);
 }
 
 // --- Helpers --------------------------------------------------------------
@@ -200,18 +227,24 @@ export async function resendOtp({ email, purpose }) {
 export async function register(payload) {
   const res = await client.post("/auth/register", payload);
   if (res?.token) setToken(res.token);
+  if (res?.data) setUser(res.data);
   return res;
 }
 export async function login({ email, password, remember }) {
   const res = await client.post("/auth/login", { email, password, remember });
   if (res?.token) setToken(res.token);
+  if (res?.data) setUser(res.data);
   return res;
 }
 export async function me() {
   // Avoid spamming the server with /auth/me when no token is present.
   if (!getToken()) return null;
+  // Use cached user if present
+  if (getUser()) return getUser();
   try {
-    return await client.get("/auth/me");
+    const u = await client.get("/auth/me");
+    if (u) setUser(u);
+    return u;
   } catch (e) {
     // Swallow unauthorized errors here so callers can treat null user gracefully
     if (e?.response?.status === 401) return null;
@@ -220,7 +253,7 @@ export async function me() {
 }
 export async function logout() {
   try { await client.post("/auth/logout"); }
-  finally { clearToken(); }
+  finally { clearToken(); clearUser(); }
 }
 
 // ---- Tenant admin management ----

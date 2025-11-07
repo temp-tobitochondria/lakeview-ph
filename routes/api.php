@@ -71,6 +71,7 @@ Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(fu
     Route::get('/whoami', fn() => ['ok' => true]);
 
     // Admin KPIs (lightweight counts)
+    Route::get('/kpis/summary', [\App\Http\Controllers\Api\Admin\KpiController::class, 'summary']);
     Route::get('/kpis/orgs', [\App\Http\Controllers\Api\Admin\KpiController::class, 'orgs']);
     Route::get('/kpis/users', [\App\Http\Controllers\Api\Admin\KpiController::class, 'users']);
     Route::get('/kpis/lakes', [\App\Http\Controllers\Api\Admin\KpiController::class, 'lakes']);
