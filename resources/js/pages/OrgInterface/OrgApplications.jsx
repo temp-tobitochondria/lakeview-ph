@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import api from "../../lib/api";
+import api, { me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import TableToolbar from "../../components/table/TableToolbar";
 import TableLayout from "../../layouts/TableLayout";
@@ -53,12 +53,11 @@ export default function OrgApplications() {
     { id: "actions", header: "Actions" },
   ]), []);
 
-  // Derive tenant id from current user token payload or a global; fallback: ask backend whoami
-  // For simplicity, we try /auth/me to get tenant_id
+  // Derive tenant id from current user token payload or a global; fallback: use me() helper to get tenant_id
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
+      const me = await fetchMe({ maxAgeMs: 60 * 1000 });
       if (!me?.tenant_id) throw new Error('No tenant in session');
       const tenantId = me.tenant_id;
       const res = await cachedGet(`/org/${tenantId}/applications`, { params: status ? { status } : undefined, ttlMs: 2 * 60 * 1000 });
@@ -73,7 +72,7 @@ export default function OrgApplications() {
   // Submit a decision; notes required will be handled by caller for certain actions
   const decide = async (id, action, notes = '') => {
     try {
-      const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
+      const me = await fetchMe({ maxAgeMs: 60 * 1000 });
       const tenantId = me?.tenant_id;
       if (!tenantId) throw new Error('No tenant in session');
       await api.post(`/org/${tenantId}/applications/${id}/decision`, { action, notes });
@@ -167,7 +166,7 @@ export default function OrgApplications() {
         className="pill-btn ghost sm"
         onClick={async () => {
           try {
-            const me = await api.get('/auth/me');
+            const me = await fetchMe({ maxAgeMs: 60 * 1000 });
             const tenantId = me?.tenant_id;
             setDocUser({ id: raw.user?.id, tenantId });
           } catch {}

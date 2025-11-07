@@ -1,6 +1,6 @@
 // resources/js/pages/OrgInterface/orgLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import api from '../../lib/api';
+import api, { me as fetchCurrentUser } from '../../lib/api';
 import { cachedGet } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
@@ -65,7 +65,7 @@ export default function OrgAuditLogsPage() {
   const page = meta.current_page ?? 1;
   const perPage = meta.per_page ?? 10;
 
-  const fetchMe = async () => { try { const u = await cachedGet('/auth/me', { ttlMs: 60 * 1000 }); setMe(u); } catch { setMe(null); } };
+  const fetchMe = async () => { try { const u = await fetchCurrentUser({ maxAgeMs: 60 * 1000 }); setMe(u); } catch { setMe(null); } };
 
   const isOrgAdmin = me?.role === 'org_admin';
   const effectiveTenantId = isOrgAdmin ? me?.tenant_id : null;

@@ -8,7 +8,7 @@ import {
   FiChevronsLeft,
   FiChevronsRight,
 } from "react-icons/fi";
-import { api, clearToken, getToken, getUser } from "../lib/api";
+import { api, clearToken, getToken, getUser, me as fetchMe } from "../lib/api";
 import DashboardBoot from "../components/DashboardBoot"; // Overlay loader for dashboards
 import { confirm, alertSuccess } from "../lib/alerts"; // ⬅️ SweetAlert2 helpers
 
@@ -19,17 +19,18 @@ export default function DashboardLayout({ links, user, children }) {
   const [me, setMe] = useState(null);
   const [isOverview, setIsOverview] = useState(false);
 
+  // Fetch authenticated user once (dedup + cache via fetchMe helper)
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        if (!getToken()) return; // gate
-        // Prefer cached user
-        const cached = getUser();
-        if (cached) { if (mounted) setMe(cached); return; }
-        const u = await api("/auth/me"); // fallback fetch
-        if (mounted) setMe(u);
-      } catch {}
+        if (!getToken()) return; // no token, skip
+        // fetchMe() returns cached user if still fresh and dedups in-flight requests
+        const u = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
+        if (mounted) setMe(u || null);
+      } catch {
+        if (mounted) setMe(null);
+      }
     })();
     return () => { mounted = false; };
   }, []);

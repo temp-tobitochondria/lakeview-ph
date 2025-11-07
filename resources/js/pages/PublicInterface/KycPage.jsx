@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUser, setCurrentUser } from "../../lib/authState";
 import { listTenantsOptions, createOrgApplication } from "../../lib/api";
-import api from "../../lib/api";
+import api, { me as fetchMe } from "../../lib/api";
 import { toastSuccess, toastError } from "../../lib/alerts";
 import Modal from "../../components/Modal";
 
@@ -285,7 +285,7 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
                             setAcceptingId(app.id);
                             try {
                               await api.post(`/org-applications/${app.id}/accept`);
-                              try { const me = await api.get('/auth/me'); if (me) setCurrentUser(me); } catch {}
+                              try { const me = await fetchMe({ maxAgeMs: 5 * 60 * 1000 }); if (me) setCurrentUser(me); } catch {}
                               try { const mine = await api.get('/org-applications/mine'); setMyApplication(mine?.data || null); } catch {}
                               try { const cnt = await api.get('/org-applications/mine/count'); setMyAppCount(cnt?.data?.count || 0); } catch {}
                               setMyApplications([]); toastSuccess('Membership accepted'); if (onClose) onClose();

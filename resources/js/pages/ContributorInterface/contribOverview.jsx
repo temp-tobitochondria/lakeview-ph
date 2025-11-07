@@ -3,8 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { FiClipboard, FiDatabase, FiUsers } from 'react-icons/fi';
 
-import api from '../../lib/api';
-import { cachedGet } from '../../lib/httpCache';
+import api, { me as fetchMe } from '../../lib/api';
 import kpiCache from '../../lib/kpiCache';
 import DashboardHeader from '../../components/DashboardHeader';
 import { FiHome } from 'react-icons/fi';
@@ -97,15 +96,15 @@ export default function ContribOverview({ tenantId: propTenantId }) {
     if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
   }, [tenantId, publish]);
 
-  // Resolve tenant + user if missing using /auth/me
+  // Resolve tenant + user if missing using me() helper
   useEffect(() => {
     let cancelled = false;
     if (tenantId === null || userId === null) {
       (async () => {
         try {
-          const meRes = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
-            const tId = meRes?.data?.tenant_id ?? meRes?.tenant_id ?? null;
-            const uId = meRes?.data?.id ?? meRes?.id ?? null;
+          const meRes = await fetchMe({ maxAgeMs: 60 * 1000 });
+            const tId = meRes?.tenant_id ?? null;
+            const uId = meRes?.id ?? null;
             if (!cancelled) {
               if (tId && tenantId === null) setTenantId(Number(tId));
               if (uId && userId === null) setUserId(Number(uId));

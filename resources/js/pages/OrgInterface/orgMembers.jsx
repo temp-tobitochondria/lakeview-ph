@@ -5,7 +5,7 @@ import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { FiEdit, FiTrash, FiUsers } from 'react-icons/fi';
 import DashboardHeader from '../../components/DashboardHeader';
-import api from "../../lib/api";
+import api, { me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import Modal from "../../components/Modal";
 import TableToolbar from "../../components/table/TableToolbar";
@@ -102,7 +102,7 @@ export default function OrgMembers() {
   // Resolve tenant then load
   useEffect(() => { (async () => {
     try {
-      const me = unwrap(await cachedGet('/auth/me', { ttlMs: 60 * 1000 }));
+      const me = await fetchMe({ maxAgeMs: 60 * 1000 });
       const tid = me?.tenant_id || me?.tenant?.id || me?.tenants?.[0]?.id || null;
       setTenantId(tid);
       if (tid) fetchContributors(tid);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { api, getToken } from "../../lib/api";
+import { api, getToken, me as fetchMe } from "../../lib/api";
 import { alertError, alertSuccess, confirm } from "../../lib/alerts";
 import { fetchLakeOptions } from "../../lib/layers";
 import {
@@ -126,7 +126,7 @@ export default function WQTestWizard({
     let mounted = true;
     (async () => {
       try {
-        const me = await api("/auth/me");
+        const me = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
         if (!mounted) return;
         const role = (me?.role || "")
           .toString()

@@ -10,11 +10,8 @@ import React, { useEffect, useState } from 'react';
   - Accessible: role="status" aria-live polite and reduced motion friendly.
 */
 export default function DashboardBoot({ isOverview = false }) {
-  // Whether overlay should be shown at all this session (first dashboard visit only)
-  const [eligible, setEligible] = useState(() => {
-    // Show on first dashboard mount in this tab; skip afterwards (resets on full refresh)
-    return !window.__lvDashSeen;
-  });
+  // Always eligible on each dashboard mount (show on normal refresh too)
+  const eligible = true;
   // Delay showing to avoid flashing for fast loads
   const [shouldRender, setShouldRender] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -25,8 +22,6 @@ export default function DashboardBoot({ isOverview = false }) {
     // Delayed display: only show overlay if still not ready after 250ms
     const showTimer = setTimeout(() => {
       setShouldRender(true);
-      // mark as seen when we actually display
-      if (!window.__lvDashSeen) window.__lvDashSeen = true;
     }, 250);
 
     function hide() {
@@ -45,7 +40,7 @@ export default function DashboardBoot({ isOverview = false }) {
     };
   }, []);
 
-  // Skip entirely if not eligible for this session
+  // Skip entirely if overlay not eligible
   if (!eligible) return null;
   // If hidden or not yet past delay threshold, render nothing
   if (!visible || !shouldRender) return null;

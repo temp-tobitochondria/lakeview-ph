@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import TableToolbar from "../../components/table/TableToolbar";
 import { FiEye, FiEdit2, FiTrash2 } from "react-icons/fi";
 
-import { api } from "../../lib/api";
+import { api, me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { fetchLakeOptions } from "../../lib/layers";
 import { alertSuccess, alertError, alertWarning, confirm as swalConfirm, showLoading, closeLoading } from "../../lib/alerts";
@@ -115,32 +115,29 @@ export function useWQTests({ variant, tableId, initialLakes = [], initialTests =
     let mounted = true;
     (async () => {
       try {
-        if (isAdmin) {
-          // Admin: role/id only; no tenant gating
-          const me = await api("/auth/me");
-          if (!mounted) return;
-          const role = (me?.role || "").toString().trim().replace(/\s+/g, "_").replace(/-/g, "_");
-          setCurrentUserRole(role || null);
-          setCurrentUserId(me?.id ?? null);
+        const me = await fetchMe({ maxAgeMs: 60 * 1000 });
+        if (!mounted) return;
+        if (!me) {
+          setCurrentUserRole(null);
+          if (isOrg) setCurrentTenantId(null);
+          if (isContrib) setCurrentOrgId(null);
           setAuthLoaded(true);
-        } else {
-          const me = await cachedGet("/auth/me", { ttlMs: 60 * 1000 });
-          if (!mounted) return;
-          const role = (me?.role || "").toString().trim().replace(/\s+/g, "_").replace(/-/g, "_");
-          setCurrentUserRole(role || null);
-          setCurrentUserId(me?.id ?? null);
-          const org = me?.tenant || me?.organization || null;
-          if (isOrg) {
-            if (org?.id) setCurrentTenantId(org.id);
-            else if (me?.tenant_id) setCurrentTenantId(me.tenant_id);
-            else if (me?.organization_id) setCurrentTenantId(me.organization_id);
-          }
-          if (isContrib) {
-            const org2 = me?.organization || (me?.tenant ? me.tenant : null);
-            if (org2?.id) setCurrentOrgId(org2.id);
-            else if (me?.organization_id) setCurrentOrgId(me.organization_id);
-            else if (me?.tenant_id) setCurrentOrgId(me.tenant_id);
-          }
+          return;
+        }
+        const role = (me?.role || "").toString().trim().replace(/\s+/g, "_").replace(/-/g, "_");
+        setCurrentUserRole(role || null);
+        setCurrentUserId(me?.id ?? null);
+        const org = me?.tenant || me?.organization || null;
+        if (isOrg) {
+          if (org?.id) setCurrentTenantId(org.id);
+          else if (me?.tenant_id) setCurrentTenantId(me.tenant_id);
+          else if (me?.organization_id) setCurrentTenantId(me.organization_id);
+        }
+        if (isContrib) {
+          const org2 = me?.organization || (me?.tenant ? me.tenant : null);
+          if (org2?.id) setCurrentOrgId(org2.id);
+          else if (me?.organization_id) setCurrentOrgId(me.organization_id);
+          else if (me?.tenant_id) setCurrentOrgId(me.tenant_id);
         }
       } catch (e) {
         if (mounted) {
@@ -149,11 +146,11 @@ export function useWQTests({ variant, tableId, initialLakes = [], initialTests =
           if (isContrib) setCurrentOrgId(null);
         }
       } finally {
-        if (mounted && !isAdmin) setAuthLoaded(true);
+        if (mounted) setAuthLoaded(true);
       }
     })();
     return () => { mounted = false; };
-  }, [isAdmin, isOrg, isContrib]);
+  }, [isOrg, isContrib]);
 
   // Fetch lakes, parameter catalog, orgs (admin)
   useEffect(() => {

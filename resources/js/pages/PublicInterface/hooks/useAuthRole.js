@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, getToken } from '../../../lib/api';
+import { me as fetchMe, getToken } from '../../../lib/api';
 import { getCurrentUser, isStale, setCurrentUser } from '../../../lib/authState';
 
 // Handles role derivation, user fetch, auth modal state.
@@ -21,8 +21,7 @@ export function useAuthRole() {
       setUserRole(deriveRole(cached));
       if (!cached || isStale()) {
         try {
-          const res = await api('/auth/me');
-          const u = res?.data || res;
+          const u = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
           setCurrentUser(u, { silent: true });
             setUserRole(deriveRole(u));
             setAuthUser(u);

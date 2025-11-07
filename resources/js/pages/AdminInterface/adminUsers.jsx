@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import { FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi';
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
-import api from "../../lib/api";
+import api, { me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
@@ -150,7 +150,7 @@ export default function AdminUsersPage() {
     // Resolve current user, then fetch users
     (async () => {
       try {
-        const me = unwrap(await api.get('/auth/me'));
+        const me = await fetchMe({ maxAgeMs: 60 * 1000 });
         setMyId(me?.id);
       } catch { /* ignore */ }
       fetchUsers(buildParams());

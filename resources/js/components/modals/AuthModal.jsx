@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   api, setToken, requestRegisterOtp, verifyRegisterOtp, 
-  requestForgotOtp, verifyForgotOtp, resetWithTicket, resendOtp } 
+  requestForgotOtp, verifyForgotOtp, resetWithTicket, resendOtp, me as fetchMe } 
   from "../../lib/api";
 import { setCurrentUser } from "../../lib/authState";
 import { alertSuccess, alertError, alertInfo } from "../../lib/alerts";
@@ -153,7 +153,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
       // Backend returns user under res.data; fallback to fetching /auth/me if absent
       let finalUser = res?.data || res?.user || null;
       if (!finalUser || !finalUser.role) {
-        try { finalUser = await api('/auth/me'); } catch { /* ignore */ }
+        try { finalUser = await fetchMe({ maxAgeMs: 60 * 1000 }); } catch { /* ignore */ }
       }
 
       // Optimistic propagation to sidebar / other listeners
@@ -245,8 +245,8 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
       if (verifyContext === "register") {
         const out = await verifyRegisterOtp({ email: verifyEmail, code: otp, remember });
         if (out?.token) setToken(out.token, { remember });
-  const me = await api("/auth/me");
-  if (me) setCurrentUser(me?.data || me);
+  const me = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
+  if (me) setCurrentUser(me);
   alertSuccess("Registered", "Welcome to LakeView PH!");
         // Do not redirect after registration verify; keep user on the current page
         onClose?.();

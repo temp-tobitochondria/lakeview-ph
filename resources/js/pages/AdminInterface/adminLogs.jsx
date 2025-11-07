@@ -1,6 +1,6 @@
 // resources/js/pages/AdminInterface/adminLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import api, { buildQuery } from '../../lib/api';
+import api, { buildQuery, me as fetchMe } from '../../lib/api';
 import { cachedGet } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
@@ -150,8 +150,8 @@ export default function AdminAuditLogsPage() {
 		return params;
 	};
 
-	const fetchMe = async () => {
-		try { const u = await api.get('/auth/me'); setMe(u); } catch { setMe(null); }
+	const fetchMeCached = async () => {
+		try { const u = await fetchMe({ maxAgeMs: 5 * 60 * 1000 }); setMe(u || null); } catch { setMe(null); }
 	};
 
 	const effectiveBase = (me && me.role === 'org_admin' && me.tenant_id)
@@ -336,7 +336,7 @@ export default function AdminAuditLogsPage() {
 	};
 
 	// Initial load (user then logs)
-	useEffect(() => { (async () => { await fetchMe(); })(); }, []);
+	useEffect(() => { (async () => { await fetchMeCached(); })(); }, []);
 	useEffect(() => { if (me) { seedOptions(); fetchLogs(buildParams({ page: 1 })); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me]);
 
 	// Auto refetch on advanced filter changes (debounced)

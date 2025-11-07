@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/Modal';
 import SettingsForm from '../../components/settings/SettingsForm';
 import { getCurrentUser, ensureUser, setCurrentUser } from '../../lib/authState';
-import api from '../../lib/api';
+import api, { me as fetchMe } from '../../lib/api';
 
 /**
  * Route-level Settings page now behaves purely as a modal overlay.
@@ -23,7 +23,7 @@ export default function SettingsModalRoute() {
     attemptedRef.current = true;
     (async () => {
       try {
-        const res = await ensureUser(() => api('/auth/me'));
+        const res = await ensureUser(() => fetchMe({ maxAgeMs: 5 * 60 * 1000 }));
         setUser(res);
       } catch {
         // Not logged in -> redirect out (no settings page for guests)

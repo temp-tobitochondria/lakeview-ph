@@ -16,7 +16,7 @@ import {
 import { FiChevronDown } from "react-icons/fi";
 import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
 import { useNavigate, useLocation } from "react-router-dom";
-import { api, clearToken, getToken } from "../lib/api";
+import { api, clearToken, getToken, me as fetchMe } from "../lib/api";
 import { getCurrentUser, setCurrentUser, ensureUser, isStale } from "../lib/authState";
 import "leaflet/dist/leaflet.css";
 import "../../css/util/scrollbars.css";
@@ -105,8 +105,7 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
   // Fetch and cache user (avoids duplicate network calls across components)
   const fetchAndCache = async () => {
     try {
-      const res = await api("/auth/me");
-      const u = res?.data || res;
+      const u = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
       const finalUser = u && u.id ? u : null;
       setCurrentUser(finalUser);
       setMe(finalUser);

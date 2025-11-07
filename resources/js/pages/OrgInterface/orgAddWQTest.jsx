@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { FiDroplet } from "react-icons/fi";
 import DashboardHeader from '../../components/DashboardHeader';
 import WQTestWizard from "../../components/water-quality-test/WQTestWizard";
-import { api } from "../../lib/api";
+import { api, me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import { alertError, alertSuccess, showLoading, closeLoading } from "../../lib/alerts";
 
@@ -14,7 +14,7 @@ export default function OrgAddWQTest() {
     let mounted = true;
     (async () => {
       try {
-        const me = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
+        const me = await fetchMe({ maxAgeMs: 60 * 1000 });
         if (!mounted) return;
         if (me && (me.organization || me.tenant || me.tenant_id || me.organization_id)) {
           const org = me.organization || (me.tenant ? { id: me.tenant.id, name: me.tenant.name } : null);

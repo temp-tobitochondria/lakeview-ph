@@ -7,8 +7,7 @@ import {
   FiClipboard,      // Pending Approvals
 } from "react-icons/fi";
 
-import api from "../../lib/api";
-import { cachedGet } from "../../lib/httpCache";
+import api, { me as fetchMe } from "../../lib/api";
 import kpiCache from '../../lib/kpiCache';
 import DashboardHeader from '../../components/DashboardHeader';
 import { FiUsers as FiUsersIcon } from 'react-icons/fi';
@@ -134,14 +133,14 @@ export default function OrgOverview({ tenantId: propTenantId }) {
     if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
   }, [tenantId, publish]);
 
-  // Resolve tenant id if not provided by prop/url/global via /auth/me
+  // Resolve tenant id if not provided by prop/url/global via me() helper
   useEffect(() => {
     let cancelled = false;
     if (tenantId === null) {
       (async () => {
         try {
-          const meRes = await cachedGet('/auth/me', { ttlMs: 60 * 1000 });
-          const tId = meRes?.data?.tenant_id ?? meRes?.tenant_id ?? null;
+          const meRes = await fetchMe({ maxAgeMs: 60 * 1000 });
+          const tId = meRes?.tenant_id ?? null;
           if (!cancelled && tId) setTenantId(Number(tId));
         } catch (e) {
           // If cannot resolve tenant, mark KPIs as error once

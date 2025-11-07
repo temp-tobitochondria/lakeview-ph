@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { me as fetchMe } from "../lib/api";
 import { getCurrentUser, isStale, setCurrentUser, ensureUser } from "../lib/authState";
 import { TENANT_SCOPED } from "../lib/roles";
 
@@ -42,7 +42,7 @@ export default function RequireRole({ allowed = [], children }) {
 
     const fetchFresh = async () => {
       try {
-        const fresh = await api("/auth/me");
+        const fresh = await fetchMe({ maxAgeMs: 0 }); // force refresh
         setCurrentUser(fresh);
         syncFromUser(fresh);
       } catch {
@@ -61,7 +61,7 @@ export default function RequireRole({ allowed = [], children }) {
       setChecking(true);
       (async () => {
         try {
-          const user = await ensureUser(() => api("/auth/me"));
+          const user = await fetchMe({ maxAgeMs: 5 * 60 * 1000 });
           syncFromUser(user);
         } catch {
           markFailure();
