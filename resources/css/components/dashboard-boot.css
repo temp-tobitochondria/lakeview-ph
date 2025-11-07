@@ -1,0 +1,11 @@
+/* Dashboard Boot Overlay Styles (resources/css/components/dashboard-boot.css)
+   Keeps visual consistency with public boot screen while scoped to dashboards.
+*/
+#lv-dashboard-boot { /* inline base styles set via component; keep non-empty rule to satisfy linter */
+  isolation: isolate; /* ensures stacking context for z-index reliability */
+}
+#lv-dashboard-boot.lv-dash-hidden { opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  #lv-dashboard-boot .spinner { animation: none !important; }
+}

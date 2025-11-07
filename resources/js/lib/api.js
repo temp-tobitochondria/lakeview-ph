@@ -5,6 +5,8 @@
 // --- Config ---------------------------------------------------------------
 const STORAGE_KEY = "auth.token";
 const USER_STORAGE_KEY = "auth.user";
+const USER_STORAGE_TS = "auth.user.ts";
+const USER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes freshness window
 const API_BASE =
   (typeof window !== "undefined" && window.__API_BASE__) ||
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_BASE) ||
@@ -21,10 +23,13 @@ try {
 
 // --- User caching --------------------------------------------------------
 let _user = null;
+let _userTs = 0;
 try {
   const raw = localStorage.getItem(USER_STORAGE_KEY);
   _user = raw ? JSON.parse(raw) : null;
-} catch (_) { _user = null; }
+  const ts = localStorage.getItem(USER_STORAGE_TS);
+  _userTs = ts ? Number(ts) : 0;
+} catch (_) { _user = null; _userTs = 0; }
 
 export function setToken(token /*, opts */) {
   _token = token || null;
@@ -51,6 +56,9 @@ export function setUser(user) {
   try {
     if (_user) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(_user));
     else localStorage.removeItem(USER_STORAGE_KEY);
+    _userTs = _user ? Date.now() : 0;
+    if (_userTs) localStorage.setItem(USER_STORAGE_TS, String(_userTs));
+    else localStorage.removeItem(USER_STORAGE_TS);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('lv-user-change'));
     }
@@ -63,6 +71,12 @@ export function getUser() {
 
 export function clearUser() {
   setUser(null);
+}
+
+export function isUserFresh(maxAgeMs = USER_MAX_AGE_MS) {
+  if (!_user) return false;
+  if (!_userTs) return false;
+  return (Date.now() - _userTs) < Math.max(0, Number(maxAgeMs) || 0);
 }
 
 // --- Helpers --------------------------------------------------------------
@@ -236,19 +250,24 @@ export async function login({ email, password, remember }) {
   if (res?.data) setUser(res.data);
   return res;
 }
-export async function me() {
+let _meInFlight = null;
+export async function me({ maxAgeMs = USER_MAX_AGE_MS } = {}) {
   // Avoid spamming the server with /auth/me when no token is present.
   if (!getToken()) return null;
-  // Use cached user if present
-  if (getUser()) return getUser();
+  // Use cached user if present and fresh
+  if (getUser() && isUserFresh(maxAgeMs)) return getUser();
+  if (_meInFlight) return _meInFlight;
   try {
-    const u = await client.get("/auth/me");
+    _meInFlight = client.get("/auth/me");
+    const u = await _meInFlight;
     if (u) setUser(u);
     return u;
   } catch (e) {
     // Swallow unauthorized errors here so callers can treat null user gracefully
     if (e?.response?.status === 401) return null;
     throw e;
+  } finally {
+    _meInFlight = null;
   }
 }
 export async function logout() {

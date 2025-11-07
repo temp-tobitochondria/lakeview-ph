@@ -58,6 +58,7 @@
 @import "./components/feedback.css";
 @import "./components/sweetalert.css";
 @import "./components/data-summary-table.css";
+@import "./components/dashboard-boot.css"; /* Dashboard overlay loader */
 
 
 /* Pages */

@@ -37,6 +37,17 @@ RUN apt-get update \
  && docker-php-ext-enable opcache \
  && rm -rf /var/lib/apt/lists/*
 
+# PHP Opcache tuning for production
+RUN set -eux; \
+   printf "opcache.enable=1\n" \
+      "opcache.enable_cli=0\n" \
+      "opcache.memory_consumption=192\n" \
+      "opcache.interned_strings_buffer=16\n" \
+      "opcache.max_accelerated_files=20000\n" \
+      "opcache.save_comments=1\n" \
+      "opcache.validate_timestamps=0\n" \
+      > /usr/local/etc/php/conf.d/opcache.ini
+
 # Increase PHP upload/body limits to support large raster uploads (e.g., 100MB+)
 RUN set -eux; \
    printf "upload_max_filesize=128M\npost_max_size=128M\nmemory_limit=512M\nmax_file_uploads=50\nmax_input_time=300\n" > /usr/local/etc/php/conf.d/uploads.ini

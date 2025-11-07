@@ -33,6 +33,7 @@ class KpiController extends Controller
     {
         $ttlSeconds = 120; // adjust if needed later
         $now = now();
+        $t0 = microtime(true);
         $keys = [
             'kpi:admin:orgs' => function () { return Tenant::query()->count(); },
             'kpi:admin:users' => function () {
@@ -119,7 +120,10 @@ class KpiController extends Controller
             ],
         ];
 
-        return response()->json($resp);
+        $respTime = (int) ((microtime(true) - $t0) * 1000);
+        return response()
+            ->json($resp)
+            ->header('Server-Timing', 'kpi;dur='.$respTime.', cache;desc=' . ($cacheHitAll ? 'hit' : 'miss'));
     }
     /**
      * Return total number of organizations (tenants).

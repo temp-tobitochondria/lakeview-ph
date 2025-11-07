@@ -51,6 +51,7 @@ export default function ContribOverview({ tenantId: propTenantId }) {
     myPublished: { value: null, loading: true, error: null },
     orgPublished: { value: null, loading: true, error: null },
   });
+  const [readySignaled, setReadySignaled] = useState(false);
 
   const publish = useCallback((key, payload) => {
     setStats(prev => ({ ...prev, [key]: { ...prev[key], ...payload } }));
@@ -93,6 +94,7 @@ export default function ContribOverview({ tenantId: propTenantId }) {
     } catch (e) {
       publish('orgPublished', { value: null, loading: false, error: true });
     }
+    if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
   }, [tenantId, publish]);
 
   // Resolve tenant + user if missing using /auth/me

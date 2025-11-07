@@ -81,6 +81,8 @@ export default function AdminOverview() {
     lakes: { value: null, loading: true, error: null },
     events: { value: null, loading: true, error: null },
   });
+  // Track if we've signaled dashboard readiness
+  const [readySignaled, setReadySignaled] = useState(false);
 
   const publish = useCallback((id, payload) => {
     setKpis((prev) => ({ ...prev, [id]: payload }));
@@ -120,6 +122,7 @@ export default function AdminOverview() {
       if (payload.users != null) publish('users', { value: payload.users, loading: false });
       if (payload.lakes != null) publish('lakes', { value: payload.lakes, loading: false });
       if (payload.events != null) publish('events', { value: payload.events, loading: false });
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
       return;
     } catch (e) {
       // Fall back to parallel legacy endpoints
@@ -142,11 +145,13 @@ export default function AdminOverview() {
       publish('users', { value: userTotal, loading: false });
       publish('lakes', { value: lakeTotal, loading: false });
       publish('events', { value: evTotal, loading: false });
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
     } catch (e) {
       publish('orgs', { value: null, loading: false, error: true });
       publish('users', { value: null, loading: false, error: true });
       publish('lakes', { value: null, loading: false, error: true });
       publish('events', { value: null, loading: false, error: true });
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
     }
   }, [publish]);
 

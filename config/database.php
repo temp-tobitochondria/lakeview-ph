@@ -96,6 +96,10 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            // Persistent connections lower connection setup latency (ensure PgBouncer or safe pooling)
+            'options' => extension_loaded('pdo_pgsql') ? array_filter([
+                PDO::ATTR_PERSISTENT => true,
+            ]) : [],
         ],
 
         'sqlsrv' => [

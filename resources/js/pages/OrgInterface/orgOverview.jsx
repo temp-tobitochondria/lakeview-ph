@@ -77,6 +77,7 @@ export default function OrgOverview({ tenantId: propTenantId }) {
     tests:   { value: null, loading: true, error: null },
     pending: { value: null, loading: true, error: null },
   });
+  const [readySignaled, setReadySignaled] = useState(false);
 
   const publish = useCallback((key, payload) => {
     setStats(prev => ({ ...prev, [key]: { ...prev[key], ...payload } }));
@@ -128,6 +129,9 @@ export default function OrgOverview({ tenantId: propTenantId }) {
         publish('pending', { value: val, loading: false });
       }
     } catch (e) { publish('pending', { value: null, loading: false, error: true }); }
+
+    // Signal dashboard readiness after first batch completes (success or failure)
+    if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
   }, [tenantId, publish]);
 
   // Resolve tenant id if not provided by prop/url/global via /auth/me

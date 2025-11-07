@@ -13,6 +13,12 @@ php artisan migrate --force || true
 echo "[start] Ensuring storage symlink exists (idempotent)"
 php artisan storage:link || true
 
+# Cache framework artifacts for performance (after successful migrations)
+echo "[start] Caching config, routes, and views"
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
+
 # Optionally start an in-process queue worker so Web+Worker share the same filesystem
 if [ "${RUN_QUEUE_IN_WEB:-false}" = "true" ]; then
 	echo "[start] Starting in-process queue worker (RUN_QUEUE_IN_WEB=true)"

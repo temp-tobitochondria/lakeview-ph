@@ -9,6 +9,7 @@ import {
   FiChevronsRight,
 } from "react-icons/fi";
 import { api, clearToken, getToken, getUser } from "../lib/api";
+import DashboardBoot from "../components/DashboardBoot"; // Overlay loader for dashboards
 import { confirm, alertSuccess } from "../lib/alerts"; // ⬅️ SweetAlert2 helpers
 
 export default function DashboardLayout({ links, user, children }) {
@@ -16,6 +17,7 @@ export default function DashboardLayout({ links, user, children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
+  const [isOverview, setIsOverview] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -31,6 +33,29 @@ export default function DashboardLayout({ links, user, children }) {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Determine if current route is the overview route (exact link)
+  useEffect(() => {
+    const overviewLink = links.find(l => l.exact);
+    setIsOverview(!!overviewLink && location.pathname === overviewLink.path);
+  }, [location.pathname, links]);
+
+  // Immediate readiness for non-overview routes (requirement 3)
+  useEffect(() => {
+    if (!isOverview) {
+      try { window.dispatchEvent(new Event('lv-dashboard-ready')); } catch {}
+    }
+  }, [isOverview]);
+
+  // Tightened fallback to ensure no lingering overlay (requirement 5)
+  useEffect(() => {
+    if (!isOverview) {
+      const t = setTimeout(() => {
+        try { window.dispatchEvent(new Event('lv-dashboard-ready')); } catch {}
+      }, 200);
+      return () => clearTimeout(t);
+    }
+  }, [location.pathname, isOverview]);
 
   // Find active link
   const activeLink = links.find(
@@ -62,6 +87,8 @@ export default function DashboardLayout({ links, user, children }) {
 
   return (
     <div className="dashboard-container">
+  {/* Dashboard boot overlay (session-first, delayed display) */}
+  <DashboardBoot isOverview={isOverview} />
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${collapsed ? "collapsed" : ""}`}>
         <div>
