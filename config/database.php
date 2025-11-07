@@ -95,10 +95,14 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'prefer',
-            // Persistent connections lower connection setup latency (ensure PgBouncer or safe pooling)
+            // For Supabase/managed Postgres use 'require'.
+            'sslmode' => env('DB_SSLMODE', 'require'),
+            // PDO options: prefer disabling persistent by default; enable emulate prepares when behind PgBouncer (txn mode)
             'options' => extension_loaded('pdo_pgsql') ? array_filter([
-                PDO::ATTR_PERSISTENT => true,
+                // Persistent client connections to PgBouncer are optional; default off to avoid exhausting client slots
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false),
+                // Transaction-pooling PgBouncer requires client-side (emulated) prepares to avoid "prepared statement does not exist"
+                PDO::ATTR_EMULATE_PREPARES => env('DB_EMULATE_PREPARES', env('DB_PGBOUNCER', false)) ? true : null,
             ]) : [],
         ],
 
