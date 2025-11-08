@@ -331,14 +331,16 @@ export function useManageLakesTabLogic() {
       const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
       setLakes(normalizeRows(list));
       if (eligibleForCursor) {
-        const nextCursor = data?.next_cursor ?? data?.meta?.next_cursor ?? null;
+        const nextCursor = data?.meta?.next_cursor ?? data?.next_cursor ?? null;
         if (nextCursor) {
           lakesCursorMapRef.current[pagination.page + 1] = nextCursor;
-          setPagination((prev) => ({ ...prev, page: pagination.page, lastPage: pagination.page + 1, total: prev.total }));
+          setPagination((prev) => ({ ...prev, page: pagination.page, perPage: prev.perPage, lastPage: pagination.page + 1, total: prev.total }));
         } else {
-          setPagination((prev) => ({ ...prev, page: pagination.page, lastPage: pagination.page, total: prev.total }));
+          // No next cursor; keep lastPage as current page to hide next navigation
+          setPagination((prev) => ({ ...prev, page: pagination.page, perPage: prev.perPage, lastPage: pagination.page, total: prev.total }));
         }
       } else {
+        // Legacy offset pagination path
         setPagination({ page: data.current_page, perPage: data.per_page, total: data.total, lastPage: data.last_page });
       }
     } catch (err) {
