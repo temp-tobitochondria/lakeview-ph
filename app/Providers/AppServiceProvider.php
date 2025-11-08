@@ -45,5 +45,10 @@ class AppServiceProvider extends ServiceProvider
         // Register event listeners
         Event::listen(FeedbackStatusChanged::class, [SendFeedbackStatusChangedEmail::class, 'handle']);
         Event::listen(FeedbackAdminReplied::class, [SendFeedbackAdminReplyEmail::class, 'handle']);
+
+        // Register KPI cache invalidation observers
+        \App\Models\Tenant::observe(\App\Observers\TenantObserver::class);
+        \App\Models\User::observe(\App\Observers\UserObserver::class);
+        \App\Models\SamplingEvent::observe(\App\Observers\SamplingEventObserver::class);
     }
 }
