@@ -313,8 +313,17 @@ export function useManageLakesTabLogic() {
       const params = new URLSearchParams();
       params.append("per_page", pagination.perPage);
       params.append("page", pagination.page);
-      params.append("sort_by", sort.id);
-      params.append("sort_dir", sort.dir);
+      // Sanitize sort (production may have stale localStorage with null/invalid id)
+      const allowedSort = new Set([
+        'name','alt_name','region','province','municipality','classification','surface_area_km2','elevation_m','mean_depth_m','flows_status','watershed','created_at','updated_at'
+      ]);
+      let sortId = sort?.id;
+      if (!sortId || sortId === 'null' || !allowedSort.has(String(sortId))) {
+        sortId = 'name';
+      }
+      const sortDir = (sort?.dir === 'desc' ? 'desc' : 'asc');
+      params.append("sort_by", sortId);
+      params.append("sort_dir", sortDir);
       if (query) params.append("q", query);
       if (Object.keys(adv).length > 0) params.append("adv", JSON.stringify(adv));
 

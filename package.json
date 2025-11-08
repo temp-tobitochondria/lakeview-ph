@@ -9,7 +9,6 @@
     "stats:test": "node tools/stats-tests.mjs"
   },
   "dependencies": {
-    "4": "^0.0.0",
     "@ngageoint/geopackage": "^4.2.6",
     "@stdlib/stats-base-dists-binomial-cdf": "^0.2.2",
     "@stdlib/stats-base-dists-chisquare-cdf": "^0.2.2",
