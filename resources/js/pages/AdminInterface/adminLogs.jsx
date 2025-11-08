@@ -288,50 +288,49 @@ export default function AdminAuditLogsPage() {
 		}
 	};
 
-	// Separate light fetch (unfiltered) to seed option catalogs so they aren't empty when filters active
+	// Seed option catalogs (roles, tenants, entities) without triggering duplicate network calls.
+	// Uses cachedGet for in-flight & TTL dedupe and skips if catalogs already populated.
 	const seedOptions = async () => {
-		// Try broader admin scope first (if available) to populate full catalogs, then fallback
-		const candidateBases = me && me.role && me.role.includes('admin')
-			? ['/admin/audit-logs', effectiveBase]
-			: [effectiveBase];
+		if ((allRoles.length && allTenants.length && allEntities.length) || !me) return; // already seeded or no user
+		// Build unique candidate bases (avoid duplicate '/admin/audit-logs').
+		const rawBases = me && me.role && me.role.includes('admin') ? ['/admin/audit-logs', effectiveBase] : [effectiveBase];
+		const candidateBases = Array.from(new Set(rawBases));
 		for (const base of candidateBases) {
 			try {
-				const res = await api.get(base, { params: { page:1, per_page:100 } });
-				const items = Array.isArray(res?.data) ? res.data : (res?.data?.data || res.data || res);
-				if (Array.isArray(items) && items.length) {
-					setAllRoles(prev => {
-						const set = new Set(prev);
-						for (const r of items) {
-							const role = r.actor_role || (r.actor && r.actor.role);
-							if (role) set.add(role);
-						}
-						return Array.from(set).sort();
-					});
-					setAllTenants(prev => {
-						const map = new Map(prev.map(t => [String(t.value), t.label]));
-						for (const r of items) {
-							if (r.tenant_id) {
-								const key = String(r.tenant_id);
-								if (!map.has(key)) map.set(key, r.tenant_name || `Tenant ${key}`);
-							}
-						}
-						return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
-					});
-					setAllEntities(prev => {
-						const map = new Map(prev.map(e => [e.full, e.base]));
-						for (const r of items) if (r.model_type) {
-							const full = r.model_type;
-							const base = full.split('\\').pop();
-							// exclude SampleResult from seed catalog
-							if (base === 'SampleResult') continue;
-							if (!map.has(full)) map.set(full, base);
-						}
-						return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
-					});
-					// If we populated something meaningful, break early
-					if (allRoles.length || allTenants.length || allEntities.length) break;
-				}
-			} catch {/* continue to next base */}
+				const res = await cachedGet(base, { params: { page: 1, per_page: 100 }, ttlMs: 2 * 60 * 1000 });
+				const items = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+				if (!Array.isArray(items) || items.length === 0) continue;
+				// Roles
+				setAllRoles(prev => {
+					const set = new Set(prev);
+					for (const r of items) {
+						const role = r.actor_role || (r.actor && r.actor.role);
+						if (role) set.add(role);
+					}
+					return Array.from(set).sort();
+				});
+				// Tenants
+				setAllTenants(prev => {
+					const map = new Map(prev.map(t => [String(t.value), t.label]));
+					for (const r of items) if (r.tenant_id) {
+						const key = String(r.tenant_id);
+						if (!map.has(key)) map.set(key, r.tenant_name || `Tenant ${key}`);
+					}
+					return Array.from(map.entries()).map(([value, label]) => ({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
+				});
+				// Entities (exclude SampleResult)
+				setAllEntities(prev => {
+					const map = new Map(prev.map(e => [e.full, e.base]));
+					for (const r of items) if (r.model_type) {
+						const full = r.model_type; const base = full.split('\\').pop();
+						if (base === 'SampleResult') continue;
+						if (!map.has(full)) map.set(full, base);
+					}
+					return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
+				});
+				// Early exit once any catalog is populated.
+				if (allRoles.length || allTenants.length || allEntities.length) break;
+			} catch {/* swallow, continue */}
 		}
 	};
 

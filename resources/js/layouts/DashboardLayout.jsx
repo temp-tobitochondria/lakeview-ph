@@ -8,7 +8,7 @@ import {
   FiChevronsLeft,
   FiChevronsRight,
 } from "react-icons/fi";
-import { api, clearToken, getToken, getUser, me as fetchMe } from "../lib/api";
+import { api, logout as apiLogout, clearToken, getToken, getUser, me as fetchMe } from "../lib/api";
 import DashboardBoot from "../components/DashboardBoot"; // Overlay loader for dashboards
 import { confirm, alertSuccess } from "../lib/alerts"; // ⬅️ SweetAlert2 helpers
 
@@ -72,17 +72,9 @@ export default function DashboardLayout({ links, user, children }) {
     );
     if (!ok) return;
 
-    try {
-      await api("/auth/logout", { method: "POST" });
-    } catch {
-      // ignore API errors; we still clear local state
-    }
-
-    clearToken();
-
+    try { await apiLogout(); } catch {}
     // Show success toast BEFORE navigation so it’s visible
     await alertSuccess("Signed out", "You have been signed out successfully.");
-
     navigate("/");
   }
 

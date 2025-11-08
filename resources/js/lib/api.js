@@ -139,6 +139,15 @@ function makeError(res, data) {
 }
 
 // --- Core request ---------------------------------------------------------
+// Global abort controller to allow canceling in-flight requests (e.g., on logout)
+let _abortController = (()=>{
+  try { return new AbortController(); } catch { return { signal: undefined, abort: ()=>{} }; }
+})();
+function abortAllRequests(reason) {
+  try { _abortController.abort(reason || 'abort'); } catch {}
+  try { _abortController = new AbortController(); } catch { _abortController = { signal: undefined, abort: ()=>{} }; }
+}
+
 async function request(method, url, { params, body, headers, raw, auth } = {}) {
   const finalUrl = buildUrl(url, params);
   const isForm = body instanceof FormData;
@@ -156,6 +165,8 @@ async function request(method, url, { params, body, headers, raw, auth } = {}) {
       ...(headers || {}),
     },
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
+    // Attach global abort signal so we can cancel promptly on logout
+    signal: _abortController && _abortController.signal ? _abortController.signal : undefined,
   };
   let res;
   try {
@@ -271,9 +282,21 @@ export async function me({ maxAgeMs = USER_MAX_AGE_MS } = {}) {
   }
 }
 export async function logout() {
-  try { await client.post("/auth/logout"); }
-  finally { clearToken(); clearUser(); }
+  // Optimistic, fast logout: clear local state, abort in-flight, navigate callers can proceed.
+  try { abortAllRequests('logout'); } catch {}
+  try { clearToken(); } catch {}
+  try { clearUser(); } catch {}
+  // Fire-and-forget server logout with a short timeout; don't block UI
+  try {
+    const p = client.post("/auth/logout");
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1500));
+    // race but ignore outcome; we don't await to keep it non-blocking
+    Promise.race([p, timeout]).catch(()=>{});
+  } catch {}
 }
+
+// Expose abort for rare advanced cases
+export const cancelAllRequests = abortAllRequests;
 
 // ---- Tenant admin management ----
 // Tenant admin management (single-tenant user model)

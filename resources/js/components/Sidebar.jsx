@@ -16,7 +16,7 @@ import {
 import { FiChevronDown } from "react-icons/fi";
 import { MapContainer, TileLayer, Rectangle, useMap } from "react-leaflet";
 import { useNavigate, useLocation } from "react-router-dom";
-import { api, clearToken, getToken, me as fetchMe } from "../lib/api";
+import { api, logout as apiLogout, clearToken, getToken, me as fetchMe } from "../lib/api";
 import { getCurrentUser, setCurrentUser, ensureUser, isStale } from "../lib/authState";
 import "leaflet/dist/leaflet.css";
 import "../../css/util/scrollbars.css";
@@ -482,14 +482,12 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
                   );
                   if (!ok) return;
 
-                  try {
-                    await api("/auth/logout", { method: "POST" });
-                  } catch {}
-                  clearToken();
+                  // Fast, optimistic logout: clear immediately; fire server call in background
+                  try { await apiLogout(); } catch {}
                   setCurrentUser(null);
                   setMe(null);
                   if (!pinned) onClose?.();
-
+                  // Show confirmation and navigate without waiting on network
                   await alertSuccess("Signed out", "You have been signed out successfully.");
                   navigate("/");
                 }}

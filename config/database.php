@@ -87,6 +87,8 @@ return [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
+            // Optional explicit IPv4 address to bypass IPv6 DNS issues (set DB_HOSTADDR)
+            'hostaddr' => env('DB_HOSTADDR'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
