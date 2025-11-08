@@ -199,7 +199,11 @@ function LayerList({
   };
 
   useEffect(() => {
-    refresh();
+    // Guard against double invocation in React 18 StrictMode dev by tracking first mount.
+    // In production StrictMode effects are not double-called.
+    let did = false;
+    if (!did) refresh();
+    return () => { did = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

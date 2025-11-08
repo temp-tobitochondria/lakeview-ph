@@ -90,44 +90,59 @@ export default function AdminOverview() {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    // Mark all as loading (UI stays stable if cached values appear immediately below)
+    // Mark all as loading
     publish('orgs', { loading: true });
     publish('users', { loading: true });
     publish('lakes', { loading: true });
     publish('events', { loading: true });
 
-    // 1) Try consolidated summary endpoint with composite cache
-    const compositeKey = 'admin:kpis:summary';
-    const compositeCached = kpiCache.getKpi(compositeKey);
-    if (compositeCached && typeof compositeCached === 'object') {
-      const { orgs, users, lakes, events } = compositeCached;
-      if (orgs != null) publish('orgs', { value: orgs, loading: false });
-      if (users != null) publish('users', { value: users, loading: false });
-      if (lakes != null) publish('lakes', { value: lakes, loading: false });
-      if (events != null) publish('events', { value: events, loading: false });
+    const compositeKey = 'admin:kpis:summary:v2';
+    const cached = kpiCache.getKpi(compositeKey);
+    if (cached) {
+      for (const k of ['orgs','users','lakes','events']) {
+        if (cached[k] != null) publish(k, { value: cached[k], loading: false });
+      }
+    }
+    // Try unified endpoint first
+    try {
+      const res = await api.get('/kpis');
+      const data = res?.data?.data || res?.data || res; // support various wrappers
+      const admin = data?.admin || {};
+      const payload = {
+        orgs: admin?.orgs?.count ?? null,
+        users: admin?.users?.count ?? null,
+        lakes: admin?.lakes?.count ?? null,
+        events: admin?.events?.count ?? null,
+      };
+      kpiCache.setKpi(compositeKey, payload, 60 * 1000);
+      for (const k of Object.keys(payload)) {
+        if (payload[k] != null) publish(k, { value: payload[k], loading: false });
+      }
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
+      return; // success - stop
+    } catch (e) {
+      // fallback to legacy summary route then granular
     }
 
+    // Legacy summary fallback
     try {
       const res = await api.get('/admin/kpis/summary');
-      const data = res?.data || res; // tolerate either wrappers
+      const d = res?.data?.data || res?.data || res;
       const payload = {
-        orgs: data?.orgs?.count ?? data?.data?.orgs?.count ?? null,
-        users: data?.users?.count ?? data?.data?.users?.count ?? null,
-        lakes: data?.lakes?.count ?? data?.data?.lakes?.count ?? null,
-        events: data?.events?.count ?? data?.data?.events?.count ?? null,
+        orgs: d?.orgs?.count ?? null,
+        users: d?.users?.count ?? null,
+        lakes: d?.lakes?.count ?? null,
+        events: d?.events?.count ?? d?.tests?.count ?? null,
       };
-      // Update cache and UI
       kpiCache.setKpi(compositeKey, payload, 60 * 1000);
-      if (payload.orgs != null) publish('orgs', { value: payload.orgs, loading: false });
-      if (payload.users != null) publish('users', { value: payload.users, loading: false });
-      if (payload.lakes != null) publish('lakes', { value: payload.lakes, loading: false });
-      if (payload.events != null) publish('events', { value: payload.events, loading: false });
+      for (const k of Object.keys(payload)) {
+        if (payload[k] != null) publish(k, { value: payload[k], loading: false });
+      }
       if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
       return;
-    } catch (e) {
-      // Fall back to parallel legacy endpoints
-    }
+    } catch (e) { /* continue */ }
 
+    // Final granular fallback
     try {
       const [orgRes, userRes, lakeRes, evRes] = await Promise.all([
         api.get('/admin/kpis/orgs'),
@@ -135,25 +150,22 @@ export default function AdminOverview() {
         api.get('/admin/kpis/lakes'),
         api.get('/admin/kpis/tests'),
       ]);
-      const orgTotal = orgRes?.data?.count ?? orgRes?.count ?? null;
-      const userTotal = userRes?.data?.count ?? userRes?.count ?? null;
-      const lakeTotal = lakeRes?.data?.count ?? lakeRes?.count ?? null;
-      const evTotal = evRes?.data?.count ?? evRes?.count ?? null;
-      const payload = { orgs: orgTotal, users: userTotal, lakes: lakeTotal, events: evTotal };
+      const payload = {
+        orgs: orgRes?.data?.count ?? null,
+        users: userRes?.data?.count ?? null,
+        lakes: lakeRes?.data?.count ?? null,
+        events: evRes?.data?.count ?? null,
+      };
       kpiCache.setKpi(compositeKey, payload, 60 * 1000);
-      publish('orgs', { value: orgTotal, loading: false });
-      publish('users', { value: userTotal, loading: false });
-      publish('lakes', { value: lakeTotal, loading: false });
-      publish('events', { value: evTotal, loading: false });
+      for (const k of Object.keys(payload)) {
+        if (payload[k] != null) publish(k, { value: payload[k], loading: false });
+      }
       if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
     } catch (e) {
-      publish('orgs', { value: null, loading: false, error: true });
-      publish('users', { value: null, loading: false, error: true });
-      publish('lakes', { value: null, loading: false, error: true });
-      publish('events', { value: null, loading: false, error: true });
+      for (const k of ['orgs','users','lakes','events']) publish(k, { value: null, loading: false, error: true });
       if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
     }
-  }, [publish]);
+  }, [publish, readySignaled]);
 
   useEffect(() => {
     fetchAll();

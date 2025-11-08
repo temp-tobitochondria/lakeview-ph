@@ -205,6 +205,30 @@ client.patch  = (url, body, config = {})     => request("PATCH",  url, { ...(con
 client.delete = (url, config = {})           => request("DELETE", url, config);
 client.upload = (url, formData, config = {}) => request("POST",   url, { ...(config || {}), body: formData });
 
+// --- In-flight GET dedupe --------------------------------------------------
+// Map key: method+finalUrl -> Promise
+const _inflight = new Map();
+async function requestDedupe(method, url, opts = {}) {
+  // Only dedupe GET without explicit disable flag
+  if (method === 'GET' && !opts.allowDuplicate) {
+    const finalUrl = buildUrl(url, opts.params);
+    const key = `GET ${finalUrl}`;
+    if (_inflight.has(key)) {
+      return _inflight.get(key);
+    }
+    const p = request(method, url, opts).finally(() => {
+      // small delay so very rapid sequential identical calls still share
+      setTimeout(() => _inflight.delete(key), 50);
+    });
+    _inflight.set(key, p);
+    return p;
+  }
+  return request(method, url, opts);
+}
+
+// Override get to use dedupe layer
+client.get = (url, config = {}) => requestDedupe('GET', url, config);
+
 // expose token helpers on the client too (optional)
 client.setToken  = setToken;
 client.getToken  = getToken;
@@ -282,17 +306,20 @@ export async function me({ maxAgeMs = USER_MAX_AGE_MS } = {}) {
   }
 }
 export async function logout() {
-  // Optimistic, fast logout: clear local state, abort in-flight, navigate callers can proceed.
+  // Strategy: attempt server logout WITH token first (non-blocking), then clear local.
+  // Avoid 401 noise by swallowing errors and only clearing token after request fires.
+  let fired = false;
+  try {
+    const p = client.post("/auth/logout");
+    fired = true;
+    // Give it a tiny window (300ms) then ignore; do not block caller.
+    Promise.race([p, new Promise(r=>setTimeout(r,300))]).catch(()=>{});
+  } catch { /* ignore */ }
+  // Abort any other in-flight queries AFTER firing logout (so header still present for logout call)
   try { abortAllRequests('logout'); } catch {}
   try { clearToken(); } catch {}
   try { clearUser(); } catch {}
-  // Fire-and-forget server logout with a short timeout; don't block UI
-  try {
-    const p = client.post("/auth/logout");
-    const timeout = new Promise((resolve) => setTimeout(resolve, 1500));
-    // race but ignore outcome; we don't await to keep it non-blocking
-    Promise.race([p, timeout]).catch(()=>{});
-  } catch {}
+  return fired;
 }
 
 // Expose abort for rare advanced cases

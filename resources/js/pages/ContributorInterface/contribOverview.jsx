@@ -61,6 +61,31 @@ export default function ContribOverview({ tenantId: propTenantId }) {
     publish('myDraft', { loading: true });
     publish('myPublished', { loading: true });
     publish('orgPublished', { loading: true });
+    // Prefer unified endpoint once user+tenant are known
+    try {
+      const cacheKey = `contrib:${tenantId}:kpis:v2`;
+      const cached = kpiCache.getKpi(cacheKey);
+      if (cached) {
+        publish('myDraft', { value: cached.myDraft ?? 0, loading: false });
+        publish('myPublished', { value: cached.myPublished ?? 0, loading: false });
+        publish('orgPublished', { value: cached.orgPublished ?? 0, loading: false });
+      }
+      const unified = await api.get('/kpis');
+      const d = unified?.data?.data || unified?.data || unified;
+      const contrib = d?.contrib || {};
+      const draft = contrib?.my_tests?.draft ?? null;
+      const publishedMine = contrib?.my_tests?.published ?? null;
+      const orgPub = contrib?.org_tests?.published ?? null;
+      const payload = { myDraft: draft, myPublished: publishedMine, orgPublished: orgPub };
+      kpiCache.setKpi(cacheKey, payload, 60 * 1000);
+      if (draft != null) publish('myDraft', { value: draft, loading: false });
+      if (publishedMine != null) publish('myPublished', { value: publishedMine, loading: false });
+      if (orgPub != null) publish('orgPublished', { value: orgPub, loading: false });
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
+      return;
+    } catch (e) {
+      // fallback to legacy contrib endpoints
+    }
     try {
       const key = `contrib:${tenantId}:my-tests`;
       const cached = kpiCache.getKpi(key);

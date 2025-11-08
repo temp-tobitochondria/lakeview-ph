@@ -83,16 +83,41 @@ export default function OrgOverview({ tenantId: propTenantId }) {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    if (!tenantId) return; // still resolving tenant id
+    if (!tenantId) return;
     publish('members', { loading: true });
     publish('tests', { loading: true });
     publish('pending', { loading: true });
+    const cacheKey = `org:${tenantId}:kpis:v2`;
+    const cached = kpiCache.getKpi(cacheKey);
+    if (cached) {
+      if (cached.members != null) publish('members', { value: cached.members, loading: false });
+      if (cached.tests != null) publish('tests', { value: cached.tests, loading: false });
+      if (cached.pending != null) publish('pending', { value: cached.pending, loading: false });
+    }
+    // Prefer unified endpoint
+    try {
+      const res = await api.get('/kpis');
+      const d = res?.data?.data || res?.data || res;
+      const org = d?.org || {};
+      const members = org?.members?.count ?? null;
+      const tests = org?.tests?.count ?? null;
+      const pending = org?.tests_draft?.count ?? null;
+      const payload = { members, tests, pending };
+      kpiCache.setKpi(cacheKey, payload, 60 * 1000);
+      if (members != null) publish('members', { value: members, loading: false });
+      if (tests != null) publish('tests', { value: tests, loading: false });
+      if (pending != null) publish('pending', { value: pending, loading: false });
+      if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
+      return;
+    } catch (e) { /* fallback to legacy */ }
+
+    // Legacy endpoints fallback
     // Members
     try {
       const key = `org:${tenantId}:members`;
-      const cached = kpiCache.getKpi(key);
-      if (cached) {
-        publish('members', { value: cached, loading: false });
+      const cachedMembers = kpiCache.getKpi(key);
+      if (cachedMembers) {
+        publish('members', { value: cachedMembers, loading: false });
       } else {
         const r = await api.get(`/org/${tenantId}/kpis/members`);
         const val = r?.data?.count ?? r?.count ?? null;
@@ -100,13 +125,12 @@ export default function OrgOverview({ tenantId: propTenantId }) {
         publish('members', { value: val, loading: false });
       }
     } catch (e) { publish('members', { value: null, loading: false, error: true }); }
-
     // Tests
     try {
       const key = `org:${tenantId}:tests`;
-      const cached = kpiCache.getKpi(key);
-      if (cached) {
-        publish('tests', { value: cached, loading: false });
+      const cachedTests = kpiCache.getKpi(key);
+      if (cachedTests) {
+        publish('tests', { value: cachedTests, loading: false });
       } else {
         const r = await api.get(`/org/${tenantId}/kpis/tests`);
         const val = r?.data?.count ?? r?.count ?? null;
@@ -114,13 +138,12 @@ export default function OrgOverview({ tenantId: propTenantId }) {
         publish('tests', { value: val, loading: false });
       }
     } catch (e) { publish('tests', { value: null, loading: false, error: true }); }
-
     // Pending
     try {
       const key = `org:${tenantId}:pending`;
-      const cached = kpiCache.getKpi(key);
-      if (cached) {
-        publish('pending', { value: cached, loading: false });
+      const cachedPending = kpiCache.getKpi(key);
+      if (cachedPending) {
+        publish('pending', { value: cachedPending, loading: false });
       } else {
         const r = await api.get(`/org/${tenantId}/kpis/tests/draft`);
         const val = r?.data?.count ?? r?.count ?? null;
@@ -128,10 +151,8 @@ export default function OrgOverview({ tenantId: propTenantId }) {
         publish('pending', { value: val, loading: false });
       }
     } catch (e) { publish('pending', { value: null, loading: false, error: true }); }
-
-    // Signal dashboard readiness after first batch completes (success or failure)
     if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
-  }, [tenantId, publish]);
+  }, [tenantId, publish, readySignaled]);
 
   // Resolve tenant id if not provided by prop/url/global via me() helper
   useEffect(() => {

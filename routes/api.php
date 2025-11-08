@@ -282,6 +282,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // KYC minimal status (placeholder)
     Route::get('/kyc/status', [KycController::class, 'status']);
 
+    // Unified KPI endpoint (role-aware). Replaces multiple granular /admin/... /org/... /contrib/... kpi routes on frontend.
+    Route::get('/kpis', [\App\Http\Controllers\Api\KpiController::class, 'summary']);
+
     // KYC profile (user)
     Route::get('/kyc/profile', [KycProfileController::class, 'show']);
     Route::patch('/kyc/profile', [KycProfileController::class, 'update']);
