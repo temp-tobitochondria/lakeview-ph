@@ -11,6 +11,7 @@ use App\Models\Parameter;
 use App\Models\WqStandard;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class OptionsController extends Controller
 {
@@ -190,16 +191,40 @@ class OptionsController extends Controller
         $limit = (int) $request->query('limit', 1000);
         $limit = max(1, min($limit, 5000));
 
-        $rows = Tenant::query()
-            ->select(['id', 'name'])
-            ->where('active', true)
-            ->when($q !== '', function ($qb) use ($q) {
-                $qb->where('name', 'ILIKE', "%{$q}%");
-            })
-            ->orderBy('name')
-            ->limit($limit)
-            ->get();
+        try {
+            $rows = Tenant::query()
+                ->select(['id', 'name'])
+                ->where('active', true)
+                ->when($q !== '', function ($qb) use ($q) {
+                    $qb->where('name', 'ILIKE', "%{$q}%");
+                })
+                ->orderBy('name')
+                ->limit($limit)
+                ->get();
 
-        return response()->json(['data' => $rows]);
+            return response()->json(['data' => $rows]);
+        } catch (\Throwable $e) {
+            // Fallback to raw SQL to surface clearer DB errors and keep dropdowns working
+            try {
+                $sql = 'select id, name from tenants where active = true';
+                $params = [];
+                if ($q !== '') { $sql .= ' and name ILIKE ?'; $params[] = "%{$q}%"; }
+                $sql .= ' order by name limit ?';
+                $params[] = $limit;
+                $rows = DB::select($sql, $params);
+                // Mark response as fallback for observability
+                return response()->json(['data' => $rows, 'fallback' => 'raw']);
+            } catch (\Throwable $e2) {
+                \Log::error('options.tenants failed', [
+                    'eloquent_error' => $e->getMessage(),
+                    'raw_error' => $e2->getMessage(),
+                ]);
+                return response()->json([
+                    'error' => 'Failed to list tenants',
+                    'eloquent' => $e->getMessage(),
+                    'raw' => $e2->getMessage(),
+                ], 500);
+            }
+        }
     }
 }
