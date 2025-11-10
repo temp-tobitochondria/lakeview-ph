@@ -18,6 +18,7 @@ import StationSelect from './ui/StationSelect';
 import StatusMessages from './ui/StatusMessages';
 import ParamSelect from './ui/ParamSelect';
 import useCurrentStandard from './hooks/useCurrentStandard';
+import { fetchParamThresholds } from './hooks/useParamThresholds';
 import DepthSelect from './ui/DepthSelect';
 import useYearRange from './hooks/useYearRange';
 import useParamEvaluationType from './hooks/useParamEvaluationType';
@@ -36,6 +37,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [paramsLoading, setParamsLoading] = useState(false);
   const [showExactP, setShowExactP] = useState(false);
   const [showAllValues, setShowAllValues] = useState(false);
   const [lakeId, setLakeId] = useState('');
@@ -51,6 +53,15 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const [availableDepths, setAvailableDepths] = useState([]);
   const [cl, setCl] = useState('0.95');
   const paramOptions = (parentParamOptions && parentParamOptions.length ? parentParamOptions : (params || []));
+
+  // Prefetch thresholds for all parameters alongside parameters
+  useEffect(() => {
+    if (!paramOptions?.length || !currentStd?.id) return;
+    paramOptions.forEach(p => {
+      fetchParamThresholds({ paramCode: p.code || p.key, appliedStandardId: currentStd.id, classCode: classCode || undefined });
+    });
+  }, [paramOptions, currentStd?.id, classCode]);
+
   const { classes } = useStandardsAndClasses();
   const [paramEvaluationType, setParamEvaluationType] = useState(null);
 
@@ -67,10 +78,10 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const debouncedYearTo = useDebounce(yearTo);
   const { events: primaryEvents } = useSampleEvents(lakeId && String(lakeId) !== 'custom' ? lakeId : null, null, 'custom', yearFrom, yearTo);
   // Unbounded events for deriving stable org options and year dropdowns
-  const { events: primaryAllEvents } = useSampleEvents(lakeId && String(lakeId) !== 'custom' ? lakeId : null, null, 'all', '', '');
+  const { events: primaryAllEvents, loading: primaryAllLoading } = useSampleEvents(lakeId && String(lakeId) !== 'custom' ? lakeId : null, null, 'all', '', '');
   const otherLakeId = compareValue && String(compareValue).startsWith('lake:') ? Number(String(compareValue).split(':')[1]) : null;
   const { events: secondaryEvents } = useSampleEvents(otherLakeId, null, 'custom', yearFrom, yearTo);
-  const { events: secondaryAllEvents } = useSampleEvents(otherLakeId, null, 'all', '', '');
+  const { events: secondaryAllEvents, loading: secondaryAllLoading } = useSampleEvents(otherLakeId, null, 'all', '', '');
 
   const orgOptions = React.useMemo(() => deriveOrgOptions(primaryAllEvents), [primaryAllEvents]);
   const secondaryOrgOptions = React.useMemo(() => deriveOrgOptions(secondaryEvents), [secondaryEvents]);
@@ -119,7 +130,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     if (depthMode === 'single' && depthValue && !availableDepths.includes(Number(depthValue))) setDepthValue('');
   }, [availableDepths, depthMode, depthValue]);
 
-  const stationOptions = useStationsForLakeClass({ lakeId, organizationId, paramCode, yearFrom, yearTo, enabled: inferredTest === 'one-sample' }) || [];
+  const { options: stationOptions, loading: stationLoading } = useStationsForLakeClass({ lakeId, organizationId, paramCode, yearFrom, yearTo, enabled: inferredTest === 'one-sample' });
 
   // Derive available years from the currently selected dataset (primary lake + selected organization)
   const availableYears = React.useMemo(() => {
@@ -341,19 +352,19 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         }} />
       </div>
       <div style={{ gridColumn: '3 / span 1', minWidth:0 }}>
-        <OrgSelect required options={orgOptions} value={organizationId} onChange={e=>{ setOrganizationId(e.target.value); setResult(null); }} placeholder={String(lakeId) === 'custom' ? 'Custom dataset' : 'Dataset Source'} disabled={String(lakeId) === 'custom'} />
+        <OrgSelect required options={orgOptions} value={organizationId} onChange={e=>{ setOrganizationId(e.target.value); setResult(null); }} placeholder={String(lakeId) === 'custom' ? 'Custom dataset' : 'Dataset Source'} disabled={String(lakeId) === 'custom'} loading={primaryAllLoading} />
       </div>
       {compareValue && String(compareValue).startsWith('lake:') ? (
         <div style={{ gridColumn: '4 / span 1', minWidth:0 }}>
-          <OrgSelect required options={secondaryOrgOptions} value={secondaryOrganizationId} onChange={e=>{ setSecondaryOrganizationId(e.target.value); setResult(null); }} placeholder="Secondary Dataset Source" />
+          <OrgSelect required options={secondaryOrgOptions} value={secondaryOrganizationId} onChange={e=>{ setSecondaryOrganizationId(e.target.value); setResult(null); }} placeholder="Secondary Dataset Source" loading={secondaryAllLoading} />
         </div>
       ) : (
         <div style={{ gridColumn: '4 / span 1', minWidth:0 }}>
-          <StationSelect options={stationOptions} value={stationId} onChange={e=>{ setStationId(e.target.value); setResult(null); }} disabled={String(lakeId) === 'custom' || !organizationId || !compareValue || !String(compareValue).startsWith('class:')} />
+          <StationSelect options={stationOptions} value={stationId} onChange={e=>{ setStationId(e.target.value); setResult(null); }} disabled={String(lakeId) === 'custom' || !organizationId || !compareValue || !String(compareValue).startsWith('class:')} loading={stationLoading} />
         </div>
       )}
       <div style={{ gridColumn: '1 / span 1', minWidth:0, display:'flex', alignItems:'stretch' }}>
-        <ParamSelect style={{ width: '100%' }} options={paramOptions} value={paramCode} onChange={e=>{ setParamCode(e.target.value); setResult(null); }} />
+        <ParamSelect style={{ width: '100%' }} options={paramOptions} value={paramCode} onChange={e=>{ setParamCode(e.target.value); setResult(null); }} loading={paramsLoading} />
       </div>
       <div style={{ gridColumn: '2 / span 1', minWidth:0, display:'flex', alignItems:'stretch' }}>
         <DepthSelect style={{ width: '100%' }}

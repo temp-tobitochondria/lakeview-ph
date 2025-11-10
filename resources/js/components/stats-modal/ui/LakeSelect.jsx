@@ -24,7 +24,7 @@ export default function LakeSelect({ lakes = [], value = '', onChange = () => {}
       </select>
       {loading ? (
         <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
-          <LoadingSpinner inline size={16} label="Loading" />
+          <LoadingSpinner inline size={16} label="" />
         </div>
       ) : null}
     </div>

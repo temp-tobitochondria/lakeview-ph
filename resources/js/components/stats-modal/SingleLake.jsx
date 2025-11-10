@@ -13,7 +13,7 @@ import useTimeSeriesData from "./hooks/useTimeSeriesData";
 import useDepthProfileData from "./hooks/useDepthProfileData";
 import useSeasonalMK from "./hooks/useSeasonalMK";
 import useCurrentStandard from "./hooks/useCurrentStandard";
-import useParamThresholds from "./hooks/useParamThresholds";
+import useParamThresholds, { fetchParamThresholds } from "./hooks/useParamThresholds";
 import GraphInfoButton from "./ui/GraphInfoButton";
 import StationPicker from "./ui/StationPicker";
 import { SeriesModeToggle } from "./ui/Toggles";
@@ -101,6 +101,15 @@ export default function SingleLake({
   const nameForSelectedLake = useMemo(() => lakeName(lakeOptions, selectedLake) || String(selectedLake || '') || '', [lakeOptions, selectedLake]);
   const classForSelectedLake = useMemo(() => lakeClass(lakeOptions, selectedLake) || selectedClass || '', [lakeOptions, selectedLake, selectedClass]);
   const { current: currentStd } = useCurrentStandard();
+
+  // Prefetch thresholds for all parameters alongside parameters
+  useEffect(() => {
+    if (!paramOptions?.length || !currentStd?.id) return;
+    paramOptions.forEach(p => {
+      fetchParamThresholds({ paramCode: p.code || p.key, appliedStandardId: currentStd.id, classCode: classForSelectedLake || undefined });
+    });
+  }, [paramOptions, currentStd?.id, classForSelectedLake]);
+
   const { chartData, loadingThresholds: tsThresholdsLoading } = useTimeSeriesData({ events, selectedParam, selectedStations, bucket, timeRange, dateFrom, dateTo, seriesMode, classForSelectedLake, depthSelection: selectedDepth, appliedStandardId: currentStd?.id });
   const depthProfile = useDepthProfileData({ events, selectedParam, selectedStations, bucket });
   // Correlation removed
@@ -381,7 +390,7 @@ export default function SingleLake({
               <div style={{ position: 'relative' }}>
                 <button ref={stationBtnRef} type="button" className="pill-btn" disabled={!selectedLake || !selectedOrg || !stationsList?.length || stationsLoading} title={!selectedOrg ? 'Choose a dataset source first' : (!stationsList?.length ? 'No stations available' : undefined)} onClick={() => setStationsOpen((v) => !v)} style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span>{selectedStations.length ? `${selectedStations.length} selected` : 'Select locations'}</span>
-                  {stationsLoading ? (<span style={{ marginLeft: 8 }}><LoadingSpinner inline size={16} label="Loading" /></span>) : null}
+                  {stationsLoading ? (<span style={{ marginLeft: 8 }}><LoadingSpinner inline size={16} label="" /></span>) : null}
                 </button>
                 <StationPicker
                   anchorRef={stationBtnRef}

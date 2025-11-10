@@ -19,6 +19,8 @@ import useCompareBarData from "./hooks/useCompareBarData";
 import LakeSelect from './ui/LakeSelect';
 import OrgSelect from './ui/OrgSelect';
 import ParamSelect from './ui/ParamSelect';
+import useCurrentStandard from './hooks/useCurrentStandard';
+import { fetchParamThresholds } from './hooks/useParamThresholds';
 
 function CompareLake({
   lakeOptions = [],
@@ -98,6 +100,16 @@ function CompareLake({
     return () => { aborted = true; };
   }, [params]);
   const paramList = useMemo(() => (params && params.length ? params : localParams), [params, localParams]);
+
+  const { current: currentStd } = useCurrentStandard();
+
+  // Prefetch thresholds for all parameters alongside parameters
+  useEffect(() => {
+    if (!paramList?.length || !currentStd?.id) return;
+    paramList.forEach(p => {
+      fetchParamThresholds({ paramCode: p.code || p.key, appliedStandardId: currentStd.id, classCode: undefined });
+    });
+  }, [paramList, currentStd?.id]);
 
   const { orgOptions: orgOptionsA, stationsByOrg: stationsByOrgA, allStations: allStationsA, loading: loadingStationsA } = useStationsCache(lakeA);
   const { orgOptions: orgOptionsB, stationsByOrg: stationsByOrgB, allStations: allStationsB, loading: loadingStationsB } = useStationsCache(lakeB);
