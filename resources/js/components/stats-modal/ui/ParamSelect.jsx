@@ -4,14 +4,18 @@ import LoadingSpinner from '../../LoadingSpinner';
 export default function ParamSelect({ options = [], value = '', onChange = () => {}, placeholder = 'Select parameter', style = {}, required = false, loading = false, disabled = false }) {
   const isDisabled = disabled || loading;
   return (
-    <div style={{ position: 'relative' }}>
+    // Ensure the wrapper fills the available column width so the inner <select>
+    // (which already uses width: '100%') matches other selectors placed in the
+    // same grid layout (e.g. `LakeSelect`). Without this the wrapper can
+    // shrink-to-fit and make the select appear shorter.
+    <div style={{ position: 'relative', width: '100%' }}>
       <select
         required={required}
         className="pill-btn"
         value={value}
         onChange={onChange}
         disabled={isDisabled}
-        style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px', paddingRight: loading ? 44 : 12, ...style }}
+        style={{ width:'100%', minWidth:0, boxSizing:'border-box', padding:'10px 12px', height:40, lineHeight:'20px', paddingRight: loading ? 44 : 12, ...style }}
       >
         <option value="">{placeholder}</option>
         {Array.isArray(options) && options.length ? (

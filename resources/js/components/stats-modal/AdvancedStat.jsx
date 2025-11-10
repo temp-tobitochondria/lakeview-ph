@@ -17,7 +17,7 @@ import OrgSelect from './ui/OrgSelect';
 import StationSelect from './ui/StationSelect';
 import StatusMessages from './ui/StatusMessages';
 import ParamSelect from './ui/ParamSelect';
-import StandardSelect from './ui/StandardSelect';
+import useCurrentStandard from './hooks/useCurrentStandard';
 import DepthSelect from './ui/DepthSelect';
 import useYearRange from './hooks/useYearRange';
 import useParamEvaluationType from './hooks/useParamEvaluationType';
@@ -44,13 +44,14 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
   const { yearFrom, setYearFrom, yearTo, setYearTo, yearError } = useYearRange('', '');
   const [organizationId, setOrganizationId] = useState('');
   const [secondaryOrganizationId, setSecondaryOrganizationId] = useState('');
-  const [appliedStandardId, setAppliedStandardId] = useState('');
+  // Use the site-wide current standard (no user selection)
+  const { current: currentStd } = useCurrentStandard();
   const [depthMode, setDepthMode] = useState('all');
   const [depthValue, setDepthValue] = useState('');
   const [availableDepths, setAvailableDepths] = useState([]);
   const [cl, setCl] = useState('0.95');
   const paramOptions = (parentParamOptions && parentParamOptions.length ? parentParamOptions : (params || []));
-  const { standards, classes } = useStandardsAndClasses();
+  const { classes } = useStandardsAndClasses();
   const [paramEvaluationType, setParamEvaluationType] = useState(null);
 
   const [stationId, setStationId] = useState('');
@@ -158,9 +159,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
 
   // When switching to lake vs lake (two-sample), clear Applied Standard so it reverts to default/placeholder
   useEffect(() => {
-    if (inferredTest === 'two-sample' && appliedStandardId) {
-      setAppliedStandardId('');
-    }
+    // When switching to two-sample we don't need to clear anything because standard is derived from currentStd
   }, [inferredTest]);
 
   useEffect(() => {
@@ -179,7 +178,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     enabled: inferredTest === 'one-sample',
     lakeId,
     paramCode,
-    appliedStandardId,
+    appliedStandardId: currentStd?.id,
     classCodeOverride: (inferredTest === 'one-sample' && compareValue && String(compareValue).startsWith('class:')) ? classCode : undefined,
   });
   useEffect(() => { setParamEvaluationType(evalTypeHook || null); }, [evalTypeHook]);
@@ -194,7 +193,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     if (!lakeId) { alertError('Missing Lake', 'Please select a Primary Lake before running the test.'); setLoading(false); return; }
     const isCustom = String(lakeId) === 'custom';
     if (!isCustom && !organizationId) { alertError('Missing Dataset Source', 'Please select a Dataset Source before running the test.'); setLoading(false); return; }
-    if (inferredTest !== 'two-sample' && !appliedStandardId) { alertError('Missing Applied Standard', 'Please select an Applied Standard before running the test.'); setLoading(false); return; }
+  if (inferredTest !== 'two-sample' && !currentStd?.id) { alertError('Missing Applied Standard', 'No current standard is available; please configure a Current standard.'); setLoading(false); return; }
     if (!paramCode) { alertError('Missing Parameter', 'Please select a Parameter before running the test.'); setLoading(false); return; }
     if (!testToUse) { alertError('Missing Test', 'Please select a Test before running the test.'); setLoading(false); return; }
     if (!allowedTests.includes(testToUse)) { alertError('Invalid Test Selection', 'The selected test is not applicable for the current comparison mode.'); setLoading(false); return; }
@@ -214,7 +213,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         paramCode,
         lakeId,
         compareValue,
-        appliedStandardId,
+        appliedStandardId: currentStd?.id,
         yearFrom,
         yearTo,
         depthMode,
@@ -280,7 +279,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
     setYearTo('');
     setOrganizationId('');
     setSecondaryOrganizationId('');
-    setAppliedStandardId('');
+    // applied standard is derived from the site 'Current' standard; nothing to clear
     setParamCode('');
     setSelectedTest('');
     setResult(null);
@@ -327,7 +326,7 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
       </button>
     </div>
   <div>
-  <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 1fr', gridTemplateRows:'repeat(2, auto)', gap:10, alignItems:'start', fontSize:13, minWidth:0 }}>
+  <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gridTemplateRows:'repeat(2, auto)', gap:12, alignItems:'center', fontSize:13, minWidth:0 }}>
       <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <LakeSelect includeCustom lakes={lakes} value={lakeId} onChange={e=>{ setLakeId(e.target.value); setResult(null); }} />
@@ -353,34 +352,23 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
           <StationSelect options={stationOptions} value={stationId} onChange={e=>{ setStationId(e.target.value); setResult(null); }} disabled={String(lakeId) === 'custom' || !organizationId || !compareValue || !String(compareValue).startsWith('class:')} />
         </div>
       )}
-
-      <div style={{ gridColumn: '1 / span 1', minWidth:0 }}>
-        <StandardSelect
-          required
-          standards={standards}
-          value={appliedStandardId}
-          onChange={e=>{ setAppliedStandardId(e.target.value); setResult(null); }}
-          disabled={inferredTest === 'two-sample'}
-          title={inferredTest === 'two-sample' ? 'Not used for lake vs lake comparison' : undefined}
-        />
+      <div style={{ gridColumn: '1 / span 1', minWidth:0, display:'flex', alignItems:'stretch' }}>
+        <ParamSelect style={{ width: '100%' }} options={paramOptions} value={paramCode} onChange={e=>{ setParamCode(e.target.value); setResult(null); }} />
       </div>
-      <div style={{ gridColumn: '2 / span 1', minWidth:0 }}>
-        <div style={{ display:'flex', gap:6 }}>
-          <ParamSelect options={paramOptions} value={paramCode} onChange={e=>{ setParamCode(e.target.value); setResult(null); }} />
-          <DepthSelect
-            availableDepths={availableDepths}
-            inferredTest={inferredTest}
-            compareValue={compareValue}
-            paramCode={paramCode}
-            depthMode={depthMode}
-            depthValue={depthValue}
-            onChange={({ mode, value }) => { setDepthMode(mode); setDepthValue(value); setResult(null); }}
-          />
-        </div>
+      <div style={{ gridColumn: '2 / span 1', minWidth:0, display:'flex', alignItems:'stretch' }}>
+        <DepthSelect style={{ width: '100%' }}
+          availableDepths={availableDepths}
+          inferredTest={inferredTest}
+          compareValue={compareValue}
+          paramCode={paramCode}
+          depthMode={depthMode}
+          depthValue={depthValue}
+          onChange={({ mode, value }) => { setDepthMode(mode); setDepthValue(value); setResult(null); }}
+        />
       </div>
       <div style={{ gridColumn: '3 / span 2', display:'flex', justifyContent:'flex-end', minWidth:0 }}>
         <div style={{ display:'flex', gap:8, width:'100%' }}>
-            <TestSelector inferredTest={inferredTest} paramHasRange={paramHasRange} selectedTest={selectedTest} onChange={(v)=>{ setSelectedTest(v); setResult(null); }} />
+          <TestSelector inferredTest={inferredTest} paramHasRange={paramHasRange} selectedTest={selectedTest} onChange={(v)=>{ setSelectedTest(v); setResult(null); }} />
         </div>
       </div>
     </div>
