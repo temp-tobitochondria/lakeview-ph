@@ -418,3 +418,26 @@ Route::get('/healthz/db', function () {
         ], 500);
     }
 });
+
+/*
+|--------------------------------------------------------------------------
+| Tenants read health check (public)
+|--------------------------------------------------------------------------
+| Helps diagnose 500s on /api/options/tenants by running a minimal SQL read
+| without Eloquent. Returns a small sample and count or the error message.
+*/
+Route::get('/healthz/tenants', function () {
+    try {
+        $rows = DB::select('select id, name from tenants where active = true order by name limit 5');
+        return response()->json([
+            'ok' => true,
+            'count' => count($rows),
+            'sample' => $rows,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'ok' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
