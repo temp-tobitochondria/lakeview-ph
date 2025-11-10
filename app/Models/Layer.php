@@ -32,6 +32,15 @@ class Layer extends Model
         'updated_at'=> 'datetime',
     ];
 
+    /**
+     * Force boolean-friendly storage for Postgres.
+     */
+    public function setIsDownloadableAttribute($value): void
+    {
+        $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        $this->attributes['is_downloadable'] = $bool ? 'true' : 'false';
+    }
+
     /* -------------------------- Relationships -------------------------- */
 
     // Polymorphic parent (Lake or Watershed, and future bodies)

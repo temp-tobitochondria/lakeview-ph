@@ -21,6 +21,18 @@ class WqStandard extends Model
         'is_current' => 'boolean',
     ];
 
+    /**
+     * Ensure PostgreSQL receives a boolean-friendly literal.
+     * Using 'true'/'false' avoids integer 0/1 binding issues under PgBouncer/pgsql.
+     */
+    public function setIsCurrentAttribute($value): void
+    {
+        // Normalize a variety of inputs to real boolean first
+        $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        // Store as string literal Postgres can implicitly cast to boolean
+        $this->attributes['is_current'] = $bool ? 'true' : 'false';
+    }
+
     public function thresholds()
     {
         return $this->hasMany(ParameterThreshold::class, 'standard_id');
