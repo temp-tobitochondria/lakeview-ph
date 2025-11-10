@@ -246,6 +246,7 @@ Route::middleware(['auth:sanctum','tenant.scoped','role:contributor'])
 |--------------------------------------------------------------------------
 */
 Route::get('/lakes',            [LakeController::class, 'index']);
+Route::get('/lakes/count',      [LakeController::class, 'count']);
 Route::get('/lakes/{lake}',     [LakeController::class, 'show'])->whereNumber('lake');
 Route::get('/public/lakes-geo', [LakeController::class, 'publicGeo']);
 Route::get('/public/lakes/{lake}', [LakeController::class, 'publicShow']);

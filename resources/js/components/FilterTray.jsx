@@ -47,6 +47,12 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
+  // Apply + count state
+  const [applying, setApplying] = useState(false);
+  const [count, setCount] = useState(null); // number | null
+  const [countLoading, setCountLoading] = useState(false);
+  const [countError, setCountError] = useState("");
+
   // Fetch facets from server for current selections
   const fetchFacets = useCallback(async (params) => {
     setLoadError("");
@@ -88,6 +94,7 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     setElevationMax(initial.elevation_max ?? null);
     setDepthMin(initial.mean_depth_min ?? null);
     setDepthMax(initial.mean_depth_max ?? null);
+    setCount(null); setCountLoading(false); setCountError(""); setApplying(false);
     // Fetch facets on open with initial params
     fetchFacets({
       region: initial.region || undefined,
@@ -95,6 +102,8 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
       municipality: initial.municipality || undefined,
       class_code: initial.class_code || undefined,
     });
+    // Fetch initial total count (no filters)
+    fetchCount({});
   }, [open, initial, fetchFacets]);
 
   // Close on Escape for accessibility
@@ -121,7 +130,33 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     });
   }, [open, region, province, municipality, classCode, fetchFacets]);
 
-  const handleApply = () => {
+  // Build adv object expected by backend count/index filters
+  const buildAdv = () => ({
+    region: region || undefined,
+    province: province || undefined,
+    municipality: municipality || undefined,
+    class_code: classCode || undefined,
+    area_km2: [surfaceMin ?? null, surfaceMax ?? null],
+    elevation_m: [elevationMin ?? null, elevationMax ?? null],
+    mean_depth_m: [depthMin ?? null, depthMax ?? null],
+  });
+
+  const fetchCount = useCallback(async (advObj) => {
+    setCountLoading(true); setCountError("");
+    try {
+      const res = await cachedGet('/lakes/count', { params: { adv: JSON.stringify(advObj || {}) }, ttlMs: 15 * 1000, auth: false });
+      const data = res?.data || res || {};
+      const total = typeof data.total === 'number' ? data.total : null;
+      setCount(total);
+    } catch (e) {
+      setCount(null);
+      setCountError('Failed to load count');
+    } finally {
+      setCountLoading(false);
+    }
+  }, []);
+
+  const handleApply = async () => {
     const payload = {
       region: region || undefined,
       province: province || undefined,
@@ -134,10 +169,20 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
       mean_depth_min: depthMin == null ? undefined : depthMin,
       mean_depth_max: depthMax == null ? undefined : depthMax,
     };
-    onApply(payload);
+    setApplying(true);
+    try {
+      const maybePromise = onApply && onApply(payload);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        await maybePromise;
+      }
+    } finally {
+      setApplying(false);
+    }
+    // Update count only after apply is triggered
+    await fetchCount(buildAdv());
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setRegion("");
     setProvince("");
     setMunicipality("");
@@ -148,8 +193,16 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     setElevationMax(null);
     setDepthMin(null);
     setDepthMax(null);
-    // also re-fetch unfiltered results
-    onApply && onApply({});
+    setApplying(true);
+    try {
+      const maybePromise = onApply && onApply({});
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        await maybePromise;
+      }
+    } finally {
+      setApplying(false);
+    }
+    await fetchCount({});
   };
 
   return (
@@ -204,13 +257,18 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
           <NumberInput label="Average depth — max (m)" value={depthMax} onChange={setDepthMax} />
         </div>
 
-        <div className="ft-actions">
-          <button className="btn btn-secondary" onClick={() => { handleReset(); onClose && onClose(); }}>
-            Reset
-          </button>
-          <button className="btn btn-primary" onClick={() => { handleApply(); onClose && onClose(); }}>
-            Apply
-          </button>
+        <div className="ft-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div aria-live="polite" style={{ fontSize: 13, color: 'black' }}>
+            {countLoading ? 'Showing — lakes.' : (count != null ? `Showing ${count} lakes.` : 'Showing — lakes.')}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => { handleReset(); }} disabled={applying} aria-busy={applying ? true : undefined}>
+              Reset
+            </button>
+            <button className="btn btn-primary" onClick={() => { handleApply(); }} disabled={applying} aria-busy={applying ? true : undefined}>
+              {applying ? 'Filtering…' : 'Apply'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

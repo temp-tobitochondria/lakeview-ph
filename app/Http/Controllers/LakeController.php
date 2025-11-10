@@ -14,6 +14,80 @@ use Illuminate\Support\Str;
 
 class LakeController extends Controller
 {
+    public function count(Request $request)
+    {
+        // Tiny cache (15s) keyed by query params + version that bumps on write
+        try {
+            $ver = (int) Cache::get('ver:lakes', 1);
+            $qs = $request->query(); ksort($qs);
+            $cacheKey = 'lakes:count:v'.$ver.':'.md5(json_encode($qs));
+            if ($cached = Cache::get($cacheKey)) {
+                return response()->json($cached);
+            }
+        } catch (\Throwable $e) { /* ignore cache errors */ }
+
+        $query = Lake::query();
+
+        // Advanced Filters (mirror of index())
+        if ($request->has('adv')) {
+            $advFilters = $request->query('adv');
+            if (is_string($advFilters)) {
+                try { $advFilters = json_decode($advFilters, true); } catch (\Exception $e) { $advFilters = []; }
+            }
+            if (is_array($advFilters)) {
+                $driver = DB::getDriverName();
+
+                if (!empty($advFilters['region'])) {
+                    $region = $advFilters['region'];
+                    $query->where(function($q) use ($region, $driver) {
+                        if ($driver === 'pgsql') {
+                            $q->whereRaw("(jsonb_typeof(region) = 'array' AND region @> ?::jsonb)", [json_encode([$region])])
+                              ->orWhereRaw("(jsonb_typeof(region) <> 'array' AND region::text = ?)", [$region]);
+                        } else {
+                            $q->whereJsonContains('region', $region)->orWhere('region', $region);
+                        }
+                    });
+                }
+                if (!empty($advFilters['province'])) {
+                    $province = $advFilters['province'];
+                    $query->where(function($q) use ($province, $driver) {
+                        if ($driver === 'pgsql') {
+                            $q->whereRaw("(jsonb_typeof(province) = 'array' AND province @> ?::jsonb)", [json_encode([$province])])
+                              ->orWhereRaw("(jsonb_typeof(province) <> 'array' AND province::text = ?)", [$province]);
+                        } else {
+                            $q->whereJsonContains('province', $province)->orWhere('province', $province);
+                        }
+                    });
+                }
+                if (!empty($advFilters['municipality'])) {
+                    $query->where('municipality', $advFilters['municipality']);
+                }
+                if (!empty($advFilters['class_code'])) {
+                    $query->where('class_code', $advFilters['class_code']);
+                }
+                if (!empty($advFilters['flows_status'])) {
+                    $query->where('flows_status', $advFilters['flows_status']);
+                }
+                if (isset($advFilters['area_km2']) && is_array($advFilters['area_km2'])) {
+                    if ($advFilters['area_km2'][0] !== null) $query->where('surface_area_km2', '>=', $advFilters['area_km2'][0]);
+                    if ($advFilters['area_km2'][1] !== null) $query->where('surface_area_km2', '<=', $advFilters['area_km2'][1]);
+                }
+                if (isset($advFilters['elevation_m']) && is_array($advFilters['elevation_m'])) {
+                    if ($advFilters['elevation_m'][0] !== null) $query->where('elevation_m', '>=', $advFilters['elevation_m'][0]);
+                    if ($advFilters['elevation_m'][1] !== null) $query->where('elevation_m', '<=', $advFilters['elevation_m'][1]);
+                }
+                if (isset($advFilters['mean_depth_m']) && is_array($advFilters['mean_depth_m'])) {
+                    if ($advFilters['mean_depth_m'][0] !== null) $query->where('mean_depth_m', '>=', $advFilters['mean_depth_m'][0]);
+                    if ($advFilters['mean_depth_m'][1] !== null) $query->where('mean_depth_m', '<=', $advFilters['mean_depth_m'][1]);
+                }
+            }
+        }
+
+        $total = $query->count();
+        $payload = ['total' => $total];
+        try { if (isset($cacheKey)) Cache::put($cacheKey, $payload, now()->addSeconds(15)); } catch (\Throwable $e) {}
+        return response()->json($payload);
+    }
     public function index(Request $request)
     {
         // Tiny cache (15s) keyed by query params + version that bumps on write
