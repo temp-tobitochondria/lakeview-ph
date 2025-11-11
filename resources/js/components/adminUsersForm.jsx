@@ -96,7 +96,7 @@ export default function AdminUsersForm({
 
       {/* Active status selector */}
       <label className="lv-field" style={{ gridColumn: '1/2' }}>
-        <span>Status *</span>
+        <span>Status*</span>
         <select
           value={form.active ? 'active' : 'inactive'}
           onChange={(e) => setForm(f => ({ ...f, active: e.target.value === 'active' }))}
@@ -119,7 +119,7 @@ export default function AdminUsersForm({
       </label>
 
       <label className="lv-field" style={{ gridColumn: '1/2' }}>
-        <span>{mode === "edit" ? "New Password (optional)" : "Password *"}</span>
+        <span>{mode === "edit" ? "New Password (optional)" : "Password*"}</span>
         <input
           type="password"
           required={mode !== "edit"}
@@ -130,7 +130,7 @@ export default function AdminUsersForm({
       </label>
 
       <label className="lv-field" style={{ gridColumn: '2/3' }}>
-        <span>{mode === "edit" ? "Confirm New Password" : "Confirm Password *"}</span>
+        <span>{mode === "edit" ? "Confirm New Password" : "Confirm Password*"}</span>
         <input
           type="password"
           required={mode !== "edit"}
@@ -141,7 +141,7 @@ export default function AdminUsersForm({
       </label>
 
       <label className="lv-field" style={{ gridColumn: '1/3' }}>
-        <span>Role (required)</span>
+        <span>Role*</span>
         <select
           value={form.role}
           onChange={(e) => {
@@ -155,15 +155,12 @@ export default function AdminUsersForm({
             <option key={opt} value={opt}>{ROLE_LABELS[opt] || opt}</option>
           ))}
         </select>
-        <small className="grey-text">
-          Sets a <em>global</em> role (tenant_id = null). Per-tenant roles are managed on the organization screens.
-        </small>
       </label>
 
       {/* Tenant selection for org-scoped roles */}
       {["org_admin", "contributor"].includes(form.role) && (
         <label className="lv-field" style={{ gridColumn: '1/3' }}>
-          <span>Organization (Tenant) *</span>
+          <span>Organization*</span>
           <select
             value={form.tenant_id || ""}
             onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}
@@ -174,7 +171,6 @@ export default function AdminUsersForm({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
-          <small className="grey-text">Select Organization (required for Organization Administrator and Contributor roles).</small>
         </label>
       )}
     </form>

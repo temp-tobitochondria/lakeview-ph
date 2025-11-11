@@ -28,7 +28,7 @@ export default function OrgDashboard() {
     // Organization Members
     { path: "/org-dashboard/members", label: "Members", icon: <FiUsers /> },
     // Applications (review join requests)
-    { path: "/org-dashboard/applications", label: "Applications", icon: <FiClipboard /> },
+    { path: "/org-dashboard/applications", label: "Applicants", icon: <FiClipboard /> },
     // Log Water Quality Tests
     { path: "/org-dashboard/add-wq-tests", label: "Add Water Quality Data", icon: <FiPlusCircle /> },
     // View Water Quality Tests

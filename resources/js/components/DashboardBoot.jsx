@@ -57,7 +57,7 @@ export default function DashboardBoot({ isOverview = false }) {
       }}
     >
       <img
-        src="/lakeview-logo-alt.png"
+        src="/lakeview-logo-alt.webp"
         alt="LakeView PH"
         style={{ width: 64, height: 64, objectFit: 'contain', filter: 'drop-shadow(0 2px 12px rgba(37,99,235,0.45))', marginBottom: 18 }}
       />

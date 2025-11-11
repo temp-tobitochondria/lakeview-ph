@@ -144,6 +144,17 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 		}
 	};
 
+	const roleLabel = (role) => {
+		if (!role) return '—';
+		switch (role) {
+			case 'org_admin': return 'Organization admin';
+			case 'contributor': return 'Contributor';
+			case 'public': return 'Public';
+			case 'superadmin': return 'Super admin';
+			default: return role.replace(/_/g, ' ');
+		}
+	};
+
 	return (
 		<Modal
 			open={open}
@@ -203,7 +214,7 @@ export default function OrganizationManageModal({ org, open, onClose }) {
 											<tr key={u.id}>
 												<td>{u.name}</td>
 												<td>{u.email}</td>
-												<td>{u.role || '—'}</td>
+												<td>{roleLabel(u.role)}</td>
 												<td style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
 													{u.role === 'contributor' && (
 														<button className="pill-btn ghost sm" onClick={()=>promoteToAdmin(u)}>Promote to Admin</button>

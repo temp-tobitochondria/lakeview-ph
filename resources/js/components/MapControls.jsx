@@ -60,10 +60,10 @@ function MapControls({ defaultCenter = [12.8797, 121.7740], defaultZoom = 6, def
     <>
       {/* Floating Controls */}
       <div className="map-controls">
-        <button className="btn-floating" onClick={() => setStatsOpen(true)} title="Open stats">
+        <button className="btn-floating" onClick={() => setStatsOpen(true)} title="Open stats" aria-label="Open stats">
           <FiBarChart2 className="icon-layer" />
         </button>
-        <button className="btn-floating" onClick={() => setTableOpen(true)} title="Open table">
+        <button className="btn-floating" onClick={() => setTableOpen(true)} title="Open table" aria-label="Open table">
           <FaTable className="icon-layer" />
         </button>
         <button
@@ -71,19 +71,21 @@ function MapControls({ defaultCenter = [12.8797, 121.7740], defaultZoom = 6, def
           onClick={handleGeolocation}
           title={geolocated ? "Reset view" : "Go to my location"}
           aria-pressed={geolocated}
+          aria-label={geolocated ? "Reset view" : "Go to my location"}
         >
           <FiCrosshair className="icon-layer" />
         </button>
-        <button className="btn-floating" onClick={handleZoomIn}>
+        <button className="btn-floating" onClick={handleZoomIn} aria-label="Zoom in">
           <FiPlus className="icon-layer" />
         </button>
-        <button className="btn-floating" onClick={handleZoomOut}>
+        <button className="btn-floating" onClick={handleZoomOut} aria-label="Zoom out">
           <FiMinus className="icon-layer" />
         </button>
                 <button
           className="btn-floating"
           onClick={() => { try { typeof onErase === 'function' && onErase(); } catch {} }}
           title="Erase overlays"
+          aria-label="Erase overlays"
         >
           <FiTrash2 className="icon-layer" />
         </button>

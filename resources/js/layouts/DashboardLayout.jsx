@@ -87,7 +87,7 @@ export default function DashboardLayout({ links, user, children }) {
         <div>
           {/* Logo Row */}
           <div className="dashboard-logo">
-            <img src="/lakeview-logo-alt.png" alt="LakeView PH Logo" />
+            <img src="/lakeview-logo-alt.webp" alt="LakeView PH Logo" />
             <span className="dashboard-logo-text">LakeView PH</span>
           </div>
 

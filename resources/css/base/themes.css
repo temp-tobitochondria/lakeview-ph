@@ -10,9 +10,23 @@
 .map-light .scale-line { background: rgba(0,0,0,0.6); }
 .map-light .scale-label { color: #222; }
 
+/* Theme variables for light maps */
+.map-light {
+	--surface: #ffffff;
+	--text: #111827;
+	--muted: #6b7280; /* medium gray for secondary text */
+}
+
 /* ✅ Dark maps */
 .map-dark .glass-panel { color: #fff; }
 .map-dark .glass-panel .coords-icon,
 .map-dark .glass-panel .context-icon { color: #fff; }
 .map-dark .scale-line { background: rgba(255,255,255,0.9); }
 .map-dark .scale-label { color: #fff; }
+
+/* Theme variables for dark maps: higher contrast muted/text colors */
+.map-dark {
+	--surface: rgba(11,18,32,0.6); /* darker translucent panel */
+	--text: #e5e7eb; /* near-white for primary text */
+	--muted: #cbd5e1; /* lighter gray for secondary text (meets contrast on dark bg) */
+}

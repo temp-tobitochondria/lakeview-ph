@@ -39,14 +39,14 @@ export default function AdminDashboard() {
     { path: "/admin-dashboard/organizations", label: "Organizations", icon: <FiBriefcase /> },
     // Users
     { path: "/admin-dashboard/users", label: "Users", icon: <FiUsers /> },
+        // Org Applications
+    { path: "/admin-dashboard/org-applications", label: "Applicants", icon: <FiClipboard /> },
     // Water Body Catalog
     { path: "/admin-dashboard/lakes", label: "Water Bodies", icon: <FiMap /> },
     // Base Layers
     { path: "/admin-dashboard/layers", label: "Base Layers", icon: <FiLayers /> },
     // Parameters
     { path: "/admin-dashboard/parameters", label: "Parameters", icon: <FiSliders /> },
-    // Org Applications
-    { path: "/admin-dashboard/org-applications", label: "Org Applications", icon: <FiClipboard /> },
     // Water Quality Tests
     { path: "/admin-dashboard/wq-tests", label: "Water Quality Records", icon: <FiFileText /> },
       // Population Rasters
@@ -73,6 +73,9 @@ export default function AdminDashboard() {
         {/* Users */}
         <Route path="users" element={<AdminUsers />} />
 
+        {/* Org Applications */}
+        <Route path="org-applications" element={<AdminOrgApplications />} />
+
         {/* Water Body Catalog */}
         <Route path="lakes" element={<AdminWaterCat />} />
 
@@ -81,9 +84,6 @@ export default function AdminDashboard() {
 
         {/* Parameters */}
         <Route path="parameters" element={<AdminParameters />} />
-
-        {/* Org Applications */}
-        <Route path="org-applications" element={<AdminOrgApplications />} />
 
         {/* Water Quality Tests */}
         <Route path="wq-tests" element={<AdminWQTests />} />

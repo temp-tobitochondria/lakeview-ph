@@ -11,6 +11,8 @@ function LayerControl({ selectedView, setSelectedView, showContours, setShowCont
       <button
         className="btn-floating"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={open ? "Close layer controls" : "Open layer controls"}
       >
         <FiLayers className="icon-layer" />
       </button>

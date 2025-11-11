@@ -49,7 +49,7 @@ export default function RegistrationPage() {
         {/* Single Column Form */}
         <div className="auth-form">
           <div className="auth-brand">
-            <img src="/lakeview-logo-alt.png" alt="LakeView PH" />
+            <img src="/lakeview-logo-alt.webp" alt="LakeView PH" />
             <span>LakeView PH</span>
           </div>
           <h2>Create a New Account</h2>

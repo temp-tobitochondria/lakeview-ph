@@ -44,6 +44,10 @@ export default function OrgApplications() {
     accepted_another_org: 'Accepted Another Org',
   }), []);
   const statusLabel = (code) => STATUS_LABELS[code] || code || '';
+  const roleLabel = (role) => {
+    if (!role) return '';
+    return String(role).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   const COLUMNS = useMemo(() => ([
     { id: "user", header: "User" },
@@ -123,7 +127,7 @@ export default function OrgApplications() {
     const body = filtered.map(r => cols.map(c => {
       const v = c.id === 'user' ? (r.user?.name ?? '')
         : c.id === 'email' ? (r.user?.email ?? '')
-        : c.id === 'desired_role' ? (r.desired_role ?? '')
+        : c.id === 'desired_role' ? (roleLabel(r.desired_role) ?? '')
         : c.id === 'status' ? (statusLabel(r.status) ?? '')
         : '';
       const s = String(v ?? '');
@@ -176,7 +180,9 @@ export default function OrgApplications() {
         <FiFileText /> View
       </button>
     ), width: 120 },
-    { id: 'desired_role', header: 'Desired Role', accessor: 'desired_role', width: 160 },
+    { id: 'desired_role', header: 'Desired Role', render: (raw) => (
+      <div>{roleLabel(raw.desired_role)}</div>
+    ), width: 160 },
     { id: 'status', header: 'Status', render: (raw) => (
       <Badge value={raw.status} />
     ), width: 160 },

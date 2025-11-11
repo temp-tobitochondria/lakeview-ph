@@ -43,6 +43,10 @@ export default function AdminOrgApplications() {
     accepted_another_org: 'Accepted Another Org',
   }), []);
   const statusLabel = (code) => STATUS_LABELS[code] || code || '';
+  const roleLabel = (role) => {
+    if (!role) return '';
+    return String(role).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   const COLUMNS = useMemo(() => ([
     { id: 'user', header: 'User' },
@@ -129,7 +133,7 @@ export default function AdminOrgApplications() {
       const primary = gr.primary_app;
       const v = c.id === 'user' ? (gr.user?.name ?? '')
         : c.id === 'tenant' ? (primary?.tenant?.name ?? '')
-        : c.id === 'desired_role' ? (primary?.desired_role ?? '')
+        : c.id === 'desired_role' ? (roleLabel(primary?.desired_role) ?? '')
         : c.id === 'status' ? (gr.status_summary ?? '')
         : '';
       const s = String(v ?? '');
@@ -179,8 +183,8 @@ export default function AdminOrgApplications() {
         <FiFileText /> View
       </button>
     ), width: 120 },
-    { id: 'tenant', header: 'Latest Organization', accessor: 'tenant_name', width: 200 },
-    { id: 'desired_role', header: 'Latest Desired Role', accessor: 'desired_role', width: 170 },
+  { id: 'tenant', header: 'Latest Organization', accessor: 'tenant_name', width: 200 },
+  { id: 'desired_role', header: 'Latest Desired Role', accessor: 'desired_role_label', width: 170 },
     { id: 'status', header: 'Latest Status', render: (row) => {
       const primary = row.primary_app;
       const baseStatus = primary?.status;
@@ -204,7 +208,7 @@ export default function AdminOrgApplications() {
   const normalized = useMemo(() => (filtered || []).map(r => ({
     id: r.id,
     tenant_name: r.primary_app?.tenant?.name ?? '',
-    desired_role: r.primary_app?.desired_role ?? '',
+    desired_role_label: roleLabel(r.primary_app?.desired_role ?? ''),
     status: r.primary_app?.status ?? '',
     _raw: r,
   })), [filtered]);
