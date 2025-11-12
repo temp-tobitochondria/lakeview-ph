@@ -7,10 +7,23 @@ use App\Http\Requests\UpdateFeedbackRequest;
 use App\Models\Feedback;
 use App\Events\FeedbackUpdated;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class FeedbackController extends Controller
 {
+    /**
+     * Return the appropriate case-insensitive LIKE operator for the current DB driver.
+     * Postgres supports ILIKE; others (MySQL, SQLite, SQL Server) use LIKE.
+     */
+    protected function likeOp(): string
+    {
+        try {
+            return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        } catch (\Throwable $e) {
+            return 'like';
+        }
+    }
     /**
      * Build a publicly accessible URL for a stored feedback attachment path.
      * Uses the public disk by default; falls back to asset('storage/...').
@@ -37,6 +50,7 @@ class FeedbackController extends Controller
     public function index(Request $request)
     {
         $q = Feedback::query()->with(['user:id,name,email','tenant:id,name','lake:id,name']);
+        $like = $this->likeOp();
 
         if ($status = $request->query('status')) {
             $q->where('status', $status);
@@ -53,23 +67,23 @@ class FeedbackController extends Controller
             if (empty($fields)) {
                 $fields = ['name']; // default to name-only
             }
-            $q->where(function($qq) use ($search, $fields) {
+            $q->where(function($qq) use ($search, $fields, $like) {
                 if (in_array('name', $fields)) {
-                    $qq->where(function($nameQ) use ($search) {
-                        $nameQ->where(function($sub) use ($search) {
+                    $qq->where(function($nameQ) use ($search, $like) {
+                        $nameQ->where(function($sub) use ($search, $like) {
                             $sub->where('is_guest', true)
-                                ->where('guest_name', 'ilike', "%$search%" );
-                        })->orWhere(function($sub) use ($search) {
+                                ->where('guest_name', $like, "%$search%" );
+                        })->orWhere(function($sub) use ($search, $like) {
                             $sub->where('is_guest', false)
-                                ->whereHas('user', function($u) use ($search) { $u->where('name','ilike',"%$search%"); });
+                                ->whereHas('user', function($u) use ($search, $like) { $u->where('name', $like, "%$search%"); });
                         });
                     });
                 }
                 if (in_array('title', $fields)) {
-                    $qq->orWhere('title','ilike',"%$search%");
+                    $qq->orWhere('title', $like, "%$search%");
                 }
                 if (in_array('message', $fields)) {
-                    $qq->orWhere('message','ilike',"%$search%");
+                    $qq->orWhere('message', $like, "%$search%");
                 }
             });
         }
