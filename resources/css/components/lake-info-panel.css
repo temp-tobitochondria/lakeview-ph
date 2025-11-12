@@ -91,49 +91,50 @@
 /* Mobile: convert right-side panel into a bottom sheet that slides up */
 @media (max-width: 900px) {
   .lake-info-panel {
-    /* Make the bottom-sheet span the full viewport height on mobile */
-    --lake-info-panel-height: 100vh; /* visible height when open (full screen) */
+    /* Position the panel below the search bar instead of taking the full
+       viewport. This keeps the search control visible and leaves the panel
+       occupying the remaining vertical space. */
+    --lake-info-panel-top-offset: 72px; /* approximate search bar bottom + gap */
     left: 0;
     right: 0;
+    top: var(--lake-info-panel-top-offset);
     width: 100%;
-    height: var(--lake-info-panel-height);
-    top: auto;
-    /* position off-canvas by the same height so the 'open' class can set bottom:0 */
-    bottom: calc(-1 * var(--lake-info-panel-height));
+    height: calc(100vh - var(--lake-info-panel-top-offset));
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     box-shadow: 0 -8px 20px rgba(0,0,0,0.35);
-    transition: bottom 0.35s ease, opacity 0.35s ease, transform 0.35s ease;
+    /* Slide vertically using transform so the panel animates up from below
+       without ever covering the search bar. */
+    transform: translateY(100%);
+    transition: transform 0.35s ease, opacity 0.25s ease;
     padding-bottom: env(safe-area-inset-bottom); /* respect notches */
   }
-  .lake-info-panel.open { bottom: 0; right: 0; opacity: 1; }
-  .lake-info-panel.closing { bottom: calc(-1 * var(--lake-info-panel-height)); right: 0; opacity: 0; }
+  .lake-info-panel.open { transform: translateY(0); right: 0; opacity: 1; }
+  .lake-info-panel.closing { transform: translateY(100%); right: 0; opacity: 0; }
   .lake-info-header { padding: 10px 12px; }
   .lake-info-image { height: 140px; }
   .lake-info-content { padding: 12px; }
 }
 
-/* Mobile landscape: reduce bottom-sheet height and make handle more prominent */
+/* Mobile landscape: place the panel below the search bar and animate similarly */
 @media (orientation: landscape) and (max-width: 1200px) {
   .lake-info-panel {
-    /* Use full viewport height in landscape on small devices as well so the sheet
-       consistently fills the screen when opened. */
-    --lake-info-panel-height: 100vh;
+    --lake-info-panel-top-offset: 64px; /* slightly smaller gap in landscape */
     left: 0;
     right: 0;
+    top: var(--lake-info-panel-top-offset);
     width: 100%;
-    height: var(--lake-info-panel-height);
-    top: auto;
-    bottom: calc(-1 * var(--lake-info-panel-height));
+    height: calc(100vh - var(--lake-info-panel-top-offset));
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     padding-bottom: env(safe-area-inset-bottom);
+    transform: translateY(100%);
+    transition: transform 0.35s ease, opacity 0.25s ease;
   }
-  /* Ensure the open/closing states in landscape use bottom positioning (slide up) */
-  .lake-info-panel.open { bottom: 0; right: 0; opacity: 1; }
-  .lake-info-panel.closing { bottom: calc(-1 * var(--lake-info-panel-height)); right: 0; opacity: 0; }
+  .lake-info-panel.open { transform: translateY(0); right: 0; opacity: 1; }
+  .lake-info-panel.closing { transform: translateY(100%); right: 0; opacity: 0; }
   .lake-info-image { height: 110px; }
 }
 
