@@ -429,7 +429,7 @@ export default function TableLayout({
                         }
                       }}
                       title="Sort"
-                      aria-label={`Sort by ${col.header}`}
+                      aria-label={`Sort by ${typeof col.header === 'string' ? col.header : (col.ariaLabel || 'column')}`}
                     >
                       {col.header}
                       {sort.id === col.id && (

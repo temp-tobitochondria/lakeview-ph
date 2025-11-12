@@ -5,8 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateFeedbackRequest;
 use App\Models\Feedback;
-use App\Events\FeedbackStatusChanged;
-use App\Events\FeedbackAdminReplied;
+use App\Events\FeedbackUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -93,12 +92,18 @@ class FeedbackController extends Controller
         }
         $feedback->save();
 
-        // Dispatch events after save
-        if (isset($data['status']) && $oldStatus !== $feedback->status) {
-            event(new FeedbackStatusChanged($feedback, $oldStatus, $feedback->status, $request->user()?->id));
-        }
-        if (array_key_exists('admin_response', $data) && $oldResponse !== $feedback->admin_response) {
-            event(new FeedbackAdminReplied($feedback, $oldResponse, (string) $feedback->admin_response, $request->user()?->id));
+        // Dispatch a single consolidated event after save when anything changed
+        $statusChanged = isset($data['status']) && $oldStatus !== $feedback->status;
+        $replyChanged = array_key_exists('admin_response', $data) && $oldResponse !== $feedback->admin_response;
+        if ($statusChanged || $replyChanged) {
+            event(new FeedbackUpdated(
+                $feedback,
+                $oldStatus,
+                $feedback->status,
+                $oldResponse,
+                (string) $feedback->admin_response,
+                $request->user()?->id
+            ));
         }
         return response()->json(['data' => $feedback]);
     }
@@ -139,11 +144,17 @@ class FeedbackController extends Controller
             $row->updated_at = $now;
             $row->save();
 
-            if ($oldStatus !== $row->status) {
-                event(new FeedbackStatusChanged($row, $oldStatus, $row->status, $request->user()?->id));
-            }
-            if (array_key_exists('admin_response', $data) && $oldResponse !== $row->admin_response) {
-                event(new FeedbackAdminReplied($row, $oldResponse, (string) $row->admin_response, $request->user()?->id));
+            $statusChanged = $oldStatus !== $row->status;
+            $replyChanged = array_key_exists('admin_response', $data) && $oldResponse !== $row->admin_response;
+            if ($statusChanged || $replyChanged) {
+                event(new FeedbackUpdated(
+                    $row,
+                    $oldStatus,
+                    $row->status,
+                    $oldResponse,
+                    (string) $row->admin_response,
+                    $request->user()?->id
+                ));
             }
             $updated[] = $row;
         }

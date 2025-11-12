@@ -26,25 +26,23 @@ class OrgApplicationSubmitted extends Mailable implements ShouldQueue
             }
         } catch (\Throwable $e) {}
 
-        $subject = '✅ LakeView PH — Your Organization Application Has Been Received';
-        $content = <<<TEXT
-Good day {$name},
-
-Thank you for submitting your organization application to {$this->tenant->name}.
-
-We’ve successfully received your details and our team will review your submission shortly.
-
-Once the review is complete, we’ll reach out with an update.
-
-Until then, may your day stay smooth sailing.
-
-Best regards,
-— LakeView PH
-TEXT;
+    $subject = '✅ LakeView PH — Your Organization Application Has Been Received'; // static brand
 
         return $this->subject($subject)
+            ->view('mail.message', [
+                'title' => 'Application Received',
+                'name' => $name,
+                'lines' => [
+                    "Thank you for submitting your organization application to {$this->tenant->name}.",
+                    "We’ve successfully received your details and our team will review your submission shortly.",
+                    "You can track your application’s status anytime in the “Join an Org” tab.",
+                    "Once the review is complete, we’ll reach out with an update.",
+                    "Until then, may your day stay smooth sailing.",
+                ],
+                'signoff' => '— LakeView PH',
+            ])
             ->text('mail.plain', [
-                'content' => $content,
+                'content' => "Good day {$name},\n\nThank you for submitting your organization application to {$this->tenant->name}. We’ve received your details and will review shortly. We’ll reach out with an update.\n\n— LakeView PH",
             ]);
     }
 }

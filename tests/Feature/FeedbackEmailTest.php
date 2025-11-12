@@ -2,8 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Mail\FeedbackAdminReplyMail;
-use App\Mail\FeedbackStatusChangedMail;
+use App\Mail\FeedbackUpdatedMail;
 use App\Models\Feedback;
 use App\Models\Role;
 use App\Models\User;
@@ -54,8 +53,8 @@ class FeedbackEmailTest extends TestCase
         ]);
         $resp->assertOk();
 
-        Mail::assertQueued(FeedbackStatusChangedMail::class, function ($mail) use ($fb) {
-            return $mail->feedback->id === $fb->id && $mail->newStatus === Feedback::STATUS_RESOLVED;
+        Mail::assertQueued(FeedbackUpdatedMail::class, function ($mail) use ($fb) {
+            return $mail->feedback->id === $fb->id && str_contains($mail->newStatus, Feedback::STATUS_RESOLVED);
         });
     }
 
@@ -82,8 +81,7 @@ class FeedbackEmailTest extends TestCase
         ]);
         $resp->assertOk();
 
-        Mail::assertNotQueued(FeedbackStatusChangedMail::class);
-        Mail::assertNotQueued(FeedbackAdminReplyMail::class);
+    Mail::assertNotQueued(FeedbackUpdatedMail::class);
     }
 
     public function test_email_sent_on_admin_reply_for_registered_user()
@@ -109,8 +107,40 @@ class FeedbackEmailTest extends TestCase
         ]);
         $resp->assertOk();
 
-        Mail::assertQueued(FeedbackAdminReplyMail::class, function ($mail) use ($fb) {
+        Mail::assertQueued(FeedbackUpdatedMail::class, function ($mail) use ($fb) {
             return $mail->feedback->id === $fb->id && str_contains($mail->reply, 'Fix will be deployed');
+        });
+    }
+
+    public function test_single_email_when_status_and_reply_change_together()
+    {
+        Mail::fake();
+
+        $userRole = Role::where('name', Role::PUBLIC)->first();
+        $adminRole = Role::where('name', Role::SUPERADMIN)->first();
+        $user = User::factory()->create(['role_id' => $userRole->id, 'email' => 'user3@example.com']);
+        $admin = User::factory()->create(['role_id' => $adminRole->id]);
+
+        $fb = Feedback::create([
+            'user_id' => $user->id,
+            'title' => 'Combined change',
+            'message' => 'Check both fields',
+            'category' => 'other',
+            'status' => Feedback::STATUS_OPEN,
+            'is_guest' => false,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson('/api/admin/feedback/'.$fb->id, [
+            'status' => Feedback::STATUS_IN_PROGRESS,
+            'admin_response' => 'We will update you soon.',
+        ]);
+        $resp->assertOk();
+
+        Mail::assertQueued(FeedbackUpdatedMail::class, 1);
+        Mail::assertQueued(FeedbackUpdatedMail::class, function ($mail) use ($fb) {
+            return $mail->feedback->id === $fb->id
+                && str_contains($mail->newStatus, Feedback::STATUS_IN_PROGRESS)
+                && str_contains($mail->reply, 'update you soon');
         });
     }
 }

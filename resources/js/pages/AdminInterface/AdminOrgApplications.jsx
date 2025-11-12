@@ -4,17 +4,17 @@ import api from '../../lib/api';
 import { cachedGet } from '../../lib/httpCache';
 import TableToolbar from '../../components/table/TableToolbar';
 import TableLayout from '../../layouts/TableLayout';
-import { FiFileText, FiClipboard } from 'react-icons/fi';
-import KycDocsModal from '../../components/KycDocsModal';
+import { FiClipboard, FiInfo } from 'react-icons/fi';
+import KycProfileModal from '../../components/KycProfileModal';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All' },
-  { value: 'pending_kyc', label: 'Pending' },
+  // Removed generic Pending from filters to avoid confusion; submitted items appear as Pending Org Review
   { value: 'pending_org_review', label: 'Pending Org Review' },
   { value: 'approved', label: 'Approved' },
   { value: 'needs_changes', label: 'Needs Changes' },
   { value: 'rejected', label: 'Rejected' },
-  { value: 'accepted_another_org', label: 'Accepted Another Org' },
+  // Removed "Accepted Another Org" from Admin Dashboard per request
 ];
 import Modal from '../../components/Modal';
 
@@ -27,29 +27,30 @@ export default function AdminOrgApplications() {
   const [query, setQuery] = useState('');
   const [visibleMap, setVisibleMap] = useState({
     user: true,
-    documents: true,
-    tenant: true,
-    desired_role: true,
+    applications: true,
     status: true,
   });
+  const [statusInfoOpen, setStatusInfoOpen] = useState(false);
 
   // Map status codes to formal labels for display
   const STATUS_LABELS = useMemo(() => ({
-    pending_kyc: 'Pending',
+    // Display pending_kyc as Pending Org Review (do not surface a separate generic Pending state here)
+    pending_kyc: 'Pending Org Review',
     pending_org_review: 'Pending Org Review',
     approved: 'Approved',
     needs_changes: 'Needs Changes',
     rejected: 'Rejected',
-    accepted_another_org: 'Accepted Another Org',
+    // accepted_another_org intentionally omitted from Admin Dashboard
   }), []);
-  const statusLabel = (code) => STATUS_LABELS[code] || code || '';
+  const statusLabel = (code) => {
+    if (code === 'accepted_another_org') return '';
+    return STATUS_LABELS[code] || code || '';
+  };
 
   const COLUMNS = useMemo(() => ([
     { id: 'user', header: 'User' },
-    { id: 'documents', header: 'Documents' },
-    { id: 'tenant', header: 'Organization' },
-    { id: 'desired_role', header: 'Desired Role' },
-    { id: 'status', header: 'Status' },
+    { id: 'applications', header: 'Applications' },
+    { id: 'status', header: 'Latest Status' },
   ]), []);
 
   const load = async () => {
@@ -128,8 +129,7 @@ export default function AdminOrgApplications() {
     const body = filtered.map(gr => cols.map(c => {
       const primary = gr.primary_app;
       const v = c.id === 'user' ? (gr.user?.name ?? '')
-        : c.id === 'tenant' ? (primary?.tenant?.name ?? '')
-        : c.id === 'desired_role' ? (primary?.desired_role ?? '')
+        : c.id === 'applications' ? String((gr?.apps || []).length)
         : c.id === 'status' ? (gr.status_summary ?? '')
         : '';
       const s = String(v ?? '');
@@ -146,7 +146,7 @@ export default function AdminOrgApplications() {
   }
 
   // Mirror AdminUsers: build TableLayout columns and normalized rows
-  const [docUserId, setDocUserId] = useState(null);
+  const [profileUserId, setProfileUserId] = useState(null);
   const [userApps, setUserApps] = useState({ open: false, user: null, apps: [], loading: false, error: '' });
 
   const baseColumns = useMemo(() => ([
@@ -154,45 +154,60 @@ export default function AdminOrgApplications() {
       <div>
         <button
           className="pill-btn ghost sm"
-          title="View all applications by this user"
-          onClick={async () => {
-            const user = row.user;
-            setUserApps({ open: true, user, apps: [], loading: true, error: '' });
-            try {
-              const res = await api.get(`/admin/users/${user.id}/org-applications`);
-              setUserApps({ open: true, user, apps: res?.data || [], loading: false, error: '' });
-            } catch (e) {
-              let msg = 'Failed to load applications.';
-              try { const j = JSON.parse(e?.message||''); msg = j?.message || msg; } catch {}
-              setUserApps({ open: true, user, apps: [], loading: false, error: msg });
-            }
-          }}
+          title="View user information profile"
+          onClick={() => setProfileUserId(row.user?.id)}
           style={{ padding: '2px 8px' }}
         >
           {row.user?.name}
         </button>
-        <div className="muted" style={{ fontSize: 12 }}>{row.user?.email}</div>
       </div>
     ), width: 220 },
-    { id: 'documents', header: 'Documents', render: (row) => (
-      <button className="pill-btn ghost sm" onClick={() => setDocUserId(row.user?.id)} title="View KYC documents">
-        <FiFileText /> View
-      </button>
-    ), width: 120 },
-    { id: 'tenant', header: 'Latest Organization', accessor: 'tenant_name', width: 200 },
-    { id: 'desired_role', header: 'Latest Desired Role', accessor: 'desired_role', width: 170 },
-    { id: 'status', header: 'Latest Status', render: (row) => {
+    { id: 'applications', header: 'Applications', render: (row) => (
+      <button
+        className="pill-btn ghost sm"
+        title="View all applications by this user"
+        onClick={async () => {
+          const user = row.user;
+          setUserApps({ open: true, user, apps: [], loading: true, error: '' });
+          try {
+            const res = await api.get(`/admin/users/${user.id}/org-applications`);
+            setUserApps({ open: true, user, apps: res?.data || [], loading: false, error: '' });
+          } catch (e) {
+            let msg = 'Failed to load applications.';
+            try { const j = JSON.parse(e?.message||''); msg = j?.message || msg; } catch {}
+            setUserApps({ open: true, user, apps: [], loading: false, error: msg });
+          }
+        }}
+        style={{ padding: '2px 8px' }}
+      >View</button>
+    ), width: 140 },
+    { id: 'status', header: (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        Latest Status
+        <span
+          role="button"
+          title="What does 'Latest Status' mean?"
+          aria-label="Latest Status info"
+          tabIndex={0}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setStatusInfoOpen(true); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setStatusInfoOpen(true); } }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#9ca3af' }}
+        >
+          <FiInfo size={12} />
+        </span>
+      </span>
+    ), ariaLabel: 'Latest Status', render: (row) => {
       const primary = row.primary_app;
       const baseStatus = primary?.status;
       const color = {
-        pending_kyc: '#f59e0b',
+        pending_kyc: '#3b82f6', // show as Pending Org Review color
         pending_org_review: '#3b82f6',
         approved: '#22c55e',
         needs_changes: '#eab308',
         rejected: '#ef4444',
-        accepted_another_org: '#64748b',
       }[baseStatus] || '#64748b';
-      return <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{row.status_summary}</span>;
+      const label = String(row.status_summary || '').trim();
+      return <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{label || '—'}</span>;
     }, width: 170 },
   ]), []);
 
@@ -203,8 +218,6 @@ export default function AdminOrgApplications() {
 
   const normalized = useMemo(() => (filtered || []).map(r => ({
     id: r.id,
-    tenant_name: r.primary_app?.tenant?.name ?? '',
-    desired_role: r.primary_app?.desired_role ?? '',
     status: r.primary_app?.status ?? '',
     _raw: r,
   })), [filtered]);
@@ -248,7 +261,35 @@ export default function AdminOrgApplications() {
             hidePager={false}
             pageSize={15}
           />
-          <KycDocsModal open={!!docUserId} onClose={() => setDocUserId(null)} userId={docUserId} />
+          <Modal
+            open={statusInfoOpen}
+            onClose={() => setStatusInfoOpen(false)}
+            title="Status explanations"
+            width={560}
+          >
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>Pending Org Review</div>
+                <div className="muted" style={{ fontSize: 13 }}>The organization is reviewing the user’s application after submission.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Approved</div>
+                <div className="muted" style={{ fontSize: 13 }}>The application has been approved by the organization.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Needs Changes</div>
+                <div className="muted" style={{ fontSize: 13 }}>The organization requested changes. The user should update their submission and resubmit.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Rejected</div>
+                <div className="muted" style={{ fontSize: 13 }}>The application has been rejected by the organization.</div>
+              </div>
+              <div className="lv-modal-actions" style={{ marginTop: 8 }}>
+                <button type="button" className="pill-btn" onClick={() => setStatusInfoOpen(false)}>Close</button>
+              </div>
+            </div>
+          </Modal>
+          <KycProfileModal open={!!profileUserId} onClose={() => setProfileUserId(null)} userId={profileUserId} />
           <Modal
             open={userApps.open}
             onClose={() => setUserApps({ open: false, user: null, apps: [], loading: false, error: '' })}
@@ -260,43 +301,49 @@ export default function AdminOrgApplications() {
               <div className="alert error">{String(userApps.error)}</div>
             )}
             {!userApps.loading && !userApps.error && (
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {userApps.apps.length} application{userApps.apps.length !== 1 ? 's' : ''}
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#e5e7eb',
+                    color: '#111827',
+                    borderRadius: 999,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    padding: '6px 12px',
+                    minWidth: 40,
+                  }}>
+                    {userApps.apps.length}
+                  </span>
+                  <span className="muted" style={{ fontSize: 13, letterSpacing: 0.3 }}>
+                    APPLICATION{userApps.apps.length !== 1 ? 'S' : ''}
+                  </span>
                 </div>
                 {userApps.apps.length === 0 && (
                   <div className="muted">No applications.</div>
                 )}
-                {userApps.apps.map((app) => {
-                  const badgeColor = {
-                    pending_kyc: '#f59e0b',
-                    pending_org_review: '#3b82f6',
-                    approved: '#22c55e',
-                    needs_changes: '#eab308',
-                    rejected: '#ef4444',
-                    accepted_another_org: '#64748b',
-                  }[app.status] || '#64748b';
-                  return (
-                    <div key={app.id} className="card" style={{ border: '1px solid #e5e7eb' }}>
-                      <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{app.tenant?.name || 'Unknown org'}</div>
-                          <div className="muted" style={{ fontSize: 12 }}>Desired role: {app.desired_role}</div>
-                          <div className="muted" style={{ fontSize: 12 }}>Applied: {app.created_at ? new Date(app.created_at).toLocaleString() : '—'}</div>
-                          {app.accepted_at && (
-                            <div className="muted" style={{ fontSize: 12 }}>Accepted: {new Date(app.accepted_at).toLocaleString()}</div>
-                          )}
-                          {app.archived_at && (
-                            <div className="muted" style={{ fontSize: 12 }}>Archived: {new Date(app.archived_at).toLocaleString()} {app.archived_reason ? `(${app.archived_reason})` : ''}</div>
-                          )}
-                        </div>
-                        <div>
-                          <span style={{ background: `${badgeColor}22`, color: badgeColor, padding: '4px 10px', borderRadius: 999, fontSize: 12 }}>{statusLabel(app.status)}</span>
-                        </div>
+                {userApps.apps.map((app) => (
+                  <div
+                    key={app.id}
+                    className="card"
+                    style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}
+                  >
+                    <div
+                      className="card-body"
+                      style={{ display: 'grid', gap: 8, padding: 14 }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{app.tenant?.name || 'Unknown org'}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>Desired role: {app.desired_role || '—'}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Applied: {app.created_at ? new Date(app.created_at).toLocaleString(undefined, {
+                          year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true
+                        }) : '—'}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
           </Modal>

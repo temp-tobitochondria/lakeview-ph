@@ -13,6 +13,40 @@ use App\Models\KycDocument;
 
 class KycProfileController extends Controller
 {
+    /**
+     * Resolve a publicly accessible URL for a stored KYC document path.
+     * Uses an overridable disk (env KYC_DOCS_DISK) defaulting to 'public'.
+     * Falls back to asset('storage/...') when the disk can't produce a URL.
+     */
+    protected function docPublicUrl(string $relativePath): string
+    {
+        $disk = env('KYC_DOCS_DISK', config('filesystems.default', 'public'));
+        try {
+            // If disk supports temporary or direct URL generation
+            if (Storage::disk($disk)->exists($relativePath)) {
+                // Prefer direct URL() if supported (local/public + s3 compatible drivers)
+                $driver = config("filesystems.disks.$disk.driver");
+                if (in_array($driver, ['s3', 'minio'], true) && method_exists(Storage::disk($disk), 'temporaryUrl')) {
+                    // For S3-compatible storage, prefer a signed temporary URL first (works for private and public objects)
+                    try {
+                        return Storage::disk($disk)->temporaryUrl($relativePath, now()->addMinutes(30));
+                    } catch (\Throwable $e) {
+                        // If temporary URL fails, try a direct URL
+                    }
+                }
+                if (method_exists(Storage::disk($disk), 'url')) {
+                    $url = Storage::disk($disk)->url($relativePath);
+                    if (is_string($url) && str_starts_with($url, 'http')) {
+                        return $url;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignore and fallback
+        }
+        // Fallback assumes a public storage symlink exists (php artisan storage:link)
+        return asset('storage/'.$relativePath);
+    }
     public function show(Request $request)
     {
         $u = $request->user();
@@ -22,7 +56,7 @@ class KycProfileController extends Controller
             ->orderBy('id')->get();
         // Attach a public URL for each doc based on the configured disk
         $docs->transform(function ($d) {
-            $d->url = asset('storage/'.$d->path);
+            $d->url = $this->docPublicUrl($d->path);
             return $d;
         });
         return response()->json(['data' => $profile, 'documents' => $docs]);
@@ -84,7 +118,8 @@ class KycProfileController extends Controller
         try { $rand = substr(bin2hex(random_bytes(4)), 0, 8); } catch (\Throwable $e) { $rand = Str::random(8); }
         $filename = "$userSlug-$docTypeSlug-$timestamp-$rand.$ext";
         $dir = "kyc/{$u->id}"; // keep existing directory to avoid breaking prior uploads
-        $stored = Storage::disk('public')->putFileAs($dir, $file, $filename);
+    $storageDisk = env('KYC_DOCS_DISK', config('filesystems.default', 'public'));
+    $stored = Storage::disk($storageDisk)->putFileAs($dir, $file, $filename);
         $path = $stored ?: "$dir/$filename";
         $doc = KycDocument::create([
             'kyc_profile_id' => $profile->id,
@@ -102,7 +137,7 @@ class KycProfileController extends Controller
                 'mime' => $doc->mime,
                 'size_bytes' => $doc->size_bytes,
                 'created_at' => $doc->created_at,
-                'url' => asset('storage/'.$doc->storage_path),
+                'url' => $this->docPublicUrl($doc->storage_path),
             ],
         ]);
     }
@@ -112,7 +147,8 @@ class KycProfileController extends Controller
         $u = $request->user();
         $doc = KycDocument::findOrFail($id);
         if ($doc->user_id !== $u->id) return response()->json(['message' => 'Forbidden'], 403);
-        Storage::disk('public')->delete($doc->storage_path);
+        $storageDisk = env('KYC_DOCS_DISK', config('filesystems.default', 'public'));
+        Storage::disk($storageDisk)->delete($doc->storage_path);
         $doc->delete();
         return response()->json(['ok' => true]);
     }
@@ -163,7 +199,7 @@ class KycProfileController extends Controller
             ->orderBy('id')
             ->get();
         $docs->transform(function ($d) {
-            $d->url = asset('storage/'.$d->path);
+            $d->url = $this->docPublicUrl($d->path);
             return $d;
         });
         return response()->json([

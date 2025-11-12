@@ -30,23 +30,17 @@ class OtpMail extends Mailable implements ShouldQueue
         } catch (\Throwable $e) {}
 
         $subject = "🔐 Your LakeView PH Verification Code";
-        $content = <<<TEXT
-Hi {$firstName},
-
-Before you dive in, please use the verification code below to continue your request:
-
-👉 {$this->code}
-
-This code will expire in {$this->ttlMinutes} minutes.
-If you didn’t request this, please ignore this email.
-
-Thank you,
-— LakeView PH
-TEXT;
 
         return $this->subject($subject)
-            ->text('mail.plain', [
-                'content' => $content,
+            ->view('mail.otp', [
+                'name' => $firstName,
+                'code' => $this->code,
+                'purpose' => $this->purpose === 'reset' ? 'password reset' : 'verification',
+                'ttlMinutes' => $this->ttlMinutes,
+                'title' => 'Email OTP'
+            ])
+            ->text('mail.plain', [ // Plain fallback
+                'content' => "Hi {$firstName},\n\nYour code: {$this->code}\nExpires in {$this->ttlMinutes} minutes."
             ]);
     }
 }

@@ -3,14 +3,15 @@ import api, { me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
 import TableToolbar from "../../components/table/TableToolbar";
 import TableLayout from "../../layouts/TableLayout";
-import { FiCheck, FiX, FiAlertCircle, FiFileText, FiClipboard } from 'react-icons/fi';
+import { FiCheck, FiX, FiAlertCircle, FiFileText, FiClipboard, FiInfo } from 'react-icons/fi';
 import DashboardHeader from '../../components/DashboardHeader';
 import KycDocsModal from '../../components/KycDocsModal';
+import KycProfileModal from '../../components/KycProfileModal';
 import Modal from "../../components/Modal";
 
+// Updated: remove generic "Pending" from filters; keep others
 const STATUS_OPTIONS = [
   { value: "", label: "All" },
-  { value: "pending_kyc", label: "Pending" },
   { value: "pending_org_review", label: "Pending Org Review" },
   { value: "approved", label: "Approved" },
   { value: "needs_changes", label: "Needs Changes" },
@@ -33,10 +34,11 @@ export default function OrgApplications() {
     actions: true,
   });
   const [decisionModal, setDecisionModal] = useState({ open: false, id: null, action: null, notes: '', submitting: false, error: '' });
+  const [orgTenantId, setOrgTenantId] = useState(null);
 
   // Map status codes to formal labels for display
   const STATUS_LABELS = useMemo(() => ({
-    pending_kyc: 'Pending',
+    pending_kyc: 'Pending Org Review',
     pending_org_review: 'Pending Org Review',
     approved: 'Approved',
     needs_changes: 'Needs Changes',
@@ -59,7 +61,8 @@ export default function OrgApplications() {
     try {
       const me = await fetchMe({ maxAgeMs: 60 * 1000 });
       if (!me?.tenant_id) throw new Error('No tenant in session');
-      const tenantId = me.tenant_id;
+  const tenantId = me.tenant_id;
+  setOrgTenantId(tenantId);
       const res = await cachedGet(`/org/${tenantId}/applications`, { params: status ? { status } : undefined, ttlMs: 2 * 60 * 1000 });
       setRows(res?.data || []);
     } catch (e) {
@@ -141,10 +144,12 @@ export default function OrgApplications() {
 
   // Build TableLayout columns, normalized data, and actions (mirror admin table UX)
   const [docUser, setDocUser] = useState({ id: null, tenantId: null });
+  const [profileUserId, setProfileUserId] = useState(null);
+  const [statusInfoOpen, setStatusInfoOpen] = useState(false);
 
   const Badge = (props) => {
     const color = {
-      pending_kyc: '#f59e0b',
+      pending_kyc: '#3b82f6', // unify with Pending Org Review
       pending_org_review: '#3b82f6',
       approved: '#22c55e',
       needs_changes: '#eab308',
@@ -157,10 +162,14 @@ export default function OrgApplications() {
   const baseColumns = useMemo(() => ([
     { id: 'user', header: 'User', render: (raw) => (
       <div>
-        {raw.user?.name}
-        <div className="muted" style={{ fontSize: 12 }}>{raw.user?.email}</div>
+        <button
+          className="pill-btn ghost sm"
+          title="View user information profile"
+          onClick={() => setProfileUserId(raw.user?.id)}
+          style={{ padding: '2px 8px' }}
+        >{raw.user?.name}</button>
       </div>
-    ), width: 220 },
+    ), width: 180 },
     { id: 'documents', header: 'Documents', render: (raw) => (
       <button
         className="pill-btn ghost sm"
@@ -177,9 +186,24 @@ export default function OrgApplications() {
       </button>
     ), width: 120 },
     { id: 'desired_role', header: 'Desired Role', accessor: 'desired_role', width: 160 },
-    { id: 'status', header: 'Status', render: (raw) => (
+    { id: 'status', header: (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        Latest Status
+        <span
+          role="button"
+          title="What does 'Latest Status' mean?"
+          aria-label="Latest Status info"
+          tabIndex={0}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setStatusInfoOpen(true); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setStatusInfoOpen(true); } }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#9ca3af' }}
+        >
+          <FiInfo size={12} />
+        </span>
+      </span>
+    ), ariaLabel: 'Latest Status', render: (raw) => (
       <Badge value={raw.status} />
-    ), width: 160 },
+    ), width: 170 },
   ]), []);
 
   const visibleColumns = useMemo(
@@ -236,6 +260,7 @@ export default function OrgApplications() {
             pageSize={15}
           />
           <KycDocsModal open={!!docUser.id} onClose={() => setDocUser({ id: null, tenantId: null })} userId={docUser.id} orgTenantId={docUser.tenantId} />
+          <KycProfileModal open={!!profileUserId} onClose={() => setProfileUserId(null)} userId={profileUserId} orgTenantId={orgTenantId} />
           <Modal
             open={decisionModal.open}
             onClose={() => setDecisionModal({ open: false, id: null, action: null, notes: '', submitting: false, error: '' })}
@@ -268,6 +293,38 @@ export default function OrgApplications() {
                 <button type="button" onClick={submitDecisionModal} className="pill-btn" disabled={decisionModal.submitting}>
                   {decisionModal.submitting ? 'Submitting…' : (decisionModal.action === 'reject' ? 'Reject' : 'Send request')}
                 </button>
+              </div>
+            </div>
+          </Modal>
+          <Modal
+            open={statusInfoOpen}
+            onClose={() => setStatusInfoOpen(false)}
+            title="Status explanations"
+            width={560}
+          >
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>Pending Org Review</div>
+                <div className="muted" style={{ fontSize: 13 }}>The organization is reviewing the user’s application after submission.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Approved</div>
+                <div className="muted" style={{ fontSize: 13 }}>The application has been approved by the organization.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Needs Changes</div>
+                <div className="muted" style={{ fontSize: 13 }}>The organization requested changes. The user should update their submission and resubmit.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Rejected</div>
+                <div className="muted" style={{ fontSize: 13 }}>The application has been rejected by the organization.</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600 }}>Accepted Another Org</div>
+                <div className="muted" style={{ fontSize: 13 }}>The applicant accepted a position in another organization; this application is closed.</div>
+              </div>
+              <div className="lv-modal-actions" style={{ marginTop: 8 }}>
+                <button type="button" className="pill-btn" onClick={() => setStatusInfoOpen(false)}>Close</button>
               </div>
             </div>
           </Modal>
