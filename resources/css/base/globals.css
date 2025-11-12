@@ -16,6 +16,12 @@
   color: #000; /* ensure text is black by default */
   background-color: #ffffff;
 
+  /* Design tokens (light defaults) */
+  --surface: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --lv-accent: #439e9d;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -89,6 +95,22 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+/* Dark scheme tokens: these ensure components using var(--text/--muted/--surface)
+   have appropriate contrast when the OS or page prefers dark colors. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    color: #e5e7eb;
+    background-color: #0b1220;
+
+    --surface: rgba(11,18,32,0.85);
+    --text: #e5e7eb; /* near-white for primary text */
+    --muted: #cbd5e1; /* lighter gray for secondary text */
+    --lv-accent: #439e9d;
+  }
+  button:hover { border-color: rgba(100,108,255,0.65); }
 }
   /* ====================================================================== */
   /* 🪟 PANELS & UI OVERLAYS (Glass Style) */

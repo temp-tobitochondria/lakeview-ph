@@ -328,7 +328,7 @@ function ParametersTab() {
               </div>
               <TableToolbar
                 tableId={GRID_TABLE_ID}
-                search={{ value: query, onChange: setQuery, placeholder: 'Search code or name…' }}
+                search={{ value: query, onChange: setQuery, placeholder: 'Search Parameters...' }}
                 columnPicker={{
                   columns: columnsForPicker,
                   visibleMap,

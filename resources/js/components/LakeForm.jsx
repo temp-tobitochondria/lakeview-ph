@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { api } from "../lib/api";
 import { cachedGet } from "../lib/httpCache";
+import CoordinatePicker from './CoordinatePicker';
 
 const EMPTY = {
   id: null,
@@ -42,26 +43,15 @@ export default function LakeForm({
   const [municipalityFiltered, setMunicipalityFiltered] = useState([]);
 
   useEffect(() => {
-    // Fetch existing regions, provinces, municipalities from lakes via shared cache
-    cachedGet('/lakes', { ttlMs: 10 * 60 * 1000, auth: false }).then(res => {
-      const lakes = res.data || res || [];
-      const allRegions = new Set();
-      const allProvinces = new Set();
-      const allMunicipalities = new Set();
-      lakes.forEach(lake => {
-        if (lake.region) {
-          lake.region.split(',').forEach(r => allRegions.add(r.trim()));
-        }
-        if (lake.province) {
-          lake.province.split(',').forEach(p => allProvinces.add(p.trim()));
-        }
-        if (lake.municipality) {
-          lake.municipality.split(',').forEach(m => allMunicipalities.add(m.trim()));
-        }
-      });
-      setRegions(Array.from(allRegions).sort());
-      setProvinces(Array.from(allProvinces).sort());
-      setMunicipalities(Array.from(allMunicipalities).sort());
+    // Fetch facet lists (regions, provinces, municipalities) just like FilterTray for full coverage
+    cachedGet('/filters/lakes', { ttlMs: 60 * 60 * 1000, auth: false }).then(res => {
+      const data = res?.data || res || {};
+      const regionList = Array.isArray(data.regions) ? data.regions.map(r => r.value || r).filter(Boolean) : [];
+      const provinceList = Array.isArray(data.provinces) ? data.provinces.map(p => p.value || p).filter(Boolean) : [];
+      const municipalityList = Array.isArray(data.municipalities) ? data.municipalities.map(m => m.value || m).filter(Boolean) : [];
+      setRegions(regionList.sort());
+      setProvinces(provinceList.sort());
+      setMunicipalities(municipalityList.sort());
     }).catch(() => {});
   }, []);
 
@@ -108,7 +98,8 @@ export default function LakeForm({
     const value = e.target.value;
     setForm({ ...form, region: value });
     const lastPart = value.split(',').pop().trim();
-    setFilteredRegions(regions.filter(r => r.toLowerCase().includes(lastPart.toLowerCase())));
+    const list = lastPart === '' ? regions : regions.filter(r => r.toLowerCase().includes(lastPart.toLowerCase()));
+    setFilteredRegions(list);
     setDropdownOpen(true);
   };
 
@@ -123,7 +114,8 @@ export default function LakeForm({
     const value = e.target.value;
     setForm({ ...form, province: value });
     const lastPart = value.split(',').pop().trim();
-    setProvinceFiltered(provinces.filter(p => p.toLowerCase().includes(lastPart.toLowerCase())));
+    const list = lastPart === '' ? provinces : provinces.filter(p => p.toLowerCase().includes(lastPart.toLowerCase()));
+    setProvinceFiltered(list);
     setProvinceDropdownOpen(true);
   };
 
@@ -138,7 +130,8 @@ export default function LakeForm({
     const value = e.target.value;
     setForm({ ...form, municipality: value });
     const lastPart = value.split(',').pop().trim();
-    setMunicipalityFiltered(municipalities.filter(m => m.toLowerCase().includes(lastPart.toLowerCase())));
+    const list = lastPart === '' ? municipalities : municipalities.filter(m => m.toLowerCase().includes(lastPart.toLowerCase()));
+    setMunicipalityFiltered(list);
     setMunicipalityDropdownOpen(true);
   };
 
@@ -162,7 +155,7 @@ export default function LakeForm({
     >
   <form id="lv-lake-form" onSubmit={submit} className="lv-grid-2">
         <label className="lv-field">
-          <span>Name *</span>
+          <span>Name*</span>
           <input
             required
             value={form.name}
@@ -186,7 +179,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Alt Name</span>
+          <span>Other Name</span>
           <input
             value={form.alt_name}
             onChange={(e) => setForm({ ...form, alt_name: e.target.value })}
@@ -194,7 +187,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field" style={{ position: 'relative' }}>
-          <span>Region * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Region*</span>
           <input
             required
             placeholder="e.g. Region IV-A, Region V"
@@ -231,7 +224,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field" style={{ position: 'relative' }}>
-          <span>Province * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Province*</span>
           <input
             required
             placeholder="Laguna, Batangas"
@@ -268,7 +261,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field" style={{ position: 'relative' }}>
-          <span>Municipality/City * <small style={{fontWeight:400,color:'#6b7280'}}>(comma-separated)</small></span>
+          <span>Municipality/City*</span>
           <input
             required
             placeholder="Los Baños, Calamba"
@@ -335,7 +328,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Surface Area (km^2)</span>
+          <span>Surface Area (km²)</span>
           <input
             type="number"
             step="0.001"
@@ -345,7 +338,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Elevation (m)</span>
+          <span>Surface Elevation (m)</span>
           <input
             type="number"
             step="0.001"
@@ -355,7 +348,7 @@ export default function LakeForm({
         </label>
 
         <label className="lv-field">
-          <span>Mean Depth (m)</span>
+          <span>Average Depth (m)</span>
           <input
             type="number"
             step="0.001"
@@ -367,93 +360,31 @@ export default function LakeForm({
         <div className="lv-field" style={{gridColumn:'1 / span 2'}}>
           <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
             <label style={{flex:'1 1 160px'}} className="lv-field">
-              <span>Latitude</span>
+              <span>Latitude*</span>
               <input
                 type="number"
                 step="0.000001"
                 placeholder="14.1702"
                 value={form.lat}
                 onChange={(e) => setForm({ ...form, lat: e.target.value })}
+                required={false}
               />
             </label>
             <label style={{flex:'1 1 160px'}} className="lv-field">
-              <span>Longitude</span>
+              <span>Longitude*</span>
               <input
                 type="number"
                 step="0.000001"
                 placeholder="121.2245"
                 value={form.lon}
                 onChange={(e) => setForm({ ...form, lon: e.target.value })}
+                required={false}
               />
             </label>
-            <CoordinatePickToggle form={form} setForm={setForm} />
+            <CoordinatePicker form={form} setForm={setForm} />
           </div>
         </div>
       </form>
     </Modal>
-  );
-}
-
-// Inline coordinate picker toggle + mini map (lazy simple implementation)
-function CoordinatePickToggle({ form, setForm }) {
-  const [mode, setMode] = React.useState('manual'); // 'manual' | 'map'
-  const mapRef = React.useRef(null);
-  const markerRef = React.useRef(null);
-
-  React.useEffect(() => {
-    if (mode !== 'map') return;
-    // Lazy load leaflet only when needed
-    (async () => {
-      const L = await import('leaflet');
-      if (mapRef.current && !mapRef.current._leaflet_id) {
-        const map = L.map(mapRef.current, { center: [form.lat || 12.8797, form.lon || 121.7740], zoom: 6 });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
-
-        // initial marker from form
-        if (form.lat && form.lon) {
-          markerRef.current = L.circleMarker([form.lat, form.lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
-          map.setView([form.lat, form.lon], 12);
-        }
-
-        map.on('click', (e) => {
-          const { lat, lng } = e.latlng;
-          setForm(f => ({ ...f, lat: Number(lat.toFixed(6)), lon: Number(lng.toFixed(6)) }));
-          if (!markerRef.current) markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
-          else markerRef.current.setLatLng([lat, lng]);
-        });
-      }
-    })();
-  }, [mode]);
-
-  // keep marker in sync if lat/lon change while map is open
-  React.useEffect(() => {
-    if (mode !== 'map') return;
-    if (!mapRef.current || !mapRef.current._leaflet_id) return;
-    const lat = form.lat; const lon = form.lon;
-    if (lat && lon) {
-      (async () => {
-        const L = await import('leaflet');
-        if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(mapRef.current);
-        else markerRef.current.setLatLng([lat, lon]);
-        mapRef.current.setView([lat, lon], 12);
-      })();
-    }
-  }, [mode, form.lat, form.lon]);
-
-  return (
-    <div style={{flex:'1 1 100%', minWidth:300}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-        <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12}}>
-          <input type="radio" name="coord-mode" value="manual" checked={mode==='manual'} onChange={()=>setMode('manual')} /> Manual
-        </label>
-        <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12}}>
-          <input type="radio" name="coord-mode" value="map" checked={mode==='map'} onChange={()=>setMode('map')} /> Pin Drop
-        </label>
-        <span style={{fontSize:11,color:'#6b7280'}}>Coordinates are an optional fallback marker.</span>
-      </div>
-      {mode === 'map' && (
-        <div ref={mapRef} style={{height:240,border:'1px solid #d1d5db',borderRadius:6}} />
-      )}
-    </div>
   );
 }

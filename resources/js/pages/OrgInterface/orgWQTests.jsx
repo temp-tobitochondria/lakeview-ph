@@ -7,7 +7,7 @@ import FilterPanel from "../../components/table/FilterPanel";
 import OrgWQTestModal from "../../components/water-quality-test/OrgWQTestModal";
 import { api } from "../../lib/api";
 import { invalidateHttpCache } from "../../lib/httpCache";
-import { alertSuccess, alertError, alertWarning } from "../../lib/alerts";
+import { alertSuccess, alertError, alertWarning, showLoading, closeLoading } from "../../lib/alerts";
 import { useWQTests } from "../shared/useWQTests.jsx";
 
 export default function OrgWQTests({ initialLakes = [], initialTests = [], parameterCatalog = [] }) {
@@ -75,14 +75,20 @@ export default function OrgWQTests({ initialLakes = [], initialTests = [], param
         onTogglePublish={() => {
           if (!selected) return;
           (async () => {
+            const will = selected.status === 'public' ? 'Unpublishing' : 'Publishing';
             try {
+              // show blocking loading modal (do not await — fire-and-forget)
+              showLoading(will + '...', 'Please wait');
               const res = await api(`${basePath}/${selected.id}/toggle-publish`, { method: 'POST' });
               // backend returns updated record
               setTests((prev) => prev.map((t) => (t.id === res.data.id ? res.data : t)));
               setSelected(res.data);
               try { invalidateHttpCache(basePath); } catch {}
+              closeLoading();
               await alertSuccess(res.data.status === 'public' ? 'Published' : 'Unpublished');
             } catch (e) {
+              // ensure loading modal closed
+              try { closeLoading(); } catch {}
               // fallback local toggle
               setTests((prev) =>
                 prev.map((t) =>

@@ -27,7 +27,9 @@ const normalizeContributors = (rows = []) => rows.map(u => ({
   id: u.id,
   name: u.name || '',
   email: u.email || '',
-  status: (u.active === false || u.disabled) ? 'inactive' : 'active',
+  // keep a machine-friendly lowercase status for filtering, and a human-friendly label for display
+  status: (u.active === false || u.disabled || (typeof u.status === 'string' && u.status.toLowerCase() === 'inactive')) ? 'inactive' : 'active',
+  status_label: (u.active === false || u.disabled || (typeof u.status === 'string' && u.status.toLowerCase() === 'inactive')) ? 'Inactive' : 'Active',
   joined_at: u.joined_at ? new Date(u.joined_at).toLocaleString() : (u.created_at ? new Date(u.created_at).toLocaleString() : '—'),
   joined_raw: u.joined_at || u.created_at || null,
   _raw: u,
@@ -48,6 +50,12 @@ export default function OrgMembers() {
   // Advanced filters (persisted)
   const [fStatus, setFStatus] = useState(() => { try { return qp.get('status') || JSON.parse(localStorage.getItem(ADV_KEY) || '{}').status || ''; } catch { return ''; } });
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Additional filter inputs (name/email/date-range) used by client-side filtering
+  // These were missing and caused a ReferenceError in the filter effect.
+  const [fName, setFName] = useState("");
+  const [fEmail, setFEmail] = useState("");
+  const [fJoinedRange, setFJoinedRange] = useState([null, null]);
 
   // Persist advanced filters
   useEffect(() => {
@@ -70,7 +78,7 @@ export default function OrgMembers() {
   const baseColumns = useMemo(() => [
     { id: 'name', header: 'Name', accessor: 'name' },
     { id: 'email', header: 'Email', accessor: 'email', width: 240 },
-    { id: 'status', header: 'Status', accessor: 'status', width: 120 },
+  { id: 'status', header: 'Status', accessor: 'status_label', width: 120 },
     { id: 'joined_at', header: 'Joined', accessor: 'joined_at', width: 170 },
   ], []);
   const visibleColumns = useMemo(() => baseColumns.filter(c => visibleMap[c.id] !== false), [baseColumns, visibleMap]);
@@ -239,7 +247,7 @@ export default function OrgMembers() {
     <div className="container" style={{ padding: 16 }}>
       <DashboardHeader
         icon={<FiUsers />}
-        title="Organization • Members"
+        title="Members"
         description="Manage contributors for your organization. Add, edit, or remove contributors as needed."
         actions={<button className="pill-btn" onClick={openCreate}>+ New Contributor</button>}
       />
@@ -247,7 +255,7 @@ export default function OrgMembers() {
       <div className="card" style={{ padding:12, borderRadius:12, marginBottom:12 }}>
         <TableToolbar
           tableId={TABLE_ID}
-            search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search (name / email)…' }}
+            search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search Members...' }}
             filters={[]}
             columnPicker={columnPickerAdapter}
             onRefresh={reload}
@@ -306,7 +314,6 @@ export default function OrgMembers() {
               <option value="inactive">Inactive</option>
             </select>
           </label>
-          <div style={{ gridColumn:'1/3', fontSize:12, color:'#6b7280' }}>Role fixed: Contributor (role_id={CONTRIBUTOR_ROLE_ID})</div>
         </form>
       </Modal>
     </div>

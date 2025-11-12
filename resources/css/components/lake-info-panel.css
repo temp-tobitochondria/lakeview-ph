@@ -87,3 +87,66 @@
   box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
 .insight-card h4 { margin: 0 0 6px 0; font-size: 14px; color: #ffeb3b; }
+
+/* Mobile: convert right-side panel into a bottom sheet that slides up */
+@media (max-width: 900px) {
+  .lake-info-panel {
+    /* Position the panel below the search bar instead of taking the full
+       viewport. This keeps the search control visible and leaves the panel
+       occupying the remaining vertical space. */
+    --lake-info-panel-top-offset: 72px; /* approximate search bar bottom + gap */
+    left: 0;
+    right: 0;
+    top: var(--lake-info-panel-top-offset);
+    width: 100%;
+    height: calc(100vh - var(--lake-info-panel-top-offset));
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    box-shadow: 0 -8px 20px rgba(0,0,0,0.35);
+    /* Slide vertically using transform so the panel animates up from below
+       without ever covering the search bar. */
+    transform: translateY(100%);
+    transition: transform 0.35s ease, opacity 0.25s ease;
+    padding-bottom: env(safe-area-inset-bottom); /* respect notches */
+  }
+  .lake-info-panel.open { transform: translateY(0); right: 0; opacity: 1; }
+  .lake-info-panel.closing { transform: translateY(100%); right: 0; opacity: 0; }
+  .lake-info-header { padding: 10px 12px; }
+  .lake-info-image { height: 140px; }
+  .lake-info-content { padding: 12px; }
+}
+
+/* Mobile landscape: place the panel below the search bar and animate similarly */
+@media (orientation: landscape) and (max-width: 1200px) {
+  .lake-info-panel {
+    --lake-info-panel-top-offset: 64px; /* slightly smaller gap in landscape */
+    left: 0;
+    right: 0;
+    top: var(--lake-info-panel-top-offset);
+    width: 100%;
+    height: calc(100vh - var(--lake-info-panel-top-offset));
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    padding-bottom: env(safe-area-inset-bottom);
+    transform: translateY(100%);
+    transition: transform 0.35s ease, opacity 0.25s ease;
+  }
+  .lake-info-panel.open { transform: translateY(0); right: 0; opacity: 1; }
+  .lake-info-panel.closing { transform: translateY(100%); right: 0; opacity: 0; }
+  .lake-info-image { height: 110px; }
+}
+
+/* A small grabber/handle at the top of the bottom sheet for affordance */
+.lake-info-panel .panel-handle {
+  width: 36px;
+  height: 5px;
+  background: rgba(255,255,255,0.35);
+  border-radius: 999px;
+  margin: 6px auto 8px auto;
+}
+
+/* Make sure the header area accommodates the handle */
+.lake-info-header { position: relative; }
+.lake-info-header .panel-handle { position: absolute; left: 50%; transform: translateX(-50%); top: -10px; }

@@ -7,7 +7,7 @@
     @viteReactRefresh
     @vite('resources/js/app.jsx')
 
-    <link rel="icon" type="image/png" href="{{ asset('lakeview-logo-alt.png') }}">
+    <link rel="icon" type="image/png" href="{{ asset('lakeview-logo-alt.webp') }}">
 
         <!-- Preconnects to speed up first paint for OSM tiles and fonts -->
         <link rel="preconnect" href="https://{s}.tile.openstreetmap.org" crossorigin>
@@ -33,7 +33,7 @@
         <!-- Instant loader to avoid white flash before JS mounts -->
         <div id="lv-boot" role="status" aria-live="polite">
             <div class="wrap">
-                <img src="{{ asset('lakeview-logo-alt.png') }}" alt="LakeView PH" />
+                <img src="{{ asset('lakeview-logo-alt.webp') }}" alt="LakeView PH" />
                 <div class="brand">Loading LakeView PH…</div>
                 <div class="spinner" aria-hidden="true"></div>
             </div>

@@ -351,7 +351,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
 
         <div className="auth-form">
           <div className="auth-brand">
-            <img src="/lakeview-logo-alt.png" alt="LakeView PH" />
+            <img src="/lakeview-logo-alt.webp" alt="LakeView PH" />
             <span>LakeView PH</span>
           </div>
 

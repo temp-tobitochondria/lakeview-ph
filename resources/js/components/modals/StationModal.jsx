@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { FiX } from "react-icons/fi";
 import Modal from "../Modal";
+import CoordinatePicker from '../CoordinatePicker';
+import { alertSuccess } from '../../lib/alerts';
 
 export default function StationModal({
   open,
@@ -13,7 +15,6 @@ export default function StationModal({
 }) {
   const empty = { id: null, name: "", lat: "", lng: "", description: "" };
   const [form, setForm] = useState(editing ? { ...editing } : empty);
-  const [coordMode, setCoordMode] = useState('manual');
 
   useEffect(() => {
     setForm(editing ? { ...editing } : empty);
@@ -24,12 +25,23 @@ export default function StationModal({
       Number.isFinite(Number(form.lat)) && Number.isFinite(Number(form.lng))
   );
 
-  const save = () => {
+  const save = async () => {
     if (!canManage) return onClose?.();
     const payload = { ...form, lake_id: lakeId ? Number(lakeId) : null, lat: Number(form.lat), lng: Number(form.lng) };
-    if (editing) onUpdate?.(payload);
-    else onCreate?.(payload);
-    onClose?.();
+    try {
+      if (editing) {
+        await onUpdate?.(payload);
+        onClose?.();
+        await alertSuccess('Station updated');
+      } else {
+        await onCreate?.(payload);
+        onClose?.();
+        await alertSuccess('Station created');
+      }
+    } catch (e) {
+      // swallow - parent handlers should surface errors; keep behavior simple here
+      onClose?.();
+    }
   };
 
   return (
@@ -58,20 +70,14 @@ export default function StationModal({
           </div>
 
           <div style={{ flexBasis: '100%', marginTop: 6 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: 14 }}>Coordinates</strong>
-              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="radio" name="coord-mode-station" value="manual" checked={coordMode === 'manual'} onChange={() => setCoordMode('manual')} /> Manual
-              </label>
-              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="radio" name="coord-mode-station" value="map" checked={coordMode === 'map'} onChange={() => setCoordMode('map')} /> Pin Drop
-              </label>
-              <span style={{ fontSize: 11, color: '#6b7280' }}>Required</span>
-            </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 14 }}>Coordinates</strong>
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>Required</span>
+                </div>
           </div>
 
-          {coordMode === 'manual' ? (
-            <>
+          <div style={{ width: '100%', marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div className="form-group" style={{ flex: '1 1 160px' }}>
                 <label>Latitude *</label>
                 <input type="number" value={form.lat} onChange={(e) => setForm((x) => ({ ...x, lat: e.target.value }))} />
@@ -80,12 +86,24 @@ export default function StationModal({
                 <label>Longitude *</label>
                 <input type="number" value={form.lng} onChange={(e) => setForm((x) => ({ ...x, lng: e.target.value }))} />
               </div>
-            </>
-          ) : (
-            <div style={{ width: '100%', marginTop: 8 }}>
-              <MiniPickMap value={form} onChange={(vals) => setForm((f) => ({ ...f, ...vals }))} />
             </div>
-          )}
+
+            <div style={{ width: '100%', marginTop: 12 }}>
+              {/* Adapter: CoordinatePicker expects { lat, lon } and will call setForm/updater with that shape. */}
+              <CoordinatePicker
+                form={{ lat: form.lat, lon: form.lng }}
+                setForm={(updater) => {
+                  if (typeof updater === 'function') {
+                    const res = updater({ lat: form.lat, lon: form.lng });
+                    setForm((f) => ({ ...f, lat: res?.lat ?? f.lat, lng: res?.lon ?? f.lng }));
+                  } else if (updater && typeof updater === 'object') {
+                    setForm((f) => ({ ...f, lat: updater.lat ?? f.lat, lng: updater.lon ?? f.lng }));
+                  }
+                }}
+                mapHeight={320}
+              />
+            </div>
+          </div>
         </div>
 
       </div>

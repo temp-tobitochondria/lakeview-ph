@@ -127,7 +127,7 @@ function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mo
   return (
     <div className="search-bar" ref={containerRef}>
       {/* ✅ Hamburger opens sidebar */}
-      <button className="btn-floating" onClick={onMenuClick}>
+      <button className="btn-floating" onClick={onMenuClick} aria-label="Open menu">
         <FiMenu size={18} />
       </button>
 
@@ -151,11 +151,11 @@ function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mo
         )}
       </div>
 
-      <button className="btn-floating" onClick={triggerSearch}>
+      <button className="btn-floating" onClick={triggerSearch} aria-label="Search">
         <FiSearch size={18} />
       </button>
 
-      <button className="btn-floating" onClick={onFilterClick} title="Filter lakes">
+      <button className="btn-floating" onClick={onFilterClick} title="Filter lakes" aria-label="Filter lakes">
         <FiFilter size={18} />
       </button>
 

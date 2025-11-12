@@ -286,7 +286,7 @@ export default function AdminUsersPage() {
       <div className="card" style={{ padding: 12, borderRadius: 12, marginBottom: 12 }}>
         <TableToolbar
           tableId={TABLE_ID}
-          search={{ value: q, onChange: (val) => { setQ(val); fetchUsers(buildParams({ q: val, page: 1 })); }, placeholder: "Search (name / email)…" }}
+          search={{ value: q, onChange: (val) => { setQ(val); fetchUsers(buildParams({ q: val, page: 1 })); }, placeholder: "Search Users..." }}
           filters={[]} // no basic filters now
           columnPicker={columnPickerAdapter}
           onRefresh={() => fetchUsers(buildParams())}

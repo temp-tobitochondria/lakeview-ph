@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Modal from './Modal';
 import { api } from '../lib/api';
+import CoordinatePicker from './CoordinatePicker';
 
 const EMPTY = { id:null, lake_id:'', flow_type:'inflow', name:'', alt_name:'', source:'', is_primary:false, notes:'', lat:'', lon:'' };
 
 export default function LakeFlowForm({ open, mode='create', initialValue=EMPTY, lakes=[], lakesLoading=false, loading=false, onSubmit, onCancel }) {
   const [form, setForm] = useState(EMPTY);
-  const [coordMode, setCoordMode] = useState('manual');
 
   useEffect(()=>{ 
     const mapped = { ...EMPTY, ...initialValue, flow_type: initialValue.flow_type || 'inflow' };
@@ -39,30 +39,30 @@ export default function LakeFlowForm({ open, mode='create', initialValue=EMPTY, 
     >
       <form id="lv-flow-form" onSubmit={submit} className="lv-grid-2">
         <label className="lv-field">
-          <span>Lake *</span>
+          <span>Lake*</span>
           <select value={form.lake_id} required onChange={e=>setForm(f=>({...f,lake_id:e.target.value}))} disabled={lakesLoading}>
             <option value="">{lakesLoading ? 'Loading lakes...' : '-- Select Lake --'}</option>
             {!lakesLoading && lakes.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
         <label className="lv-field">
-          <span>Type *</span>
+          <span>Type*</span>
           <select value={form.flow_type} onChange={e=>setForm(f=>({...f,flow_type:e.target.value}))}>
             <option value="inflow">Inlet</option>
             <option value="outflow">Outlet</option>
           </select>
         </label>
         <label className="lv-field">
-          <span>Name</span>
-          <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+          <span>Name*</span>
+          <input value={form.name} required onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
         </label>
         <label className="lv-field">
           <span>Alt Name</span>
           <input value={form.alt_name} onChange={e=>setForm(f=>({...f,alt_name:e.target.value}))} />
         </label>
         <label className="lv-field">
-          <span>Source (River/Stream)</span>
-          <input value={form.source} onChange={e=>setForm(f=>({...f,source:e.target.value}))} placeholder="e.g. Agos River" />
+          <span>Source*</span>
+          <input value={form.source} required onChange={e=>setForm(f=>({...f,source:e.target.value}))} placeholder="e.g. Agos River" />
         </label>
         <label className="lv-field">
           <span>Primary?</span>
@@ -83,144 +83,21 @@ export default function LakeFlowForm({ open, mode='create', initialValue=EMPTY, 
           <textarea rows={3} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
         </label>
         <div className="lv-field" style={{gridColumn:'1 / span 2'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap', marginBottom:6}}>
-            <strong style={{fontSize:14}}>Coordinates</strong>
-            <label style={{fontSize:12,display:'flex',alignItems:'center',gap:4}}><input type="radio" name="coord-mode" value="manual" checked={coordMode==='manual'} onChange={()=>setCoordMode('manual')} /> Manual</label>
-            <label style={{fontSize:12,display:'flex',alignItems:'center',gap:4}}><input type="radio" name="coord-mode" value="map" checked={coordMode==='map'} onChange={()=>setCoordMode('map')} /> Pin Drop</label>
-            <span style={{fontSize:11,color:'#6b7280'}}>Optional but recommended</span>
+          <strong style={{fontSize:14}}>Coordinates</strong>
+          <div style={{display:'flex',gap:16,flexWrap:'wrap', marginTop:8}}>
+            <label className="lv-field" style={{flex:'1 1 160px'}}>
+              <span>Latitude*</span>
+              <input type="number" step="0.000001" placeholder="14.1702" value={form.lat} onChange={e=>setForm(f=>({...f,lat:e.target.value}))} />
+            </label>
+            <label className="lv-field" style={{flex:'1 1 160px'}}>
+              <span>Longitude*</span>
+              <input type="number" step="0.000001" placeholder="121.2245" value={form.lon} onChange={e=>setForm(f=>({...f,lon:e.target.value}))} />
+            </label>
+            <CoordinatePicker form={form} setForm={setForm} showLakeLayer={true} lakeId={form.lake_id || null} />
           </div>
-          {coordMode==='manual' && (
-            <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
-              <label className="lv-field" style={{flex:'1 1 160px'}}>
-                <span>Latitude</span>
-                <input type="number" step="0.000001" value={form.lat} onChange={e=>setForm(f=>({...f,lat:e.target.value}))} />
-              </label>
-              <label className="lv-field" style={{flex:'1 1 160px'}}>
-                <span>Longitude</span>
-                <input type="number" step="0.000001" value={form.lon} onChange={e=>setForm(f=>({...f,lon:e.target.value}))} />
-              </label>
-            </div>
-          )}
-          {coordMode==='map' && <MiniPickMap form={form} setForm={setForm} />}
         </div>
       </form>
     </Modal>
   );
 }
 
-function MiniPickMap({ form, setForm }) {
-  const ref = React.useRef(null);
-  const mapRef = React.useRef(null);
-  const markerRef = React.useRef(null);
-  const lakeLayerRef = React.useRef(null);
-
-  // initialize map once
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const L = await import('leaflet');
-      if (!mounted || !ref.current) return;
-      if (ref.current._leaflet_id) return; // already initialized
-      const map = L.map(ref.current, { center: [form.lat || 12.8797, form.lon || 121.7740], zoom: 6 });
-      mapRef.current = map;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
-
-      map.on('click', (e) => {
-        const { lat, lng } = e.latlng;
-        // place marker
-        if (!markerRef.current) markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
-        else markerRef.current.setLatLng([lat, lng]);
-        setForm((f) => ({ ...f, lat: Number(lat.toFixed(6)), lon: Number(lng.toFixed(6)) }));
-      });
-
-      // initial marker from form coordinates
-      if (form.lat && form.lon) {
-        markerRef.current = L.circleMarker([form.lat, form.lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
-        map.setView([form.lat, form.lon], 12);
-      }
-    })();
-
-    return () => { mounted = false; try { if (mapRef.current) mapRef.current.remove(); } catch {} };
-  }, []); // eslint-disable-line
-
-  // react to lake selection changes: fetch lake detail and render geometry or fallback point
-  useEffect(() => {
-    let cancelled = false;
-    const load = async (lakeId) => {
-      if (!lakeId || !mapRef.current) return;
-      try {
-        const data = await api(`/lakes/${lakeId}`);
-
-        // remove previous lake layer if any
-        try { if (lakeLayerRef.current && mapRef.current) { mapRef.current.removeLayer(lakeLayerRef.current); lakeLayerRef.current = null; } } catch {}
-
-        // try geom_geojson from lake show endpoint
-        const gj = data?.geom_geojson ?? null;
-        if (gj) {
-          let geom = gj;
-          if (typeof gj === 'string') {
-            try { geom = JSON.parse(gj); } catch (e) { geom = null; }
-          }
-          if (geom) {
-            const L = await import('leaflet');
-            lakeLayerRef.current = L.geoJSON(geom, { style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 } }).addTo(mapRef.current);
-            try {
-              const bounds = lakeLayerRef.current.getBounds();
-              if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 });
-            } catch (e) {}
-            return;
-          }
-        }
-
-        // fallback: use latitude/longitude fields from lake payload if present
-        const lat = data?.latitude ?? data?.lat ?? null;
-        const lon = data?.longitude ?? data?.lon ?? null;
-        if (lat && lon && mapRef.current) {
-          const L = await import('leaflet');
-          if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(mapRef.current);
-          else markerRef.current.setLatLng([lat, lon]);
-          mapRef.current.setView([lat, lon], 12);
-          return;
-        }
-
-        // last resort: try public show for geometry
-        try {
-          const d2 = await api(`/public/lakes/${lakeId}`);
-          const g2 = d2?.geom_geojson ?? null;
-          if (g2) {
-            let geom2 = g2;
-            if (typeof g2 === 'string') {
-              try { geom2 = JSON.parse(g2); } catch (e) { geom2 = null; }
-            }
-            if (geom2) {
-              const L = await import('leaflet');
-              lakeLayerRef.current = L.geoJSON(geom2, { style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 } }).addTo(mapRef.current);
-              try { const bounds = lakeLayerRef.current.getBounds(); if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 }); } catch (e) {}
-            }
-          }
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    };
-
-    if (form.lake_id) load(form.lake_id);
-    return () => { cancelled = true; };
-  }, [form.lake_id]);
-
-  // keep marker in sync if lat/lon inputs change
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const lat = form.lat; const lon = form.lon;
-    if (lat && lon) {
-      (async () => {
-        const L = await import('leaflet');
-        if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(mapRef.current);
-        else markerRef.current.setLatLng([lat, lon]);
-        mapRef.current.setView([lat, lon], 12);
-      })();
-    }
-  }, [form.lat, form.lon]);
-
-  return <div ref={ref} style={{ height: 240, border: '1px solid #d1d5db', borderRadius: 6 }} />;
-}

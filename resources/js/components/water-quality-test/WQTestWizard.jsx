@@ -13,6 +13,14 @@ import StationModal from "../../components/modals/StationModal";
 import { GeoJSON, Marker, Popup, CircleMarker } from "react-leaflet";
 import L from "leaflet";
 
+function DateInvalidPopup({ message = 'Date must not be later than today.' }) {
+  React.useEffect(() => {
+    // show a modal-style alert when mounted
+    try { alertError('Invalid date', message); } catch (e) { /* ignore */ }
+  }, []);
+  return null;
+}
+
 const fmtDate = (d = new Date()) => {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -448,7 +456,7 @@ export default function WQTestWizard({
     setData({ ...data, results: next });
   };
 
-  const submit = (data) => {
+  const submit = async (data) => {
     if (!data?.station_id) {
       alertError('Missing station', 'A station is required for every sampling event. Please select or create a station.');
       const err = new Error('Station is required');
@@ -487,7 +495,18 @@ export default function WQTestWizard({
       })),
     };
 
-    if (onSubmit) return onSubmit(payload);
+    if (onSubmit) {
+      const result = await onSubmit(payload);
+      try { alertSuccess('Saved', 'Water quality test saved.'); } catch {}
+      // redirect to appropriate listing depending on current UI context
+      try {
+        const p = window.location && window.location.pathname ? window.location.pathname : '';
+        if (p.includes('/org-dashboard')) window.location.href = '/org-dashboard/wq-tests';
+        else if (p.includes('/contrib-dashboard')) window.location.href = '/contrib-dashboard/wq-tests';
+        else window.location.href = '/admin/sample-events';
+      } catch (e) {}
+      return result;
+    }
 
     return (async () => {
       try {
@@ -516,7 +535,13 @@ export default function WQTestWizard({
         }
 
         const data = json?.data ?? json;
-        alertSuccess('Saved', 'Water quality test saved.');
+        try { alertSuccess('Saved', 'Water quality test saved.'); } catch {}
+        try {
+          const p = window.location && window.location.pathname ? window.location.pathname : '';
+          if (p.includes('/org-dashboard')) window.location.href = '/org-dashboard/wq-tests';
+          else if (p.includes('/contrib-dashboard')) window.location.href = '/contrib-dashboard/wq-tests';
+          else window.location.href = '/admin/sample-events';
+        } catch (e) {}
         return data;
       } catch (e) {
         console.error('[WQTestWizard] submit error', e);
@@ -683,7 +708,7 @@ export default function WQTestWizard({
         return (
         <div className="wizard-pane">
           <FormRow>
-            <FG label="Date *">
+            <FG label="Date*">
               <input
                 type="date"
                 max={maxDt}
@@ -691,12 +716,10 @@ export default function WQTestWizard({
                 onChange={(e) => setData({ ...data, sampled_at: e.target.value })}
               />
               {dateInvalid ? (
-                <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 6 }}>
-                  Date must not be later than today.
-                </div>
+                <DateInvalidPopup />
               ) : null}
             </FG>
-            <FG label="Method *">
+            <FG label="Method*">
               <select
                 value={data.method}
                 onChange={(e) => setData({ ...data, method: e.target.value })}
@@ -706,13 +729,13 @@ export default function WQTestWizard({
                 <option value="automatic">Automatic Sampling</option>
               </select>
             </FG>
-            <FG label="Sampler Name *">
+            <FG label="Sampler Name*">
               <input
                 value={data.sampler_name}
                 onChange={(e) => setData({ ...data, sampler_name: e.target.value })}
               />
             </FG>
-            <FG label="Weather *">
+            <FG label="Weather*">
               <select
                 value={data.weather}
                 onChange={(e) => setData({ ...data, weather: e.target.value })}

@@ -215,7 +215,7 @@ export default function AdminOrganizationsPage() {
       <div className="card" style={{ padding:12, borderRadius:12, marginBottom:12 }}>
         <TableToolbar
           tableId={TABLE_ID}
-          search={{ value:q, onChange: v => { setQ(v); fetchOrgs(buildParams({ q:v, page:1 })); }, placeholder:'Search (name / domain)…' }}
+          search={{ value:q, onChange: v => { setQ(v); fetchOrgs(buildParams({ q:v, page:1 })); }, placeholder:'Search Organizations...' }}
           filters={[]}
           columnPicker={columnPickerAdapter}
           onRefresh={() => fetchOrgs(buildParams())}

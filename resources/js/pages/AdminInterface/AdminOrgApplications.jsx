@@ -43,6 +43,7 @@ export default function AdminOrgApplications() {
     // accepted_another_org intentionally omitted from Admin Dashboard
   }), []);
   const statusLabel = (code) => {
+    // Hide accepted_another_org from admin view entirely
     if (code === 'accepted_another_org') return '';
     return STATUS_LABELS[code] || code || '';
   };
@@ -129,7 +130,7 @@ export default function AdminOrgApplications() {
     const body = filtered.map(gr => cols.map(c => {
       const primary = gr.primary_app;
       const v = c.id === 'user' ? (gr.user?.name ?? '')
-        : c.id === 'applications' ? String((gr?.apps || []).length)
+  : c.id === 'applications' ? String((gr?.apps || []).length)
         : c.id === 'status' ? (gr.status_summary ?? '')
         : '';
       const s = String(v ?? '');
@@ -242,7 +243,7 @@ export default function AdminOrgApplications() {
 
       <TableToolbar
         tableId="admin-org-applications"
-        search={{ value: query, onChange: setQuery, placeholder: 'Search id, user, org…' }}
+        search={{ value: query, onChange: setQuery, placeholder: 'Search Organization Applications...' }}
         filters={[{ id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: STATUS_OPTIONS }]}
         columnPicker={{ columns: COLUMNS, visibleMap, onVisibleChange: setVisibleMap }}
         onRefresh={load}

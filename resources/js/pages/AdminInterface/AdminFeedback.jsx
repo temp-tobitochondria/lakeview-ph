@@ -516,7 +516,7 @@ export default function AdminFeedback() {
 
       <TableToolbar
         tableId="admin-feedback"
-        search={{ value: search, onChange: setSearch, placeholder: 'Search name/title/message… (press / to focus)' }}
+        search={{ value: search, onChange: setSearch, placeholder: 'Search Feedback...' }}
         columnPicker={{ columns: COLUMNS, visibleMap, onVisibleChange: setVisibleMap }}
         onToggleFilters={() => setShowFilters(v => !v)}
         onRefresh={() => fetchData({ page: 1 })}

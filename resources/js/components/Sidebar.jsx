@@ -214,7 +214,7 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <img src="/lakeview-logo-alt.png" alt="LakeView PH Logo" />
+          <img src="/lakeview-logo-alt.webp" alt="LakeView PH Logo" />
           <h2 className="sidebar-title">LakeView PH</h2>
         </div>
 

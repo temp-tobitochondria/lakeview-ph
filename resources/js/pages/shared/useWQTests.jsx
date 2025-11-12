@@ -63,12 +63,14 @@ export function useWQTests({ variant, tableId, initialLakes = [], initialTests =
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.id === 'string' && (parsed.dir === 'asc' || parsed.dir === 'desc')) {
+          // migrate old default 'month_day' to new default 'updated_at'
+          if (parsed.id === 'month_day') return { id: 'updated_at', dir: parsed.dir || 'desc' };
           return parsed;
         }
       }
     } catch {}
-    // Default to sampling date (Month-Day) DESC i.e., most recent first
-    return { id: 'month_day', dir: 'desc' };
+    // Default to most recently updated tests first
+    return { id: 'updated_at', dir: 'desc' };
   });
 
   useEffect(() => {
@@ -695,10 +697,10 @@ export function useWQTests({ variant, tableId, initialLakes = [], initialTests =
   const toolbarNode = (
     <TableToolbar
       tableId={tableId}
-      search={{ value: q, onChange: setQ, placeholder: isAdmin ? 'ID, station, sampler, method, organization…' : 'ID, station, sampler, method…' }}
+      search={{ value: q, onChange: setQ, placeholder: 'Search Water Quality Records...' }}
       filters={[]}
       columnPicker={{ columns: baseColumns.map((c) => ({ id: c.id, label: c.header })), visibleMap, onVisibleChange: (next) => setVisibleMap(next) }}
-      onResetWidths={() => { setResetSignal((x) => x + 1); setSort({ id: 'sampled_at', dir: 'desc' }); try { localStorage.removeItem(SORT_KEY); } catch {} }}
+      onResetWidths={() => { setResetSignal((x) => x + 1); setSort({ id: 'updated_at', dir: 'desc' }); try { localStorage.removeItem(SORT_KEY); } catch {} }}
       onRefresh={doRefresh}
       onToggleFilters={() => setFiltersOpen((v) => !v)}
       filtersBadgeCount={[

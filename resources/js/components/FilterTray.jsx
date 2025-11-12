@@ -1,5 +1,5 @@
 // resources/js/components/FilterTray.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { cachedGet } from "../lib/httpCache";
 
 function NumberInput({ label, value, onChange, placeholder }) {
@@ -26,6 +26,7 @@ function NumberInput({ label, value, onChange, placeholder }) {
 }
 
 export default function FilterTray({ open, onClose, onApply, initial = {} }) {
+  const trayRef = useRef(null);
   const [region, setRegion] = useState(initial.region || "");
   const [province, setProvince] = useState(initial.province || "");
   const [municipality, setMunicipality] = useState(initial.municipality || "");
@@ -105,6 +106,62 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
     // Fetch initial total count (no filters)
     fetchCount({});
   }, [open, initial, fetchFacets]);
+
+  // When the tray is hidden (aria-hidden=true) ensure interactive descendants are not focusable.
+  // This prevents accessibility tools from flagging focusable elements inside aria-hidden containers.
+  useEffect(() => {
+    const root = trayRef.current;
+    if (!root) return;
+
+    const focusableSelector = 'a,button,input,select,textarea,[tabindex]';
+    const nodes = Array.from(root.querySelectorAll(focusableSelector));
+
+    if (!open) {
+      nodes.forEach((el) => {
+        // store previous tabindex if any
+        if (el.hasAttribute('tabindex')) el.setAttribute('data-prev-tabindex', el.getAttribute('tabindex'));
+        el.setAttribute('tabindex', '-1');
+        // For form controls make them disabled while hidden so screen readers won't interact
+        if (['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA'].includes(el.tagName)) {
+          el.setAttribute('data-was-disabled', el.disabled ? 'true' : 'false');
+          el.disabled = true;
+        }
+      });
+    } else {
+      nodes.forEach((el) => {
+        if (el.hasAttribute('data-prev-tabindex')) {
+          el.setAttribute('tabindex', el.getAttribute('data-prev-tabindex'));
+          el.removeAttribute('data-prev-tabindex');
+        } else {
+          el.removeAttribute('tabindex');
+        }
+        if (el.hasAttribute('data-was-disabled')) {
+          const was = el.getAttribute('data-was-disabled') === 'true';
+          el.disabled = was;
+          el.removeAttribute('data-was-disabled');
+        } else if (['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA'].includes(el.tagName)) {
+          // restore as enabled by default
+          el.disabled = false;
+        }
+      });
+    }
+    // cleanup when unmount
+    return () => {
+      nodes.forEach((el) => {
+        if (el.hasAttribute('data-prev-tabindex')) {
+          el.setAttribute('tabindex', el.getAttribute('data-prev-tabindex'));
+          el.removeAttribute('data-prev-tabindex');
+        } else {
+          el.removeAttribute('tabindex');
+        }
+        if (el.hasAttribute('data-was-disabled')) {
+          const was = el.getAttribute('data-was-disabled') === 'true';
+          el.disabled = was;
+          el.removeAttribute('data-was-disabled');
+        }
+      });
+    };
+  }, [open]);
 
   // Close on Escape for accessibility
   const onKey = useCallback((e) => {
@@ -206,7 +263,7 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
   };
 
   return (
-    <div className={`filter-tray ${open ? 'open' : ''}`} aria-hidden={!open} role="region" aria-label="Lake filters">
+    <div ref={trayRef} className={`filter-tray ${open ? 'open' : ''}`} aria-hidden={!open} role="region" aria-label="Lake filters">
       <div className="filter-tray-inner">
         <div className="ft-grid">
           <div className="ft-row">

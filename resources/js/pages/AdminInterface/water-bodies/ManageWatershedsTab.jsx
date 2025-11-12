@@ -19,7 +19,7 @@ export default function ManageWatershedsTab() {
         search={{
           value: s.query,
           onChange: s.setQuery,
-          placeholder: "Search watersheds by name or description...",
+          placeholder: "Search Watersheds...",
         }}
         filters={[]}
         columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}

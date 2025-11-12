@@ -52,7 +52,7 @@ function ScreenshotButton() {
 
   return (
     <div className="screenshot-btn">
-      <button className="btn-floating" onClick={handleScreenshot}>
+      <button className="btn-floating" onClick={handleScreenshot} aria-label="Take screenshot" title="Take screenshot">
         <FiCamera className="icon-layer" />
       </button>
     </div>
