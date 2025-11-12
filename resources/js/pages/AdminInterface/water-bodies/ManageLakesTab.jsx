@@ -21,7 +21,7 @@ function ManageLakesTab() {
         search={{
           value: s.query,
           onChange: s.setQuery,
-          placeholder: "Search lakes by name, alt name, location, watershed, classification...",
+          placeholder: "Search Lakes...",
         }}
         filters={[]}
         columnPicker={{ columns: s.baseColumns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}

@@ -323,7 +323,7 @@ export default function OrgAuditLogsPage() {
           <div className="card" style={{ padding:12, borderRadius:12, marginBottom:12 }}>
             <TableToolbar
               tableId={TABLE_ID}
-              search={{ value:q, onChange: setQ, placeholder:'Search...' }}
+              search={{ value:q, onChange: setQ, placeholder:'Search Logs...' }}
               filters={[]}
               columnPicker={columnPickerAdapter}
               onRefresh={()=> fetchLogs(buildParams())}

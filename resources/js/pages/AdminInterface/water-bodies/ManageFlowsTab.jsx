@@ -16,7 +16,7 @@ export default function ManageFlowsTab() {
     <div className="dashboard-card">
       <TableToolbar
         tableId={s.TABLE_ID}
-        search={{ value: s.query, onChange: s.setQuery, placeholder: 'Search tributaries by lake, name, or source...' }}
+        search={{ value: s.query, onChange: s.setQuery, placeholder: 'Search Tributaries...' }}
         filters={[]}
         columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}
   onResetWidths={() => { s.triggerResetWidths(); try { localStorage.removeItem(s.TABLE_ID + '::sort'); } catch {}; s.setSort && s.setSort({ id: 'flow_type', dir: 'asc' }); }}

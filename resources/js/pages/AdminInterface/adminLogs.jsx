@@ -506,7 +506,7 @@ export default function AdminAuditLogsPage() {
 			<div className="card" style={{ padding: 12, borderRadius: 12, marginBottom: 12 }}>
 				<TableToolbar
 					tableId={TABLE_ID}
-					search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search...' }}
+					search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search Logs...' }}
 					filters={[]}
 					columnPicker={columnPickerAdapter}
 					onRefresh={() => fetchLogs(buildParams())}

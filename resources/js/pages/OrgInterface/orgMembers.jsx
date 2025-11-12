@@ -247,7 +247,7 @@ export default function OrgMembers() {
     <div className="container" style={{ padding: 16 }}>
       <DashboardHeader
         icon={<FiUsers />}
-        title="Organization • Members"
+        title="Members"
         description="Manage contributors for your organization. Add, edit, or remove contributors as needed."
         actions={<button className="pill-btn" onClick={openCreate}>+ New Contributor</button>}
       />
@@ -255,7 +255,7 @@ export default function OrgMembers() {
       <div className="card" style={{ padding:12, borderRadius:12, marginBottom:12 }}>
         <TableToolbar
           tableId={TABLE_ID}
-            search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search (name / email)…' }}
+            search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search Members...' }}
             filters={[]}
             columnPicker={columnPickerAdapter}
             onRefresh={reload}

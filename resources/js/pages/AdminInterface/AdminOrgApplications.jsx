@@ -233,7 +233,7 @@ export default function AdminOrgApplications() {
 
       <TableToolbar
         tableId="admin-org-applications"
-        search={{ value: query, onChange: setQuery, placeholder: 'Search id, user, org…' }}
+        search={{ value: query, onChange: setQuery, placeholder: 'Search Organization Applications...' }}
         filters={[{ id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: STATUS_OPTIONS }]}
         columnPicker={{ columns: COLUMNS, visibleMap, onVisibleChange: setVisibleMap }}
         onRefresh={load}

@@ -145,7 +145,7 @@ export function useManageLakesTabLogic() {
   );
 
   const defaultsVisible = useMemo(() => {
-    const initial = { name: true, region: true, province: true, classification: true, flows_status: true, watershed: true };
+    const initial = { name: true, region: true, province: true, surface_area_km2: true, elevation_m: true, mean_depth_m: true };
     baseColumns.forEach((col) => {
       if (!(col.id in initial)) initial[col.id] = false;
     });

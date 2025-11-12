@@ -215,7 +215,7 @@ export default function OrgApplications() {
 
       <TableToolbar
         tableId="org-applications"
-        search={{ value: query, onChange: setQuery, placeholder: 'Search name, email, id…' }}
+        search={{ value: query, onChange: setQuery, placeholder: 'Search Applications...' }}
         filters={[{ id: 'status', label: 'Status', type: 'select', value: status, onChange: setStatus, options: STATUS_OPTIONS }]}
         columnPicker={{ columns: COLUMNS, visibleMap, onVisibleChange: setVisibleMap }}
         onRefresh={load}
