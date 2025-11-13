@@ -251,23 +251,37 @@ function CompareLake({
 
   // removed: time-series filtered events (Compare view is bar-only)
 
-  // Available years across selected datasets (union) for depth profile year selection
+  // Available years: show only overlapping years when both lakes are selected; otherwise show years for the selected lake
   const availableYears = useMemo(() => {
-    const years = new Set();
-    const pushYears = (arr) => {
+    const toYearSet = (arr) => {
+      const s = new Set();
       (Array.isArray(arr) ? arr : []).forEach((ev) => {
         const iso = ev?.sampled_at;
         if (!iso) return;
         try {
           const y = new Date(iso).getFullYear();
-          if (Number.isFinite(y)) years.add(y);
+          if (Number.isFinite(y)) s.add(y);
         } catch {}
       });
+      return s;
     };
-    pushYears(eventsAAll);
-    pushYears(eventsBAll);
-    return Array.from(years).sort((a, b) => b - a);
-  }, [eventsAAll, eventsBAll]);
+    const setA = toYearSet(eventsAAll);
+    const setB = toYearSet(eventsBAll);
+    const listA = Array.from(setA).sort((a,b)=>b-a);
+    const listB = Array.from(setB).sort((a,b)=>b-a);
+    const both = Boolean(lakeA && selectedOrgA && lakeB && selectedOrgB);
+    if (both) {
+      return listA.filter((y) => setB.has(y));
+    }
+    if (lakeA && selectedOrgA) return listA;
+    if (lakeB && selectedOrgB) return listB;
+    return [];
+  }, [eventsAAll, eventsBAll, lakeA, lakeB, selectedOrgA, selectedOrgB]);
+
+  // Keep selectedYears within available overlap; silently prune invalid years
+  useEffect(() => {
+    setSelectedYears((prev) => prev.filter((y) => availableYears.includes(y)));
+  }, [availableYears.join(',')]);
 
   // derive depth options for selectedParam from events (union of both lakes)
   const depthOptions = useMemo(() => {
@@ -441,6 +455,11 @@ function CompareLake({
               setSelectedYears={setSelectedYears}
               includeCustom={false}
             />
+            {(lakeA && selectedOrgA && lakeB && selectedOrgB && availableYears.length === 0) ? (
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                No overlapping years between the selected datasets.
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -477,8 +496,36 @@ function CompareLake({
           {/* Summary panels removed per design: Samples / Mean / Median are not shown in CompareLake */}
 
   <div className="wq-chart" style={{ height: 300, borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', padding: 8 }}>
-  {applied && !compareThrLoading && barData && Array.isArray(barData.datasets) && barData.datasets.length ? (
+  {applied && (lakeA && selectedOrgA && lakeB && selectedOrgB) && availableYears.length === 0 ? (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ opacity: 0.9 }}>No overlapping years between the selected datasets.</span>
+          </div>
+        ) : applied && !compareThrLoading && barData && Array.isArray(barData.datasets) && barData.datasets.length ? (
           (() => {
+            // If datasets are present but contain no actual bar values, show an explicit message
+            const raw = Array.isArray(barData.datasets) ? barData.datasets : [];
+            const hasPrimaryData = (() => {
+              try {
+                for (const d of raw) {
+                  if (d && d.type === 'line') continue; // ignore threshold lines
+                  const arr = Array.isArray(d.data) ? d.data : [];
+                  for (const v of arr) {
+                    const val = typeof v === 'number' ? v : (v && typeof v === 'object' ? (Number.isFinite(v.y) ? v.y : (Number.isFinite(v.x) ? v.x : null)) : null);
+                    if (Number.isFinite(val)) return true;
+                  }
+                }
+                return false;
+              } catch { return false; }
+            })();
+
+            if (!hasPrimaryData) {
+              return (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ opacity: 0.9 }}>No data for the current filters.</span>
+                </div>
+              );
+            }
+
             const bd = { ...barData, datasets: colorizeDatasets(barData.datasets) };
             const paramMeta = (paramList || []).find(p => String(p.key || p.id || p.code) === String(selectedParam));
             const unit = paramMeta?.unit || '';
@@ -520,7 +567,7 @@ function CompareLake({
           </div>
         ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : 'Fill all fields and click Apply to generate the chart.'}</span>
+            <span style={{ opacity: 0.9 }}>{loading ? 'Loading…' : (applied ? 'No data for the current filters.' : 'Fill all fields and click Apply to generate the chart.')}</span>
           </div>
         )}
       </div>

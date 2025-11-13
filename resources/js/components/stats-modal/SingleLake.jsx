@@ -580,8 +580,36 @@ export default function SingleLake({
               </div>
             ) : chartData && chartData.datasets && chartData.datasets.length ? (
               (() => {
+                // Determine if any primary dataset actually has data points (exclude thresholds and trend overlays)
+                const baseDs = chartData.datasets || [];
+                const hasPrimaryData = (() => {
+                  try {
+                    const isAux = (d) => {
+                      const lbl = String(d?.label || '').toLowerCase();
+                      return lbl.includes('min') || lbl.includes('max') || lbl.includes("sen’s slope") || lbl.includes("sen's slope");
+                    };
+                    for (const d of baseDs) {
+                      if (isAux(d)) continue;
+                      const arr = Array.isArray(d?.data) ? d.data : [];
+                      for (const p of arr) {
+                        const val = typeof p === 'number' ? p : (p && typeof p === 'object' ? (Number.isFinite(p.y) ? p.y : (Number.isFinite(p.x) ? p.x : null)) : null);
+                        if (Number.isFinite(val)) return true;
+                      }
+                    }
+                    return false;
+                  } catch { return false; }
+                })();
+
+                if (!hasPrimaryData) {
+                  return (
+                    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ opacity: 0.9 }}>No data for the current filters.</span>
+                    </div>
+                  );
+                }
+
                 // Merge overlay when available
-                let datasets = chartData.datasets.slice();
+                let datasets = baseDs.slice();
                 if (smk && Array.isArray(smk.overlay)){
                   datasets = datasets.concat([
                     {
