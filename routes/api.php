@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\KycProfileController;
 use App\Http\Controllers\Api\OrgApplicationController;
 use App\Http\Controllers\FeedbackController; // user feedback
 use App\Http\Controllers\Api\Admin\FeedbackController as AdminFeedbackController; // admin feedback mgmt
+use App\Http\Controllers\Api\Admin\FeedbackStreamController as AdminFeedbackStreamController; // SSE stream for feedback
 use App\Http\Controllers\GeocodeController;
 use App\Http\Controllers\TileController;
 use App\Http\Controllers\ElevationController;
@@ -82,6 +83,7 @@ Route::middleware(['auth:sanctum','role:superadmin'])->prefix('admin')->group(fu
     Route::get('/feedback/{feedback}', [AdminFeedbackController::class, 'show'])->whereNumber('feedback');
     Route::patch('/feedback/{feedback}', [AdminFeedbackController::class, 'update'])->whereNumber('feedback');
     Route::post('/feedback/bulk-update', [AdminFeedbackController::class, 'bulkUpdate']);
+    Route::get('/feedback/stream', [AdminFeedbackStreamController::class, 'stream']);
 
     // Tenants
     Route::get('/tenants',               [TenantController::class, 'index']);

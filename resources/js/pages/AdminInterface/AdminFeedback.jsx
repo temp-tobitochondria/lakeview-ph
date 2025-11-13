@@ -451,6 +451,27 @@ export default function AdminFeedback() {
 
   useEffect(() => { fetchData({ page:1 }); }, [search, status, category, roleFilter]);
 
+  // Real-time updates via Server-Sent Events (SSE)
+  useEffect(() => {
+    let es;
+    const connect = () => {
+      const maxId = rows.reduce((m, r) => r.id > m ? r.id : m, 0);
+      try { invalidateHttpCache('/admin/feedback'); } catch {}
+      es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`);
+      es.addEventListener('feedback-created', (ev) => {
+        try { invalidateHttpCache('/admin/feedback'); } catch {}
+        fetchData({ page: 1 });
+      });
+      es.onerror = () => {
+        if (es) es.close();
+        // Reconnect after short delay
+        setTimeout(connect, 5000);
+      };
+    };
+    connect();
+    return () => { if (es) es.close(); };
+  }, [rows, fetchData]);
+
   // Auto-refresh the list periodically when the tab is visible
   useEffect(() => {
     let timer = null;

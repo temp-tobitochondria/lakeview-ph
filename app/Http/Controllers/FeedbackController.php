@@ -52,6 +52,7 @@ class FeedbackController extends Controller
             }
         }
         $feedback = Feedback::create($data);
+        try { event(new \App\Events\FeedbackCreated($feedback)); } catch (\Throwable $e) { /* swallow */ }
         return response()->json(['data' => $feedback], 201);
     }
 
@@ -118,6 +119,7 @@ class FeedbackController extends Controller
         }
 
         $feedback = Feedback::create($payload);
+        try { event(new \App\Events\FeedbackCreated($feedback)); } catch (\Throwable $e) { /* swallow */ }
         return response()->json(['data' => $feedback], 201);
     }
 
