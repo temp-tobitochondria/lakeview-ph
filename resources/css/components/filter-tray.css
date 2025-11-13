@@ -21,8 +21,10 @@
 }
 
 .filter-tray-inner {
-  background: var(--surface, white);
-  color: var(--text, #111);
+  /* Always use a white surface for the filter tray so it doesn't follow map/theme colors */
+  background: white;
+  /* keep the font color inherited from the surrounding app/theme */
+  color: inherit;
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.18);
   padding: 8px;
@@ -37,7 +39,8 @@
 .filter-tray .ft-grid.full-row { grid-template-columns: 1fr; }
 .filter-tray .ft-row label {
   font-size: 12px;
-  color: var(--muted, #666);
+  /* preserve app's text color */
+  color: inherit;
   display: block;
   margin-bottom: 4px;
 }
@@ -47,11 +50,12 @@
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid rgba(0,0,0,0.12);
-  background: transparent;
+  /* Keep inputs/selects visually white regardless of theme; preserve font color */
+  background: white;
   color: inherit;
   font-size: 13px;
 }
-.filter-tray .ft-row input::placeholder { color: rgba(0,0,0,0.45); }
+.filter-tray .ft-row input::placeholder { color: inherit; }
 
 .filter-tray .ft-row select { appearance: auto; }
 
@@ -64,8 +68,8 @@
 }
 
 .btn { padding: 8px 10px; border-radius: 6px; border: none; cursor: pointer; }
-.btn-primary { background: #439e9d; color: white; }
-.btn-secondary { background: #f3f3f3; color: #333; }
+.btn-primary { background: #439e9d; color: inherit; }
+.btn-secondary { background: #f3f3f3; color: inherit; }
 
 /* Small screens */
 @media (max-width: 420px) {

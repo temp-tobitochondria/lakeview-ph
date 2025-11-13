@@ -44,10 +44,13 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile
 
     map.on("contextmenu", handleContextMenu);
     map.on("dragstart", handleClose);
+    // Close context menu on left click as well
+    map.on("click", handleClose);
 
     return () => {
       map.off("contextmenu", handleContextMenu);
       map.off("dragstart", handleClose);
+      map.off("click", handleClose);
     };
   }, [map]);
 

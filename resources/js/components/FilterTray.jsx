@@ -315,7 +315,7 @@ export default function FilterTray({ open, onClose, onApply, initial = {} }) {
         </div>
 
         <div className="ft-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div aria-live="polite" style={{ fontSize: 13, color: 'black' }}>
+          <div aria-live="polite" style={{ fontSize: 13 }}>
             {countLoading ? 'Showing — lakes.' : (count != null ? `Showing ${count} lakes.` : 'Showing — lakes.')}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
