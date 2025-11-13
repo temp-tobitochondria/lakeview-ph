@@ -30,24 +30,21 @@ const StatusPill = ({ status }) => (
 
 function AttachmentsModal({ open, onClose, item }) {
   const [sel, setSel] = React.useState(0);
-  React.useEffect(() => {
-    if (open) setSel(0);
-  }, [open, item]);
-  if (!open || !item) return null;
-  // Build a combined list of attachment sources from images and metadata.files (url or path)
+  // Hooks must not be conditional; compute imgs before any early returns
   const imgs = React.useMemo(() => {
-    const base = Array.isArray(item.images) ? item.images.filter(x => typeof x === 'string') : [];
+    const base = Array.isArray(item?.images) ? item.images.filter(x => typeof x === 'string') : [];
     const files = Array.isArray(item?.metadata?.files) ? item.metadata.files : [];
     const fileUrls = files
       .map(f => (typeof f?.url === 'string' ? f.url : (typeof f?.path === 'string' ? f.path : null)))
       .filter(Boolean);
     const combined = [...base, ...fileUrls];
-    // de-duplicate while preserving order
     const seen = new Set();
-    return combined.filter(u => {
-      if (seen.has(u)) return false; seen.add(u); return true;
-    });
+    return combined.filter(u => { if (seen.has(u)) return false; seen.add(u); return true; });
   }, [item]);
+  React.useEffect(() => {
+    if (open) setSel(0);
+  }, [open, item]);
+  if (!open || !item) return null;
   const count = imgs.length;
   const getFileName = (src) => {
     try {
