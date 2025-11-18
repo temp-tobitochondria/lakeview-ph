@@ -12,6 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust Render / proxy headers so rate limiting uses real client IPs
+        $middleware->trustProxies(at: '**');
+
         // Global middleware
         $middleware->append([\App\Http\Middleware\InitAuditContext::class]);
 

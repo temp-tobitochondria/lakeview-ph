@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Swal from 'sweetalert2';
 import Modal from '../Modal';
 import api from '../../lib/api';
 import { getCurrentUser } from '../../lib/authState';
@@ -168,13 +169,33 @@ export default function FeedbackModal({ open, onClose, width = 640 }) {
       // Accept several possible shapes: {data: {...}}, {...}, or empty object
       const created = (res && (res.data || res.item || (res.id && res))) || null;
       if (created) {
-        setSuccess('Feedback submitted. Thank you!');
+        // Clear touched/error states before showing popup
+        setTTitle(false); setTMessage(false); setTCategory(false);
         resetForm();
-        if (user) {
-          setList(prev => [created, ...(prev||[])]);
-        }
+        if (user) { setList(prev => [created, ...(prev||[])]); }
+        const text = user
+          ? 'Feedback submitted. We will email updates; you can also track it in the list below.'
+          : 'Feedback submitted.';
+        await Swal.fire({
+          title: 'Thank you!',
+          text,
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#2563eb'
+        });
+        setSuccess(''); // we rely on SweetAlert instead of inline success banner
       } else {
-        setSuccess('Feedback submitted.');
+        const text = user
+          ? 'Feedback submitted. We will email updates; you can also track it in the list below.'
+          : 'Feedback submitted.';
+        await Swal.fire({
+          title: 'Thank you!',
+          text,
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#2563eb'
+        });
+        setSuccess('');
       }
     } catch (e2) {
       let parsed = null;
@@ -336,7 +357,7 @@ export default function FeedbackModal({ open, onClose, width = 640 }) {
                   )}
                 </div>
                 {error && <div className="lv-status-error" role="alert">{error}</div>}
-                {success && <div className="lv-status-success" role="status">{success}</div>}
+                {/* Success messages now shown via SweetAlert popup */}
                 {/* footer buttons moved into Modal.footer for consistency */}
               </fieldset>
             </form>

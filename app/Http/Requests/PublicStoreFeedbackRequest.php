@@ -14,13 +14,14 @@ class PublicStoreFeedbackRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Existing system feedback fields
-            'title' => ['nullable','string','max:160'],
-            'message' => ['nullable','string','max:4000'],
-            // New Lake Info feedback alias fields
+            // Title optional but recommended; enforce min length if present
+            'title' => ['nullable','string','max:160','min:3'],
+            // Either message or description must be provided, each at least 10 chars if present
+            'message' => ['required_without:description','string','max:4000','min:10'],
+            'description' => ['required_without:message','string','max:4000','min:10'],
+            // Additional context fields
             'lake_id' => ['nullable','integer','exists:lakes,id'],
             'type' => ['nullable','string','in:Missing information,Incorrect data,Add photo,Other'],
-            'description' => ['nullable','string','max:4000'],
             'contact' => ['nullable','string','max:160'],
             // Images (multipart form uploads)
             'images' => ['sometimes','array','max:6'],

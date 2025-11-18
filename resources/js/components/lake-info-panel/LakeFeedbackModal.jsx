@@ -159,8 +159,20 @@ export default function LakeFeedbackModal({ open, onClose, lake }) {
       const endpoint = hasToken ? '/feedback' : '/public/feedback';
       const res = await api.upload(endpoint, fd, { headers: { /* Content-Type auto for FormData */ } });
       if (res) {
-        setSuccess('Thank you! Your feedback has been submitted for review.');
         reset();
+        setTDesc(false); // clear touched state
+        const hasToken = !!getToken();
+        const text = hasToken
+          ? 'Feedback submitted. We will email updates; you can also track it under My Submissions.'
+          : 'Feedback submitted.';
+        await Swal.fire({
+          title: 'Thank you!',
+          text,
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#2563eb'
+        });
+        setSuccess('');
       }
     } catch (e2) {
       let msg = 'Submission failed.';
@@ -307,7 +319,7 @@ export default function LakeFeedbackModal({ open, onClose, lake }) {
                     <input ref={hpRef} type="text" name="website" tabIndex={-1} autoComplete="off" />
                   </div>
                   {error && <div className="lv-status-error" role="alert">{error}</div>}
-                  {success && <div className="lv-status-success" role="status">{success}</div>}
+                  {/* Success now via SweetAlert */}
                 </fieldset>
               </form>
             </div>

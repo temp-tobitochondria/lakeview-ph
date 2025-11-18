@@ -11,7 +11,8 @@ use App\Models\SamplingEvent;
 class KpiController extends Controller
 {
     /**
-     * Active members: org_admin + contributor users (is_active=true) within the tenant.
+     * Member count: org_admin + contributor users belonging to this tenant.
+     * Legacy 'is_active' user status column has been removed; we now count purely by role + tenant.
      * GET /api/org/{tenant}/kpis/members
      */
     public function members(Request $request, int $tenant)

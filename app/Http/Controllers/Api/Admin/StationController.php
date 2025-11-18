@@ -160,10 +160,16 @@ class StationController extends Controller
 
     protected function stationQuery()
     {
-        return Station::query()
-            ->select('stations.*')
-            ->selectRaw('ST_Y(geom_point) as latitude')
-            ->selectRaw('ST_X(geom_point) as longitude');
+        $query = Station::query()->select('stations.*');
+        $driver = \DB::getDriverName();
+        if ($driver === 'pgsql') {
+            $query->selectRaw('ST_Y(geom_point) as latitude')
+                  ->selectRaw('ST_X(geom_point) as longitude');
+        } else {
+            // Non-PostgreSQL drivers (e.g. SQLite in tests) lack PostGIS functions; return null placeholders.
+            $query->selectRaw('NULL as latitude')->selectRaw('NULL as longitude');
+        }
+        return $query;
     }
 
     protected function syncPoint(int $stationId, ?float $latitude, ?float $longitude): void

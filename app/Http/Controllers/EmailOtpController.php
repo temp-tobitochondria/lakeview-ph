@@ -81,8 +81,12 @@ class EmailOtpController extends Controller
         ]);
 
         $this->sendOtp($email, $code, $purpose);
-
-        return ['ok' => true, 'cooldown' => $this->resendCooldownSeconds];
+        $resp = ['ok' => true, 'cooldown' => $this->resendCooldownSeconds];
+        // Testing convenience: expose plaintext code only in testing environment to enable end-to-end OTP verification.
+        if (app()->environment('testing')) {
+            $resp['test_code'] = $code;
+        }
+        return $resp;
     }
 
     private function checkOtp(string $email, string $purpose, string $code) {
@@ -141,8 +145,9 @@ class EmailOtpController extends Controller
         if (!$res['ok']) {
             return response()->json(['ok' => false, 'cooldown_seconds' => $res['cooldown']], 429);
         }
-
-        return response()->json(['ok' => true, 'cooldown_seconds' => $res['cooldown']]);
+        $out = ['ok' => true, 'cooldown_seconds' => $res['cooldown']];
+        if (isset($res['test_code'])) $out['test_code'] = $res['test_code'];
+        return response()->json($out);
     }
 
     public function registerVerifyOtp(Request $r) {
@@ -208,9 +213,13 @@ class EmailOtpController extends Controller
         if ($user) {
             $res = $this->upsertOtp($r->email, 'reset', null);
             if (!$res['ok']) {
-                return response()->json(['ok' => true, 'cooldown_seconds' => $res['cooldown']]);
+                $out = ['ok' => true, 'cooldown_seconds' => $res['cooldown']];
+                if (isset($res['test_code'])) $out['test_code'] = $res['test_code'];
+                return response()->json($out);
             }
-            return response()->json(['ok' => true, 'cooldown_seconds' => $this->resendCooldownSeconds]);
+            $out = ['ok' => true, 'cooldown_seconds' => $this->resendCooldownSeconds];
+            if (isset($res['test_code'])) $out['test_code'] = $res['test_code'];
+            return response()->json($out);
         }
         // Don’t leak user existence
         return response()->json(['ok' => true, 'cooldown_seconds' => $this->resendCooldownSeconds]);
