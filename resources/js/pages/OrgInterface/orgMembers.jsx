@@ -32,7 +32,9 @@ export default function OrgMembers() {
   // Core state
   const location = useLocation();
   const qp = new URLSearchParams(location.search);
-  const [tenantId, setTenantId] = useState(() => qp.get('tenant_id') || null);
+  // Prefer explicit tenant_id from query params; fallback to user context later
+  const initialTenantFromQuery = qp.get('tenant_id') || null;
+  const [tenantId, setTenantId] = useState(initialTenantFromQuery);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -76,15 +78,30 @@ export default function OrgMembers() {
     } finally { setLoading(false); }
   };
 
-  // Resolve tenant then load
+  // Watch for query param changes (e.g., navigation between tenants)
+  useEffect(() => {
+    const currentQueryTenant = qp.get('tenant_id') || null;
+    if (currentQueryTenant && currentQueryTenant !== tenantId) {
+      setTenantId(currentQueryTenant);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
+
+  // Resolve tenant from user profile only if not already set by query param
   useEffect(() => { (async () => {
+    if (tenantId) return; // already have a tenant from query param
     try {
       const me = await fetchMe({ maxAgeMs: 60 * 1000 });
       const tid = me?.tenant_id || me?.tenant?.id || me?.tenants?.[0]?.id || null;
       setTenantId(tid);
-      if (tid) fetchContributors(tid);
     } catch { setError('Unable to resolve tenant context'); }
-  })(); }, []);
+  })(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
+  // Fetch contributors whenever tenantId becomes available / changes
+  useEffect(() => {
+    if (tenantId) fetchContributors(tenantId);
+  }, [tenantId]);
 
   const reload = () => { if (tenantId) fetchContributors(tenantId); };
 
