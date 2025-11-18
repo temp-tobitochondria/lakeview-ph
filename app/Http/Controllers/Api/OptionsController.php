@@ -191,12 +191,11 @@ class OptionsController extends Controller
         $q = trim((string) $request->query('q', ''));
         $limit = (int) $request->query('limit', 1000);
         $limit = max(1, min($limit, 5000));
-        // Simplified: assume unified schema with 'active' boolean column.
-        // If an exception occurs (e.g., column missing), log and return empty list gracefully.
+        // Simplified: do not filter by status; return all tenants for selector.
+        // If an exception occurs, log and return empty list gracefully.
         try {
             $rows = Tenant::query()
                 ->select(['id','name'])
-                ->where('active', true)
                 ->when($q !== '', function ($qb) use ($q) { $qb->where('name', 'ILIKE', "%{$q}%"); })
                 ->orderBy('name')
                 ->limit($limit)
