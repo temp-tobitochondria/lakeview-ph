@@ -22,7 +22,6 @@ use App\Http\Controllers\Api\OrgApplicationController;
 use App\Http\Controllers\FeedbackController; // user feedback
 use App\Http\Controllers\Api\Admin\FeedbackController as AdminFeedbackController; // admin feedback mgmt
 use App\Http\Controllers\Api\Admin\FeedbackStreamController as AdminFeedbackStreamController; // SSE stream for feedback
-use App\Http\Controllers\GeocodeController;
 use App\Http\Controllers\TileController;
 use App\Http\Controllers\ElevationController;
 
@@ -256,8 +255,6 @@ Route::get('/public/lakes-geo', [LakeController::class, 'publicGeo']);
 Route::get('/public/lakes/{lake}', [LakeController::class, 'publicShow']);
 // Faceted filter options for lakes (public)
 Route::get('/filters/lakes', [LakeFiltersController::class, 'index']);
-// Public geocode proxy endpoint (Nominatim)
-Route::get('/geocode/nominatim', [GeocodeController::class, 'nominatimSearch']);
 // Public lake flows
 Route::get('/public/lake-flows', [\App\Http\Controllers\LakeFlowController::class, 'publicIndex']);
 Route::get('/public/lake-flows/{flow}', [\App\Http\Controllers\LakeFlowController::class, 'publicShow'])->whereNumber('flow');
@@ -370,7 +367,6 @@ Route::get('/options/municipalities', [OptionsController::class, 'municipalities
 Route::get('/options/municipalities', [OptionsController::class, 'municipalities']);
 // Public semantic search
 Route::post('/search', [\App\Http\Controllers\SearchController::class, 'query']);
-// Deprecated: /api/search/suggest removed
 // New lake-specific distinct location endpoints supporting JSON arrays (can migrate frontend later)
 Route::get('/options/lake-regions', [LakeOptionsController::class, 'regions']);
 Route::get('/options/lake-provinces', [LakeOptionsController::class, 'provinces']);

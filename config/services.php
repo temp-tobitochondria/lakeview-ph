@@ -35,10 +35,4 @@ return [
         ],
     ],
 
-    // OpenStreetMap Nominatim configuration (optional email for heavy usage)
-    'nominatim' => [
-        'base_url' => env('NOMINATIM_BASE', 'https://nominatim.openstreetmap.org'),
-        'email' => env('NOMINATIM_EMAIL'),
-    ],
-
 ];
