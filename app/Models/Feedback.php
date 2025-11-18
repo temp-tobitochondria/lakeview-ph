@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Expression;
 
 class Feedback extends Model
 {
@@ -24,6 +25,26 @@ class Feedback extends Model
         'is_guest' => 'boolean',
         'spam_score' => 'integer',
     ];
+
+    // Ensure Postgres receives true/false instead of integer 1/0 literals (avoids 42804 datatype mismatch)
+    public function setIsGuestAttribute($value): void
+    {
+        // For Postgres we want literal true/false in SQL, not integer 1/0.
+        // Using an Expression avoids parameter binding converting boolean to integer.
+        $bool = $value ? true : false;
+        // If the connection driver is pgsql, use raw boolean literals.
+        try {
+            $driver = config('database.default');
+            $connName = $driver;
+            $driverName = config("database.connections.$connName.driver");
+            if ($driverName === 'pgsql') {
+                $this->attributes['is_guest'] = new Expression($bool ? 'true' : 'false');
+                return;
+            }
+        } catch (\Throwable $e) { /* fallback below */ }
+        // Fallback for other drivers (SQLite/MySQL) – normal boolean acceptable.
+        $this->attributes['is_guest'] = $bool;
+    }
 
     public const STATUS_OPEN = 'open';
     public const STATUS_IN_PROGRESS = 'in_progress';

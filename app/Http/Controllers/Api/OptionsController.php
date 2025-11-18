@@ -12,6 +12,7 @@ use App\Models\WqStandard;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class OptionsController extends Controller
 {
@@ -192,12 +193,15 @@ class OptionsController extends Controller
         $limit = max(1, min($limit, 5000));
 
         try {
-            $rows = Tenant::query()
-                ->select(['id', 'name'])
-                ->where('active', true)
-                ->when($q !== '', function ($qb) use ($q) {
-                    $qb->where('name', 'ILIKE', "%{$q}%");
-                })
+            $qb = Tenant::query()->select(['id','name']);
+            // Support legacy 'is_active' if 'active' not yet present in deployed schema
+            if (Schema::hasColumn('tenants', 'active')) {
+                $qb->where('active', true);
+            } elseif (Schema::hasColumn('tenants', 'is_active')) {
+                $qb->where('is_active', true);
+            } // else: no status column, return all tenants
+            $rows = $qb
+                ->when($q !== '', function ($qb) use ($q) { $qb->where('name', 'ILIKE', "%{$q}%"); })
                 ->orderBy('name')
                 ->limit($limit)
                 ->get();
@@ -206,7 +210,14 @@ class OptionsController extends Controller
         } catch (\Throwable $e) {
             // Fallback to raw SQL to surface clearer DB errors and keep dropdowns working
             try {
-                $sql = 'select id, name from tenants where active = true';
+                // Build raw SQL with same fallback logic
+                if (Schema::hasColumn('tenants', 'active')) {
+                    $sql = 'select id, name from tenants where active = true';
+                } elseif (Schema::hasColumn('tenants', 'is_active')) {
+                    $sql = 'select id, name from tenants where is_active = true';
+                } else {
+                    $sql = 'select id, name from tenants';
+                }
                 $params = [];
                 if ($q !== '') { $sql .= ' and name ILIKE ?'; $params[] = "%{$q}%"; }
                 $sql .= ' order by name limit ?';

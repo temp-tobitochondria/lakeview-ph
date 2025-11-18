@@ -149,6 +149,14 @@ export default function FeedbackModal({ open, onClose, width = 640 }) {
     }
     setSubmitting(true); setError(''); setSuccess('');
     try {
+      // Show SweetAlert loading state while submitting
+      await Swal.fire({
+        title: 'Submitting…',
+        text: 'Please wait while we send your feedback.',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => { Swal.showLoading(); }
+      });
       const fd = new FormData();
       fd.append('title', title.trim());
       fd.append('message', message.trim());
@@ -203,6 +211,13 @@ export default function FeedbackModal({ open, onClose, width = 640 }) {
       console.warn('[Feedback] submit failed', e2, parsed);
       const firstFieldError = parsed && parsed.errors && Object.values(parsed.errors).flat()[0];
       setError(parsed?.message || firstFieldError || 'Submission failed.');
+      await Swal.fire({
+        title: 'Submission failed',
+        text: parsed?.message || firstFieldError || 'Please try again.',
+        icon: 'error',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#dc2626'
+      });
     } finally { if (mountedRef.current) setSubmitting(false); }
   };
 
