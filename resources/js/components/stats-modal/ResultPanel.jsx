@@ -6,7 +6,7 @@ import { testLabelFromResult, testLabelFromCode } from './utils/testLabels';
 import { lakeName } from './utils/shared';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 
-export default function ResultPanel({ result, paramCode, paramOptions, classCode, lakes, cl, lakeId, compareValue, showAllValues, setShowAllValues, showExactP, setShowExactP, onRunSuggested }) {
+export default function ResultPanel({ result, paramCode, paramOptions, classCode, lakes, cl, lakeId, compareValue, stationId, showAllValues, setShowAllValues, showExactP, setShowExactP, onRunSuggested }) {
   if (!result) return null;
 
   const gridItems = [];
@@ -384,6 +384,16 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
         <strong>Interpretation:</strong>
         <div style={{ marginTop:6 }}>{interpObj.text}</div>
+        {(String(compareValue || '').startsWith('class:') && String(stationId) === 'all') ? (
+          <div style={{ marginTop:8, fontSize:12, color:'#ddd' }}>
+            <strong>Note:</strong> All measurements are treated as separate observations. For detailed assessment of specific sites, run the test per station.
+          </div>
+        ) : null}
+        {(String(compareValue || '').startsWith('lake:') && ['t_two','mannwhitney','mood_median'].includes(testKind)) ? (
+          <div style={{ marginTop:8, fontSize:12, color:'#ddd' }}>
+            <strong>Disclaimer:</strong> This test pools all stations and sampling dates per lake; results are exploratory and not a substitute for station-level or regulatory compliance assessments.
+          </div>
+        ) : null}
         {Array.isArray(interpObj.suggestedTests) && interpObj.suggestedTests.length ? (
           <div style={{ marginTop:8 }}>
             <div style={{ fontSize:13, marginBottom:6 }}>Suggested Test/s:</div>
