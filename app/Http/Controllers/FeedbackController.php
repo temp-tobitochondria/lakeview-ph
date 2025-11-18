@@ -29,6 +29,8 @@ class FeedbackController extends Controller
                     'lang' => $request->header('Accept-Language'),
                 ],
             ]),
+            // Ensure a default status if not explicitly provided
+            'status' => $v['status'] ?? (Feedback::STATUS_OPEN),
         ];
 
         // Handle image uploads if present
@@ -82,6 +84,8 @@ class FeedbackController extends Controller
                     'lang' => $request->header('Accept-Language'),
                 ],
             ],
+            // Default status for public submissions
+            'status' => $v['status'] ?? (Feedback::STATUS_OPEN),
         ];
 
         if ($user) {

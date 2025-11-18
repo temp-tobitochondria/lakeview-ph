@@ -1314,7 +1314,7 @@ trait HasAttributes
      * @param  string  $path
      * @param  string  $key
      * @param  mixed  $value
-     * @return $this
+     * @return array
      */
     protected function getArrayAttributeWithValue($path, $key, $value)
     {
@@ -1785,6 +1785,10 @@ trait HasAttributes
         $castType = $casts[$key];
 
         if (in_array($castType, static::$primitiveCastTypes)) {
+            return false;
+        }
+
+        if (is_subclass_of($castType, Castable::class)) {
             return false;
         }
 
