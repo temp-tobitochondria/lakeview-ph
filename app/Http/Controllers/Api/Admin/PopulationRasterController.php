@@ -111,6 +111,10 @@ class PopulationRasterController extends Controller
             ]);
         });
 
+        // Invalidate cached dataset years/info so UI doesn't show stale results
+        try { Cache::forget('population:dataset-years:v1'); } catch (\Throwable $e) { }
+        try { Cache::forget('population:dataset-info:v1:'.((int)$validated['year'])); } catch (\Throwable $e) { }
+
         return response()->json(['data' => $record], 201);
     }
 
@@ -126,6 +130,9 @@ class PopulationRasterController extends Controller
         $makeDefault = filter_var($request->query('make_default'), FILTER_VALIDATE_BOOLEAN) ?? false;
         // Route the job explicitly to the 'ingest' queue
         IngestPopulationRaster::dispatch($r->id, $makeDefault)->onQueue('ingest');
+        // Clear dataset-year/info caches so any stale value is removed while ingestion runs
+        try { Cache::forget('population:dataset-years:v1'); } catch (\Throwable $e) { }
+        try { Cache::forget('population:dataset-info:v1:'.$r->year); } catch (\Throwable $e) { }
         return response()->json(['queued' => true, 'id' => $r->id]);
     }
 
