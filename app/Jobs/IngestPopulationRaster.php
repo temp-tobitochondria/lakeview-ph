@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 use Symfony\Component\Process\Process;
 
@@ -353,6 +354,9 @@ class IngestPopulationRaster implements ShouldQueue
                 }
                 $r->dataset_id = $datasetId;
             });
+            // Invalidate cached dataset years & info so new ingestion becomes visible immediately
+            try { Cache::forget('population:dataset-years:v1'); } catch (\Throwable $e) { /* ignore */ }
+            try { Cache::forget('population:dataset-info:v1:'.$year); } catch (\Throwable $e) { /* ignore */ }
 
             try {
                 $meta = DB::selectOne("SELECT (ST_MetaData(rast)).scalex AS sx, (ST_MetaData(rast)).scaley AS sy FROM \"$tableName\" WHERE rast IS NOT NULL LIMIT 1");

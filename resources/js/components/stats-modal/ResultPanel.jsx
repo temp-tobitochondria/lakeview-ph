@@ -384,7 +384,7 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
       <div style={{ marginTop:8, padding:8, background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
         <strong>Interpretation:</strong>
         <div style={{ marginTop:6 }}>{interpObj.text}</div>
-        {(String(compareValue || '').startsWith('class:') && String(stationId) === 'all') ? (
+        {(String(stationId) === 'all' && ['t_one','wilcoxon_one','sign','tost_t','tost_wilcoxon'].includes(testKind)) ? (
           <div style={{ marginTop:8, fontSize:12, color:'#ddd' }}>
             <strong>Note:</strong> All measurements are treated as separate observations. For detailed assessment of specific sites, run the test per station.
           </div>

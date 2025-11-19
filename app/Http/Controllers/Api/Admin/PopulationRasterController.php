@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Jobs\IngestPopulationRaster;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
 
 class PopulationRasterController extends Controller
 {
@@ -144,6 +145,9 @@ class PopulationRasterController extends Controller
                 // Invalidate all cached estimates for the year (simpler + covers new method format)
                 DB::statement('DELETE FROM pop_estimate_cache WHERE year = ?', [$r->year]);
             } catch (\Throwable $e) { /* ignore if cache table absent */ }
+            // Invalidate dataset-years and dataset-info caches so newly default dataset appears immediately
+            try { Cache::forget('population:dataset-years:v1'); } catch (\Throwable $e) {}
+            try { Cache::forget('population:dataset-info:v1:'.$r->year); } catch (\Throwable $e) {}
             return response()->json(['ok' => true]);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
@@ -166,6 +170,9 @@ class PopulationRasterController extends Controller
             try { if ($r->path && $r->disk && \Illuminate\Support\Facades\Storage::disk($r->disk)->exists($r->path)) { \Illuminate\Support\Facades\Storage::disk($r->disk)->delete($r->path); } } catch (\Throwable $e) {}
             $r->delete();
         });
+        // Invalidate cached dataset years (and info for the raster's year) after deletion
+        try { Cache::forget('population:dataset-years:v1'); } catch (\Throwable $e) {}
+        try { Cache::forget('population:dataset-info:v1:'.$r->year); } catch (\Throwable $e) {}
         return response()->json(['deleted' => true]);
     }
 }
