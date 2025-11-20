@@ -314,7 +314,22 @@ function AdvancedStat({ lakes = [], params = [], paramOptions: parentParamOption
         return;
       }
       const organizationLabel = orgOptions && orgOptions.length ? (orgOptions.find(o => String(o.id) === String(organizationId))?.name || '') : '';
-      const { css, bodyHtml, title } = buildAdvancedStatReport({ result, paramCode, paramOptions, lakes, lakeId, compareValue, cl, stationId, organizationId, organizationLabel, classCode });
+      const secondaryOrganizationLabel = secondaryOrgOptions && secondaryOrgOptions.length ? (secondaryOrgOptions.find(o => String(o.id) === String(secondaryOrganizationId))?.name || '') : '';
+      const { css, bodyHtml, title } = buildAdvancedStatReport({
+        result,
+        paramCode,
+        paramOptions,
+        lakes,
+        lakeId,
+        compareValue,
+        cl,
+        stationId,
+        organizationId,
+        organizationLabel,
+        secondaryOrganizationId,
+        secondaryOrganizationLabel,
+        classCode
+      });
       openPrintWindowWithStyle({ title, css, bodyHtml });
     } catch (e) {
       console.error('Export failed', e);

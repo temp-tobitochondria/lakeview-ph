@@ -48,7 +48,7 @@ function fmtPAlwaysCompact(p) {
   return sci(n);
 }
 
-export function buildAdvancedStatReport({ result, paramCode = '', paramOptions = [], lakes = [], lakeId = '', compareValue = '', cl = '0.95', stationId = '', organizationId = '', organizationLabel = '', classCode = '', title = '' }) {
+export function buildAdvancedStatReport({ result, paramCode = '', paramOptions = [], lakes = [], lakeId = '', compareValue = '', cl = '0.95', stationId = '', organizationId = '', organizationLabel = '', secondaryOrganizationId = '', secondaryOrganizationLabel = '', classCode = '', title = '' }) {
   // Print CSS: A4 portrait, white background
   const style = `
     @page { size: A4 portrait; margin: 16mm; }
@@ -74,6 +74,7 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
   const primaryLakeName = lakeName(lakes, lakeId) || (lakeId ? `Lake ${lakeId}` : 'Primary Lake');
   const compareLakeId = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : null;
   const secondaryLakeName = compareLakeId ? (lakeName(lakes, compareLakeId) || `Lake ${compareLakeId}`) : 'Comparison Lake';
+  const isTwoLakeReport = !!compareLakeId || Array.isArray(result?.sample1_values) || Array.isArray(result?.sample2_values) || (('n1' in (result||{})) && ('n2' in (result||{})));
 
   // Build grid items using the same logic as ResultPanel (without Notes column)
   const items = [];
@@ -316,22 +317,47 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
   }
 
   // Add dataset / station summary rows (preferentially show human names)
-  // Determine dataset source name from events if possible
+  // Determine dataset source name(s) from events.
+  // Single lake mode keeps prior behavior; two-lake mode extracts per-lake sources.
   const datasetNameFromEvents = (() => {
-    if (!Array.isArray(result?.events)) return null;
-    for (const ev of result.events) {
-      const oid = ev.organization_id ?? ev.organization?.id ?? null;
-      const oname = ev.organization?.name || ev.organization_name || ev.organization_label || null;
-      if (String(oid || '') === String(organizationId || '') && oname) return oname;
+    if (!Array.isArray(result?.events) || !result.events.length) return null;
+    // For single-lake view prioritize selected organizationId match; else first.
+    if (!isTwoLakeReport) {
+      for (const ev of result.events) {
+        const oid = ev.organization_id ?? ev.organization?.id ?? null;
+        const oname = ev.organization?.name || ev.organization_name || ev.organization_label || null;
+        if (String(oid || '') === String(organizationId || '') && oname) return oname;
+      }
+      const ev = result.events[0];
+      return ev ? (ev.organization?.name || ev.organization_name || ev.organization_label || null) : null;
     }
-    // fallback: first event org name
-    const ev = result.events[0];
-    return ev ? (ev.organization?.name || ev.organization_name || ev.organization_label || null) : null;
+    return null; // in compare mode we derive separately below
   })();
-  const datasetLabel = datasetNameFromEvents || (organizationId ? String(organizationId) : '');
+  const datasetLabel = (!isTwoLakeReport) ? (datasetNameFromEvents || (organizationId ? String(organizationId) : '')) : '';
 
-  // Determine station label: prefer station name fields from events, else use stationId or 'All Stations'
-  const stationLabel = (() => {
+  let datasetLabelLake1 = organizationLabel || (organizationId ? `Dataset ${organizationId}` : '');
+  let datasetLabelLake2 = secondaryOrganizationLabel || (secondaryOrganizationId ? `Dataset ${secondaryOrganizationId}` : '');
+  if (isTwoLakeReport && Array.isArray(result?.events) && result.events.length) {
+    const findOrgName = (ev) => ev.organization?.name || ev.organization_name || ev.organization_label || '';
+    // Identify lake ids present in events when explicit compareLakeId is absent
+    const allLakeIds = Array.from(new Set(result.events.map(ev => ev.lake_id).filter(v => v != null)));
+    const lake1IdResolved = (lakeId != null && lakeId !== '') ? lakeId : (allLakeIds.length ? allLakeIds[0] : null);
+    const lake2IdResolved = compareLakeId ?? (allLakeIds.find(v => String(v) !== String(lake1IdResolved)) ?? null);
+    const eventsLake1 = result.events.filter(ev => String(ev.lake_id) === String(lake1IdResolved));
+    const eventsLake2 = result.events.filter(ev => String(ev.lake_id) === String(lake2IdResolved));
+    if (eventsLake1.length && !datasetLabelLake1) {
+      datasetLabelLake1 = findOrgName(eventsLake1.find(e => findOrgName(e)) || eventsLake1[0]) || '';
+    }
+    if (eventsLake2.length && !datasetLabelLake2) {
+      datasetLabelLake2 = findOrgName(eventsLake2.find(e => findOrgName(e)) || eventsLake2[0]) || '';
+    }
+    // Fallbacks if still empty
+    if (!datasetLabelLake1) datasetLabelLake1 = eventsLake1[0]?.organization_id ? `Dataset ${eventsLake1[0].organization_id}` : datasetLabelLake1;
+    if (!datasetLabelLake2) datasetLabelLake2 = eventsLake2[0]?.organization_id ? `Dataset ${eventsLake2[0].organization_id}` : datasetLabelLake2;
+  }
+
+  // Determine station label (single-lake mode only): prefer station name fields from events, else use stationId or 'All Stations'
+  const stationLabel = (!isTwoLakeReport) ? (() => {
     if (!stationId) return 'All Stations';
     if (Array.isArray(result?.events) && result.events.length) {
       const names = new Set(result.events.map(ev => (ev.station?.name || ev.station_name || ev.station_label || ev.station_id || '')).filter(Boolean));
@@ -339,9 +365,14 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
       if (names.size > 1) return 'Multiple stations';
     }
     return stationId;
-  })();
+  })() : '';
 
-  if (datasetLabel) push('Dataset Source', datasetLabel);
+  if (!isTwoLakeReport) {
+    if (datasetLabel) push('Dataset Source', datasetLabel);
+  } else {
+    push(`Dataset Source (${primaryLakeName})`, datasetLabelLake1 || 'Dataset not specified');
+    push(`Dataset Source (${secondaryLakeName})`, datasetLabelLake2 || 'Dataset not specified');
+  }
   if (stationLabel) push('Station', stationLabel);
 
   // Summary table HTML (Field/Value only; no Notes column)
@@ -352,8 +383,24 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
     ? `<div class=\"ci\">CI (${Math.round(Number(result?.ci_level||0)*100)}%): [${escapeHtml(fmt(result.ci_lower))}, ${escapeHtml(fmt(result.ci_upper))}]</div>`
     : '';
 
-  // Interpretation (reuse same builder)
-  const interpretation = buildInterpretation({ result, paramCode, paramOptions, lakes, classCode, cl, fmt, sci, lakeId, compareValue, stationId, organizationId }) || '';
+  // Interpretation (reuse same builder). Handle object returns (diagnostic tests) so we don't render [object Object]
+  const interpretationRaw = buildInterpretation({ result, paramCode, paramOptions, lakes, classCode, cl, fmt, sci, lakeId, compareValue, stationId, organizationId });
+  let interpretation = '';
+  if (interpretationRaw != null) {
+    if (typeof interpretationRaw === 'string') {
+      interpretation = interpretationRaw;
+    } else if (typeof interpretationRaw === 'object') {
+      if (typeof interpretationRaw.text === 'string') {
+        interpretation = interpretationRaw.text;
+      } else if (Array.isArray(interpretationRaw)) {
+        interpretation = interpretationRaw.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
+      } else {
+        try { interpretation = JSON.stringify(interpretationRaw); } catch { interpretation = String(interpretationRaw); }
+      }
+    } else {
+      interpretation = String(interpretationRaw);
+    }
+  }
 
   // Data used section — always show all values
   let valuesSection = '';
@@ -412,7 +459,9 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
   // Human-readable visible title: Lake - Dataset - Station - Parameter
   const visibleDataset = organizationLabel || datasetLabel || (organizationId ? `Dataset ${String(organizationId)}` : '');
   const visibleStation = stationLabel || (stationId ? String(stationId) : 'All Stations');
-  const visibleTitle = `${primaryLakeName} - ${visibleDataset} - ${visibleStation} - ${paramLabel}`;
+  const visibleTitle = compareLakeId
+    ? `${primaryLakeName} vs ${secondaryLakeName} - ${paramLabel}`
+    : `${primaryLakeName} - ${visibleDataset} - ${visibleStation} - ${paramLabel}`;
 
   const bodyHtml = `
     <div class=\"container\">\n      <h1>${escapeHtml(visibleTitle)}</h1>

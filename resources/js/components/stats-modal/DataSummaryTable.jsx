@@ -620,21 +620,14 @@ export default function DataSummaryTable({ open, onClose, initialLake = '', init
                         if (meetsThreshold(c.value, effT)) meet += 1;
                       }
                       const pct = total > 0 ? (meet / total) * 100 : null;
-                      const compCls = getComplianceClass(pct);
-                      const compLabel = getComplianceLabel(pct);
-                      const compStyle = (() => {
-                        if (!Number.isFinite(pct)) return {};
-                        if (pct >= 90) return { background: 'rgba(16,185,129,0.12)', color: '#10b981' };
-                        if (pct >= 50) return { background: 'rgba(234,179,8,0.12)', color: '#ca8a04' };
-                        return { background: 'rgba(239,68,68,0.12)', color: '#ef4444' };
-                      })();
+                      // Remove color-coding for % Compliance cells
                       const avgCls = hasThresholdBounds(paramT) ? getThresholdClass(avg, paramT) : '';
                       const medCls = hasThresholdBounds(paramT) ? getThresholdClass(med, paramT) : '';
                       return (
                         <>
                           <td className={avgCls}>{avg == null ? '—' : avg.toFixed(2)}</td>
                           <td className={medCls}>{med == null ? '—' : med.toFixed(2)}</td>
-                          <td className={compCls} style={compStyle}>{pct == null ? '—' : `${formatPct(pct)}`}</td>
+                          <td>{pct == null ? '—' : `${formatPct(pct)}`}</td>
                         </>
                       );
                     })()}
