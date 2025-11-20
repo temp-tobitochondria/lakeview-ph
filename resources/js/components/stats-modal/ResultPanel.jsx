@@ -20,7 +20,7 @@ export default function ResultPanel({ result, paramCode, paramOptions, classCode
     if (Number.isFinite(pvNum) && pvNum < 0.001) {
       return (
         <span>
-          {showExactP ? sci(pvNum) : '<0.001'}
+          {showExactP ? pvNum.toExponential(3) : '<0.001'}
           <button type="button" onClick={()=>setShowExactP(s=>!s)} title={label} aria-label={label} style={btnStyle}>
             {showExactP ? <FiEyeOff size={14} /> : <FiEye size={14} />}
           </button>

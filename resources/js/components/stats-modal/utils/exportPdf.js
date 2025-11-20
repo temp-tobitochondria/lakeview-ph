@@ -370,10 +370,13 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
   if (!isTwoLakeReport) {
     if (datasetLabel) push('Dataset Source', datasetLabel);
   } else {
-    push(`Dataset Source (${primaryLakeName})`, datasetLabelLake1 || 'Dataset not specified');
-    push(`Dataset Source (${secondaryLakeName})`, datasetLabelLake2 || 'Dataset not specified');
+    const datasetLabelLake1Display = datasetLabelLake1 || (String(lakeId) === 'custom' ? 'Custom dataset' : 'Dataset not specified');
+    const datasetLabelLake2Display = datasetLabelLake2 || (String(compareLakeId) === 'custom' ? 'Custom dataset' : 'Dataset not specified');
+    push(`Dataset Source (${primaryLakeName})`, datasetLabelLake1Display);
+    push(`Dataset Source (${secondaryLakeName})`, datasetLabelLake2Display);
   }
-  if (stationLabel) push('Station', stationLabel);
+  // Do not include Station row for custom datasets (user-provided values)
+  if (stationLabel && String(lakeId) !== 'custom') push('Station', stationLabel);
 
   // Summary table HTML (Field/Value only; no Notes column)
   const summaryRowsHtml = items.map(it => `<tr><th>${escapeHtml(it.k)}</th><td>${escapeHtml(it.v)}</td></tr>`).join('');
@@ -459,9 +462,18 @@ export function buildAdvancedStatReport({ result, paramCode = '', paramOptions =
   // Human-readable visible title: Lake - Dataset - Station - Parameter
   const visibleDataset = organizationLabel || datasetLabel || (organizationId ? `Dataset ${String(organizationId)}` : '');
   const visibleStation = stationLabel || (stationId ? String(stationId) : 'All Stations');
-  const visibleTitle = compareLakeId
-    ? `${primaryLakeName} vs ${secondaryLakeName} - ${paramLabel}`
-    : `${primaryLakeName} - ${visibleDataset} - ${visibleStation} - ${paramLabel}`;
+  let visibleTitle;
+  if (String(lakeId) === 'custom') {
+    if (compareLakeId) {
+      visibleTitle = `Custom dataset vs ${secondaryLakeName} - ${paramLabel}`;
+    } else {
+      visibleTitle = `Custom dataset - ${paramLabel}`;
+    }
+  } else {
+    visibleTitle = compareLakeId
+      ? `${primaryLakeName} vs ${secondaryLakeName} - ${paramLabel}`
+      : `${primaryLakeName} - ${visibleDataset} - ${visibleStation} - ${paramLabel}`;
+  }
 
   const bodyHtml = `
     <div class=\"container\">\n      <h1>${escapeHtml(visibleTitle)}</h1>

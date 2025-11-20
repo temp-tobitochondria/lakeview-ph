@@ -1,6 +1,9 @@
+// statsUtils.js
 // stats utilities (helpers and tests)
+
 let _wilcoxon;
 let _tcdf, _chisqCdf, _binomCdf, _normalCdf, _fCdf;
+
 async function loadWilcoxon() {
   if (_wilcoxon) return _wilcoxon;
   try {
@@ -8,7 +11,6 @@ async function loadWilcoxon() {
     _wilcoxon = mod?.default || mod;
     return _wilcoxon;
   } catch (e) {
-    // Let callers handle missing module: return null so callers can alert
     _wilcoxon = null;
     return null;
   }
@@ -29,13 +31,11 @@ async function loadBinomCdf(){
   try { const mod = await import('@stdlib/stats-base-dists-binomial-cdf'); _binomCdf = mod?.default || mod; } catch { _binomCdf = null; }
   return _binomCdf;
 }
-
 async function loadNormalCdf(){
   if (_normalCdf) return _normalCdf;
   try { const mod = await import('@stdlib/stats-base-dists-normal-cdf'); _normalCdf = mod?.default || mod; } catch { _normalCdf = null; }
   return _normalCdf;
 }
-
 async function loadFCdf(){
   if (_fCdf) return _fCdf;
   try { const mod = await import('@stdlib/stats-base-dists-f-cdf'); _fCdf = mod?.default || mod; } catch { _fCdf = null; }
@@ -49,7 +49,6 @@ function median(a){ if(!a||!a.length) return NaN; const s=[...a].sort((x,y)=>x-y
 
 // Normal CDF using Abramowitz-Stegun approximation of erf
 function normalCdf(x){
-  // erf approximation constants (Abramowitz & Stegun 7.1.26)
   const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
   const sign = x < 0 ? -1 : 1;
   const z = Math.abs(x)/Math.SQRT2;
@@ -59,25 +58,21 @@ function normalCdf(x){
   return 0.5 * (1 + erf);
 }
 
-// Complementary error function using A&S 7.1.26 arranged to avoid catastrophic cancellation
+// Complementary error function using A&S 7.1.26
 function _erfc(x){
-  // Constants as above
   const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
   const z = Math.abs(x);
   const t = 1/(1 + p*z);
-  // For x >= 0: erfc(x) ≈ P(t) * exp(-x^2), where
-  // P(t) = (((((a5 t + a4) t + a3) t + a2) t + a1) t)
   const poly = (((((a5*t + a4)*t + a3)*t + a2)*t + a1)*t);
   const erfcPos = poly * Math.exp(-z*z);
-  return x >= 0 ? erfcPos : 2 - erfcPos; // erfc(-x) = 2 - erfc(x)
+  return x >= 0 ? erfcPos : 2 - erfcPos; 
 }
 
-// Numerically-stable upper tail for standard normal: Q(z) = 0.5 * erfc(z/sqrt(2))
 function normalUpperTail(z){
   return 0.5 * _erfc(z/Math.SQRT2);
 }
 
-// Inverse normal CDF (quantile) using algorithm from AS 241 / R's qnorm; adapted to JS
+// Inverse normal CDF (quantile)
 function normalQuantile(p, mu=0, sigma=1){
   if (!(p>0 && p<1) || sigma < 0) return NaN;
   if (sigma === 0) return mu;
@@ -90,7 +85,6 @@ function normalQuantile(p, mu=0, sigma=1){
       + 3.387132872796366608) / (((((((r * 5226.495278852854561 + 28729.085735721942674) * r + 39307.89580009271061) * r
       + 21213.794301586595867) * r + 5394.1960214247511077) * r + 687.1870074920579083) * r + 42.313330701600911252) * r + 1);
   } else {
-    // closer than 0.075 from {0,1} boundary
     r = q > 0 ? 1 - p : p;
     r = Math.sqrt(-Math.log(r));
     if (r <= 5){
@@ -114,20 +108,14 @@ function normalQuantile(p, mu=0, sigma=1){
 }
 
 function tPValueApprox(t, df, alt='two-sided'){
-  // Approximate t by normal for p-value; acceptable for moderate/large df.
   const z = Math.abs(t);
   const pTwo = 2*normalUpperTail(z);
   if (alt === 'two-sided') return Math.max(0, Math.min(1, pTwo));
-  if (alt === 'greater') {
-    // Right-tail: P(T > t)
-    return Math.max(0, Math.min(1, normalUpperTail(t)));
-  }
+  if (alt === 'greater') return Math.max(0, Math.min(1, normalUpperTail(t)));
   if (alt === 'less') {
-    // Left-tail: P(T < t) = 1 - P(T > t)
     const pRight = normalUpperTail(t);
     return Math.max(0, Math.min(1, 1 - pRight));
   }
-  // Fallback to two-sided if alt unrecognized
   return Math.max(0, Math.min(1, pTwo));
 }
 
@@ -139,22 +127,22 @@ async function tPValueStdlib(t, df, alt='two-sided'){
     throw new Error(msg);
   }
   const cdf = (x)=> F(x, df);
-  const Ft = cdf(t);          // P(T <= t)
-  const Fa = cdf(Math.abs(t));
+
+  // Fix: Use symmetry to avoid precision loss (1 - 0.9999... = 0)
   if (alt === 'two-sided') {
-    // Two-sided: 2 * upper tail of |t|
-    return Math.min(1, 2 * (1 - Fa));
+    // P(|T| > |t|) = 2 * P(T < -|t|)
+    return 2 * cdf(-Math.abs(t));
   }
   if (alt === 'greater') {
-    // Right tail
-    return Math.max(0, Math.min(1, 1 - Ft));
+    // P(T > t) = P(T < -t)
+    return cdf(-t);
   }
   if (alt === 'less') {
-    // Left tail
-    return Math.max(0, Math.min(1, Ft));
+    // P(T < t)
+    return cdf(t);
   }
   // Fallback
-  return Math.min(1, 2 * (1 - Fa));
+  return 2 * cdf(-Math.abs(t));
 }
 
 export async function tOneSampleAsync(x, mu0, alpha=0.05, alt='two-sided'){
@@ -175,7 +163,7 @@ export async function tTwoSampleWelchAsync(x, y, alpha=0.05, alt='two-sided'){
 export async function tTwoSampleStudentAsync(x, y, alpha=0.05, alt='two-sided'){
   const n1=x.length, n2=y.length; const m1=mean(x), m2=mean(y); const v1=variance(x), v2=variance(y);
   const df = n1 + n2 - 2;
-  const sp2 = ((n1-1)*v1 + (n2-1)*v2)/df; // pooled variance
+  const sp2 = ((n1-1)*v1 + (n2-1)*v2)/df; 
   const se = Math.sqrt(sp2*(1/n1 + 1/n2));
   const t = (m1-m2)/se;
   const p = await tPValueStdlib(t, df, alt);
@@ -201,11 +189,6 @@ export async function wilcoxonSignedRankAsync(x, mu0, alpha=0.05, alt='two-sided
   };
 }
 
-// Exact binomial tail using log-domain to avoid overflow for moderate n
-function signTest(){
-  throw new Error('Synchronous signTest removed: use signTestAsync which requires @stdlib/stats-base-dists-binomial-cdf');
-}
-
 export async function signTestAsync(x, mu0, alpha=0.05, alt='two-sided'){
   let pos=0,neg=0; for(const v of x){ const d=v-mu0; if(Math.abs(d)<1e-12) continue; if(d>0) pos++; else neg++; }
   const n = pos+neg; const k = pos; const p0 = 0.5;
@@ -228,37 +211,41 @@ export async function mannWhitneyAsync(x, y, alpha=0.05, alt='two-sided'){
   while(i<N){ let j=i; while(j<N && Math.abs(comb[j].v-comb[i].v)<1e-12) j++; const len=j-i; const avg=(rank+rank+len-1)/2; for(let k=i;k<j;k++) ranks[k]=avg; rank+=len; i=j; }
   let R1=0; for(let k=0;k<N;k++){ if(comb[k].g===1) R1+=ranks[k]; }
   const U1 = R1 - n1*(n1+1)/2; const U2 = n1*n2 - U1;
-  // Normal approximation with tie correction
   let tieSum = 0; i=0;
   while(i<N){ let j=i; while(j<N && Math.abs(comb[j].v-comb[i].v)<1e-12) j++; const t=j-i; if(t>1) tieSum += t*(t*t-1); i=j; }
   const mu = n1*n2/2;
   let varU = n1*n2*(N+1)/12;
   if (tieSum>0) varU -= n1*n2* tieSum /(12*N*(N-1));
   const U = Math.min(U1,U2);
-  const z = (U - mu + 0.5)/Math.sqrt(varU); // continuity correction
-  // Use stdlib normal CDF if available synchronously via preloaded module; otherwise attempt to load it.
+  const z = (U - mu + 0.5)/Math.sqrt(varU); 
   let p;
   let F = _normalCdf;
   if (!F) {
     try { const mod = await import('@stdlib/stats-base-dists-normal-cdf'); F = mod?.default || mod; _normalCdf = F; } catch { F = null; }
   }
-  if (!F || isNaN(F(0))) {
-    // Fallback to local approximation if stdlib fails or returns NaN
-    F = normalCdf;
-  }
+  if (!F || isNaN(F(0))) F = normalCdf;
   const pTwo = 2*(1 - F(Math.abs(z)));
   p = (alt==='two-sided') ? pTwo : (1 - F(z));
   return { n1,n2,U,U1,U2,z,p_value:p, alpha, alternative: alt, significant: (p<alpha) };
 }
 
-export async function moodMedianAsync(x, y, alpha=0.05){
+export async function moodMedianAsync(x, y, alpha=0.05, yates = true){
   const all=[...x,...y].sort((a,b)=>a-b); const N=all.length; const mid=Math.floor(N/2); const med=(N%2)?all[mid]:(all[mid-1]+all[mid])/2;
   let c11=0,c12=0; for(const v of x){ if(v<=med) c11++; else c12++; }
   let c21=0,c22=0; for(const v of y){ if(v<=med) c21++; else c22++; }
   const row1=c11+c12, row2=c21+c22, col1=c11+c21, col2=c12+c22, total=row1+row2;
   const exp11=row1*col1/total, exp12=row1*col2/total, exp21=row2*col1/total, exp22=row2*col2/total;
-  const chi2 = ((c11-exp11)**2/exp11) + ((c12-exp12)**2/exp12) + ((c21-exp21)**2/exp21) + ((c22-exp22)**2/exp22);
-  // Use stdlib chi-square CDF; if unavailable, alert the user and abort (no fallback)
+  let chi2 = 0;
+  if (yates) {
+    const cells = [ {o:c11,e:exp11}, {o:c12,e:exp12}, {o:c21,e:exp21}, {o:c22,e:exp22} ];
+    for (const cell of cells){
+      let diff = Math.abs(cell.o - cell.e) - 0.5;
+      if (diff < 0) diff = 0;
+      chi2 += (diff * diff) / cell.e;
+    }
+  } else {
+    chi2 = ((c11-exp11)**2/exp11) + ((c12-exp12)**2/exp12) + ((c21-exp21)**2/exp21) + ((c22-exp22)**2/exp22);
+  }
   const F = await loadChisqCdf();
   if (!F) {
     const msg = 'Stats: @stdlib/stats-base-dists-chisquare-cdf is not available. Mood\'s median test cannot run.';
@@ -266,21 +253,26 @@ export async function moodMedianAsync(x, y, alpha=0.05){
     throw new Error(msg);
   }
   const p = Math.max(0, Math.min(1, 1 - F(chi2, 1)));
-  return { median: med, table: [[c11,c12],[c21,c22]], chi2, df:1, p_value: p, alpha, significant: (p<alpha) };
+  return { median: med, table: [[c11,c12],[c21,c22]], chi2, df:1, p_value: p, alpha, significant: (p<alpha), yates };
 }
 
 export async function tostEquivalenceAsync(x, lower, upper, alpha=0.05){
   const n=x.length; const m=mean(x); const s=sd(x); const se=s/Math.sqrt(n); const df=n-1;
-  const t1=(m - lower)/se; const t2=(upper - m)/se;
+  
+  // Test 1: Is Mean > Lower? (Right tail)
+  const t1 = (m - lower) / se;
   const p1 = await tPValueStdlib(t1, df, 'greater');
-  const p2 = await tPValueStdlib(t2, df, 'greater');
-  const equivalent = (p1 < alpha) && (p2 < alpha);
-  return { type:'tost', n, mean:m, sd:s, df, t1, t2, p1, p2, alpha, equivalent };
-}
 
-// R-style Wilcoxon TOST for median in (lower, upper)
-// Matches your R script’s tail directions & tie handling.
-// Requires your existing helpers: loadWilcoxon(), mean(), sd(), median()
+  // Test 2: Is Mean < Upper? (Left tail)
+  // Corrected to match R: use (mean - upper) and test for 'less'
+  const t2 = (m - upper) / se;
+  const p2 = await tPValueStdlib(t2, df, 'less');
+
+  // pTOST: combined TOST p-value is the larger of the two one-sided p-values
+  const pTOST = Math.max(p1, p2);
+  const equivalent = (pTOST < alpha);
+  return { type:'tost', n, mean:m, sd:s, df, t1, t2, p1, p2, pTOST, alpha, equivalent };
+}
 
 export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05) {
   const wilcoxon = await loadWilcoxon();
@@ -296,7 +288,6 @@ export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05
   const dLowerAll = xx.map(v => v - lower).filter(isFiniteN);
   const dUpperAll = xx.map(v => v - upper).filter(isFiniteN);
 
-  // Drop zeros (ties to the bound), just like wilcox.test does
   const eps = 1e-12;
   const dLower = dLowerAll.filter(d => Math.abs(d) > eps);
   const dUpper = dUpperAll.filter(d => Math.abs(d) > eps);
@@ -304,7 +295,6 @@ export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05
   const nEffLower = dLower.length;
   const nEffUpper = dUpper.length;
 
-  // If everything ties to a bound, we can’t conclude equivalence
   if (nEffLower === 0 || nEffUpper === 0) {
     return {
       type: 'wilcoxon-tost',
@@ -320,19 +310,15 @@ export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05
     };
   }
 
-  // Run the one-sided tests with the same alternatives as R
-  const outLower = wilcoxon(dLower, { alpha, alternative: 'greater' }); // median(x) > lower
-  const outUpper = wilcoxon(dUpper, { alpha, alternative: 'less'    }); // median(x) < upper
+  const outLower = wilcoxon(dLower, { alpha, alternative: 'greater' }); 
+  const outUpper = wilcoxon(dUpper, { alpha, alternative: 'less'    }); 
 
-  // R-style W is the sum of positive ranks on the passed differences.
-  // @stdlib returns a compatible statistic; keep as-is for display parity with R.
   const w_lower = outLower.statistic;
   const w_upper = outUpper.statistic;
 
   const p_lower = outLower.pValue;
   const p_upper = outUpper.pValue;
 
-  // Single TOST p-value (standard): max of the two one-sided p's
   const pTOST = Math.max(p_lower, p_upper);
   const equivalent = (pTOST < alpha);
 
@@ -349,20 +335,16 @@ export async function tostEquivalenceWilcoxonAsync(x, lower, upper, alpha = 0.05
   };
 }
 
-
-// Shapiro–Wilk normality test (W and p-value)
 export function shapiroWilk(x, alpha=0.05){
   const arr = (Array.isArray(x)? x: []).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
   const n = arr.length;
   if (n < 3) return { n, mean: NaN, median: NaN, sd: NaN, W: NaN, p_value: NaN, alpha, normal: null };
 
-  // Build coefficients a[i] based on expected order stats of normal
   const nn2 = Math.floor(n/2);
-  const a = new Array(nn2+1).fill(0); // 1-based indexing for convenience
+  const a = new Array(nn2+1).fill(0);
   const an = n;
-  let pw = 1; // p-value placeholder
   if (n === 3){
-    a[1] = Math.SQRT1_2; // sqrt(1/2)
+    a[1] = Math.SQRT1_2;
   } else {
     const an25 = an + 0.25;
     let summ2 = 0;
@@ -402,7 +384,6 @@ export function shapiroWilk(x, alpha=0.05){
   const range = arr[n-1] - arr[0];
   if (range < small) return { n, mean: mean(arr), median: median(arr), sd: sd(arr), W: 1, p_value: 1, alpha, normal: true };
 
-  // Compute W as correlation^2 between a and centered/scaled data
   let xx = arr[0] / range;
   let sx = xx;
   let sa = -a[1];
@@ -428,11 +409,10 @@ export function shapiroWilk(x, alpha=0.05){
   const w1 = (ssassx - sax) * (ssassx + sax) / (ssa * ssx);
   const w = 1 - w1;
 
-  // p-value approximation
   let p;
   if (n === 3){
-    const stqr = 1.04719755119660; // asin(sqrt(3/4))
-    const pi6 = 1.90985931710274; // 6/pi
+    const stqr = 1.04719755119660; 
+    const pi6 = 1.90985931710274;
     p = pi6 * (Math.asin(Math.sqrt(w)) - stqr);
     if (p < 0) p = 0;
   } else {
@@ -465,10 +445,8 @@ export function shapiroWilk(x, alpha=0.05){
       s = Math.exp(poly(c6, 3, xxn));
     }
     const z = (y - m) / s;
-    // upper tail p-value (use stable survival function)
     p = Math.max(0, Math.min(1, normalUpperTail(z)));
   }
-
   const M = mean(arr); const Md = median(arr); const S = sd(arr);
   return { n, mean: M, median: Md, sd: S, W: w, p_value: p, alpha, normal: !(p < alpha) };
 }
@@ -476,14 +454,6 @@ export function shapiroWilk(x, alpha=0.05){
 export async function shapiroWilkAsync(x, alpha=0.05){
   return shapiroWilk(x, alpha);
 }
-
-// ---------------------------------------------------------------------------
-// Levene / Brown-Forsythe variance equality test
-// For k groups: compute absolute (or squared) deviations from group center (median by default)
-// and perform a one-way ANOVA on these transformed values.
-// Returns F statistic, df1=k-1, df2=N-k, p-value using F distribution CDF.
-// equal_variances = p_value >= alpha (fail to reject homogeneity).
-// ---------------------------------------------------------------------------
 
 function _asNumericArray(a){
   return (Array.isArray(a)? a: []).map(Number).filter(Number.isFinite);
@@ -496,19 +466,14 @@ export async function leveneTestAsync(groups, alpha=0.05, center='median'){
   const sizes = cleanGroups.map(g=>g.length);
   const N = sizes.reduce((s,v)=>s+v,0);
   if (N === 0 || sizes.some(n=>n===0)) throw new Error('Each group must contain at least one numeric value');
-  // choose center function
   const centerFn = (arr)=>{
     if (center === 'mean') return mean(arr);
-    // default median (Brown-Forsythe)
     return median(arr);
   };
   const centers = cleanGroups.map(g=>centerFn(g));
-  // Construct absolute deviations (robust) like Brown-Forsythe
   const zGroups = cleanGroups.map((g,i)=> g.map(v=> Math.abs(v - centers[i])));
-  // Group means of z
   const zMeans = zGroups.map(g=> mean(g));
   const overallMean = mean(zGroups.flat());
-  // Between-group and within-group sums of squares
   let ssBetween = 0, ssWithin = 0;
   for(let i=0;i<k;i++){
     ssBetween += sizes[i] * (zMeans[i]-overallMean)*(zMeans[i]-overallMean);
@@ -525,7 +490,6 @@ export async function leveneTestAsync(groups, alpha=0.05, center='median'){
     if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(msg);
     throw new Error(msg);
   }
-  // p-value = 1 - Fcdf(F, df1, df2)
   let p_value = 1 - FCdf(F, df1, df2);
   if (!Number.isFinite(p_value) || p_value < 0) p_value = 0; else if (p_value > 1) p_value = 1;
   const groupVariances = cleanGroups.map(g=>variance(g));

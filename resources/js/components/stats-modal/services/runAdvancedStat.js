@@ -31,8 +31,10 @@ export default async function runAdvancedStat({
     applied_standard_id: appliedStandardId || undefined,
   };
   if (depthMode === 'single' && depthValue) body.depth_m = Number(depthValue);
-  if (organizationId) body.organization_id = organizationId;
-  if (stationId && stationId !== 'all') body.station_id = Number(stationId);
+  // Do not set top-level `organization_id`/`station_id` here because for two-sample
+  // requests we build per-lake `organization_ids`/`station_ids` below. Setting a
+  // top-level `organization_id` would be interpreted by the backend as applying
+  // to all lakes and can unintentionally filter out samples for the other lake.
 
   const otherLake = (compareValue && String(compareValue).startsWith('lake:')) ? Number(String(compareValue).split(':')[1]) : undefined;
   if (inferredTest === 'one-sample') {
@@ -45,8 +47,15 @@ export default async function runAdvancedStat({
   } else {
     const lakeIds = [Number(lakeId), otherLake].filter(Boolean);
     body.lake_ids = lakeIds;
-    const orgIds = [organizationId || null, secondaryOrganizationId || null];
-    if (orgIds.some(v => v)) body.organization_ids = lakeIds.map((_, idx) => orgIds[idx] ?? null);
+    // Build per-lake organization filter only when both org IDs are explicitly selected.
+    // Sending a partial mapping (e.g. [orgA, null]) can cause the backend to interpret
+    // the null as a strict filter and return zero samples for that lake. To avoid
+    // unintentionally filtering out samples, only include `organization_ids` when
+    // both sides have a selected organization.
+    const orgIds = [organizationId || '', secondaryOrganizationId || ''];
+    if (orgIds[0] && orgIds[1]) {
+      body.organization_ids = lakeIds.map((_, idx) => orgIds[idx]);
+    }
   }
 
   const isCustomPrimary = String(lakeId) === 'custom';
@@ -66,6 +75,9 @@ export default async function runAdvancedStat({
         evaluation_type: thr?.evaluation_type ?? null,
       };
       evalType = series.evaluation_type;
+      // For one-sample we can safely apply single-lake org/station filters if provided
+      if (organizationId) body.organization_id = organizationId;
+      if (stationId && stationId !== 'all') body.station_id = Number(stationId);
     } else {
       // Custom dataset vs lake: fetch sample values only for the other lake as one-sample
       const body2 = {
@@ -84,6 +96,14 @@ export default async function runAdvancedStat({
       evalType = res2?.evaluation_type || null;
     }
   } else {
+    // Log request body to help diagnose intermittent "Not enough data" errors.
+    try { console.debug('[Stats] /stats/series request body:', body); } catch (__) {}
+    // If this is a one-sample request, we want to apply single-lake org/station
+    // filters. For two-sample requests, avoid top-level `organization_id`/`station_id`.
+    if (inferredTest === 'one-sample') {
+      if (organizationId) body.organization_id = organizationId;
+      if (stationId && stationId !== 'all') body.station_id = Number(stationId);
+    }
     series = await apiPublic('/stats/series', { method: 'POST', body });
     evalType = series?.evaluation_type;
   }
