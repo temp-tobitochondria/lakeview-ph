@@ -42,3 +42,85 @@
   letter-spacing: .01em;
 }
 .kpi-value { font-size: 22px; font-weight: 700; color: #111827; }
+
+/* === Responsive Design === */
+
+/* Mobile S/M/L (up to 768px) */
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: 1fr; /* 1 column */
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .kpi-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .kpi-icon {
+    font-size: 24px;
+    padding: 8px;
+  }
+
+  .kpi-value {
+    font-size: 20px;
+  }
+}
+
+/* Tablet (768px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 columns */
+    gap: 18px;
+  }
+}
+
+/* Laptop (1024px - 1440px) */
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* default */
+  }
+}
+
+/* Laptop L (1440px - 2560px) */
+@media (min-width: 1441px) and (max-width: 2560px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); /* slightly larger */
+    gap: 24px;
+  }
+
+  .kpi-card {
+    padding: 18px;
+  }
+
+  .kpi-icon {
+    font-size: 28px;
+    padding: 12px;
+  }
+
+  .kpi-value {
+    font-size: 24px;
+  }
+}
+
+/* 4K (2560px+) */
+@media (min-width: 2561px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* even larger */
+    gap: 28px;
+  }
+
+  .kpi-card {
+    padding: 20px;
+  }
+
+  .kpi-icon {
+    font-size: 32px;
+    padding: 14px;
+  }
+
+  .kpi-value {
+    font-size: 28px;
+  }
+}
