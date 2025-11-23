@@ -12,6 +12,47 @@ export default function CoordinatePicker({ form, setForm, mapHeight = 240, showL
   const markerRef = React.useRef(null);
   const lakeLayerRef = React.useRef(null);
 
+  // helper to fetch and render lake geometry or fallback point
+  const renderLakeOverlay = React.useCallback(async (targetLakeId) => {
+    if (!showLakeLayer || !targetLakeId || !mapRef.current) return;
+    try {
+      const { api } = await import('../lib/api');
+      const data = await api(`/lakes/${targetLakeId}`);
+      // remove previous layer
+      try { if (lakeLayerRef.current && mapRef.current) { mapRef.current.removeLayer(lakeLayerRef.current); lakeLayerRef.current = null; } } catch {}
+      const gj = data?.geom_geojson ?? null;
+      let geom = gj;
+      if (typeof gj === 'string') { try { geom = JSON.parse(gj); } catch { geom = null; } }
+      if (geom) {
+        const L = await import('leaflet');
+        // remove any simple marker placed earlier so the geojson layer is the single visual
+        try { if (markerRef.current && mapRef.current) { mapRef.current.removeLayer(markerRef.current); markerRef.current = null; } } catch {}
+        lakeLayerRef.current = L.geoJSON(geom, {
+          style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 },
+          pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 8, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.9 })
+        }).addTo(mapRef.current);
+        try {
+          const bounds = lakeLayerRef.current.getBounds();
+          if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 });
+        } catch {}
+        return;
+      }
+
+      // fallback: use lake lat/lon
+      const lat = data?.latitude ?? data?.lat ?? null;
+      const lon = data?.longitude ?? data?.lon ?? null;
+      if (lat && lon && mapRef.current) {
+        const L = await import('leaflet');
+        if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.9 }).addTo(mapRef.current);
+        else {
+          markerRef.current.setLatLng([lat, lon]);
+          try { markerRef.current.setStyle({ color: '#2563eb', fillColor: '#2563eb' }); } catch {}
+        }
+        mapRef.current.setView([lat, lon], 12);
+      }
+    } catch {}
+  }, [showLakeLayer]);
+
   // initialize map lazily on mount (always pin-drop mode)
   React.useEffect(() => {
     let mounted = true;
@@ -43,10 +84,15 @@ export default function CoordinatePicker({ form, setForm, mapHeight = 240, showL
         markerRef.current = L.circleMarker([form.lat, form.lon], { radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9 }).addTo(map);
         map.setView([form.lat, form.lon], 12);
       }
+
+      // if a lake is provided, render its overlay immediately after map init
+      if (showLakeLayer && lakeId) {
+        try { await renderLakeOverlay(lakeId); } catch {}
+      }
     })();
 
     return () => { mounted = false; try { if (mapRef.current && mapRef.current.remove) { mapRef.current.remove(); mapRef.current = null; } } catch (e) {} };
-  }, []);
+  }, [renderLakeOverlay, showLakeLayer, lakeId]);
 
   // keep marker in sync when lat/lon change
   React.useEffect(() => {
@@ -64,51 +110,9 @@ export default function CoordinatePicker({ form, setForm, mapHeight = 240, showL
 
   // if requested, fetch and render lake geometry when lakeId changes (used by LakeFlowForm)
   React.useEffect(() => {
-    if (!showLakeLayer || !mapRef.current || !lakeId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // dynamic import of api to avoid cycle in top-level imports
-        const { api } = await import('../lib/api');
-        const data = await api(`/lakes/${lakeId}`);
-        // remove previous layer
-        try { if (lakeLayerRef.current && mapRef.current) { mapRef.current.removeLayer(lakeLayerRef.current); lakeLayerRef.current = null; } } catch (e) {}
-        const gj = data?.geom_geojson ?? null;
-        let geom = gj;
-        if (typeof gj === 'string') {
-          try { geom = JSON.parse(gj); } catch (e) { geom = null; }
-        }
-        if (geom) {
-          const L = await import('leaflet');
-          // remove any simple marker placed earlier so the geojson layer is the single visual
-          try { if (markerRef.current && mapRef.current) { mapRef.current.removeLayer(markerRef.current); markerRef.current = null; } } catch (e) {}
-          lakeLayerRef.current = L.geoJSON(geom, {
-            style: { color: '#2563eb', weight: 2, fillOpacity: 0.08 },
-            pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 8, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.9 })
-          }).addTo(mapRef.current);
-          try { const bounds = lakeLayerRef.current.getBounds(); if (bounds && bounds.isValid && bounds.isValid()) mapRef.current.fitBounds(bounds, { maxZoom: 14 }); } catch (e) {}
-          return;
-        }
-
-        // fallback: use lake lat/lon
-        const lat = data?.latitude ?? data?.lat ?? null;
-        const lon = data?.longitude ?? data?.lon ?? null;
-        if (lat && lon && mapRef.current) {
-          const L = await import('leaflet');
-          if (!markerRef.current) markerRef.current = L.circleMarker([lat, lon], { radius: 8, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.9 }).addTo(mapRef.current);
-          else {
-            markerRef.current.setLatLng([lat, lon]);
-            try { markerRef.current.setStyle({ color: '#2563eb', fillColor: '#2563eb' }); } catch (e) {}
-          }
-          mapRef.current.setView([lat, lon], 12);
-          return;
-        }
-      } catch (e) {
-        // ignore
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [showLakeLayer, lakeId]);
+    // re-render overlay when lakeId changes post-init
+    renderLakeOverlay(lakeId);
+  }, [renderLakeOverlay, lakeId]);
 
   return (
     <div style={{ width: '100%' }}>

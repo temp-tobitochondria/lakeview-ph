@@ -101,6 +101,8 @@ export default function StationModal({
                   }
                 }}
                 mapHeight={320}
+                showLakeLayer={true}
+                lakeId={lakeId}
               />
             </div>
           </div>
