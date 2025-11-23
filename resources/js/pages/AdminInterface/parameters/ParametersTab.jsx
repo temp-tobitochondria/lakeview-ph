@@ -71,6 +71,7 @@ function ParametersTab() {
   // Column visibility (managed via TableToolbar's ColumnPicker)
   const GRID_TABLE_ID = "admin-parameters-grid";
   const GRID_VISIBLE_KEY = `${GRID_TABLE_ID}::visible-cols`;
+  const GRID_SORT_KEY = `${GRID_TABLE_ID}::sort`;
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
       const raw = localStorage.getItem(GRID_VISIBLE_KEY);
@@ -83,6 +84,18 @@ function ParametersTab() {
     try { localStorage.setItem(GRID_VISIBLE_KEY, JSON.stringify(visibleMap)); } catch {}
   }, [visibleMap]);
   const [resetSignal, setResetSignal] = useState(0);
+  const [sort, setSort] = useState(() => {
+    try {
+        const raw = localStorage.getItem(GRID_SORT_KEY);
+        return raw ? JSON.parse(raw) : { id: 'id', dir: 'desc' };
+    } catch {
+      return { id: 'name', dir: 'asc' };
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(GRID_SORT_KEY, JSON.stringify(sort)); } catch {}
+  }, [sort]);
   // Modal editing state
   const [editOpen, setEditOpen] = useState(false);
   const [modalForm, setModalForm] = useState(emptyForm);
@@ -112,19 +125,25 @@ function ParametersTab() {
     }
   }, []);
 
-  // Reset to page 1 when query changes
+  // Reset to page 1 when query or sort changes
   useEffect(() => {
     setPage(1);
-  }, [query]);
+  }, [query, sort?.id, sort?.dir]);
 
   useEffect(() => {
     const paramsObj = {
       search: query,
       page,
       per_page: perPage,
+      sort_by: sort?.id,
+      sort_dir: sort?.dir,
     };
     fetchParameters(paramsObj);
-  }, [fetchParameters, query, page, resetSignal]);
+  }, [fetchParameters, query, page, resetSignal, sort?.id, sort?.dir]);
+
+  const handleSortChange = useCallback((colId) => {
+    setSort((prev) => (prev.id === colId ? { id: colId, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { id: colId, dir: 'asc' }));
+  }, []);
 
   const filtered = useMemo(() => params, [params]);
 
@@ -318,6 +337,8 @@ function ParametersTab() {
           actions={actions}
           resetSignal={gridResetSignal}
           columnPicker={false}
+          sort={sort}
+          onSortChange={handleSortChange}
           toolbar={
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minWidth: 0, gap: 8 }}>
               <div>
@@ -337,7 +358,7 @@ function ParametersTab() {
                     setVisibleMap(next);
                   },
                 }}
-                onResetWidths={() => setGridResetSignal((s) => s + 1)}
+                onResetWidths={() => { setGridResetSignal((s) => s + 1); try { localStorage.removeItem(GRID_SORT_KEY); } catch {} ; setSort && setSort({ id: 'id', dir: 'desc' }); }}
                 onRefresh={handleRefresh}
               />
             </div>

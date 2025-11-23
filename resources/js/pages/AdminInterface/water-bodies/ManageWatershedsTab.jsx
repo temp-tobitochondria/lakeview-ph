@@ -22,8 +22,8 @@ export default function ManageWatershedsTab() {
           placeholder: "Search Watersheds...",
         }}
         filters={[]}
-        columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}
-  onResetWidths={() => { s.triggerResetWidths(); try { localStorage.removeItem(s.TABLE_ID + '::sort'); } catch {}; s.setSort && s.setSort({ id: 'name', dir: 'asc' }); }}
+          columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}
+        onResetWidths={() => { s.triggerResetWidths(); s.restoreDefaults && s.restoreDefaults(); try { localStorage.removeItem(s.TABLE_ID + '::sort'); } catch {}; s.setSort && s.setSort({ id: 'name', dir: 'asc' }); }}
         onRefresh={s.handleRefresh}
         onAdd={s.openCreate}
         onToggleFilters={undefined}

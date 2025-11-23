@@ -52,7 +52,16 @@ class ParameterController extends Controller
 
             // is_active removed
 
-        $query = $query->orderBy('name');
+        // Allow optional server-side sorting by whitelisted columns
+        $sortBy = $request->input('sort_by');
+        $sortDir = strtolower($request->input('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowed = ['id', 'code', 'name', 'unit', 'evaluation_type'];
+        if ($sortBy && in_array($sortBy, $allowed, true)) {
+            $query = $query->orderBy($sortBy, $sortDir);
+        } else {
+            // Default to newest first by id if sort not provided or invalid
+            $query = $query->orderBy('id', 'desc');
+        }
 
         // Support optional server-side pagination when per_page is provided
         $perPage = $request->integer('per_page');

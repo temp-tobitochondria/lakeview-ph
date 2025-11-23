@@ -773,15 +773,30 @@ export function useManageLakesTabLogic() {
 export function useManageWatershedsTabLogic() {
   const TABLE_ID = "admin-watercat-watersheds";
   const VIS_KEY = `${TABLE_ID}::visible`;
+  const SEARCH_KEY = `${TABLE_ID}::search`;
+  const SORT_KEY = `${TABLE_ID}::sort`;
 
   const [rows, setRows] = useState([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => {
+    try {
+      return localStorage.getItem(SEARCH_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
   // Default sort changed to created_at DESC for consistency with Lakes tab
-  const [sort, setSort] = useState({ id: "created_at", dir: "desc" });
+  const [sort, setSort] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SORT_KEY);
+      return raw ? JSON.parse(raw) : { id: "created_at", dir: "desc" };
+    } catch {
+      return { id: "created_at", dir: "desc" };
+    }
+  });
 
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
@@ -794,6 +809,14 @@ export function useManageWatershedsTabLogic() {
   useEffect(() => {
     try { window.localStorage.setItem(VIS_KEY, JSON.stringify(visibleMap)); } catch {}
   }, [visibleMap]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SEARCH_KEY, query); } catch {}
+  }, [query]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch {}
+  }, [sort]);
 
   const [resetSignal, setResetSignal] = useState(0);
   const triggerResetWidths = () => setResetSignal((n) => n + 1);
@@ -955,6 +978,17 @@ export function useManageWatershedsTabLogic() {
     setVisibleMap,
     resetSignal,
     triggerResetWidths,
+    restoreDefaults: () => {
+      try {
+        localStorage.removeItem(VIS_KEY);
+        localStorage.removeItem(SEARCH_KEY);
+        localStorage.removeItem(SORT_KEY);
+      } catch {}
+      setVisibleMap({ name: true, description: true });
+      setQuery("");
+      setSort({ id: "created_at", dir: "desc" });
+      triggerResetWidths();
+    },
     actions,
     rows,
     loading,
@@ -989,18 +1023,24 @@ export function useManageWatershedsTabLogic() {
 export function useManageFlowsTabLogic() {
   const TABLE_ID = 'admin-watercat-flows';
   const VIS_KEY = `${TABLE_ID}::visible`;
+  const SEARCH_KEY = `${TABLE_ID}::search`;
+  const SORT_KEY = `${TABLE_ID}::sort`;
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [lakes, setLakes] = useState([]);
   const [lakesLoading, setLakesLoading] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => {
+    try { return localStorage.getItem(SEARCH_KEY) || ''; } catch { return ''; }
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adv, setAdv] = useState({});
   const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
   // Default sort changed to created_at DESC for consistency across admin tables
-  const [sort, setSort] = useState({ id: 'created_at', dir: 'desc' });
+  const [sort, setSort] = useState(() => {
+    try { const raw = localStorage.getItem(SORT_KEY); return raw ? JSON.parse(raw) : { id: 'created_at', dir: 'desc' }; } catch { return { id: 'created_at', dir: 'desc' }; }
+  });
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState('create');
   const [formInitial, setFormInitial] = useState(null);
@@ -1015,6 +1055,8 @@ export function useManageFlowsTabLogic() {
     } catch { return { lake:true, flow_type:true, name:true, source:true, is_primary:true, updated_at:false }; }
   });
   useEffect(()=>{ try { localStorage.setItem(VIS_KEY, JSON.stringify(visibleMap)); } catch {} }, [visibleMap]);
+  useEffect(()=>{ try { localStorage.setItem(SEARCH_KEY, query); } catch {} }, [query]);
+  useEffect(()=>{ try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch {} }, [sort]);
   const [resetSignal, setResetSignal] = useState(0);
   const triggerResetWidths = () => setResetSignal(n=>n+1);
 
@@ -1170,5 +1212,16 @@ export function useManageFlowsTabLogic() {
     viewMapRef,
     viewFeature,
     viewFlowPoint,
+    restoreDefaults: () => {
+      try {
+        localStorage.removeItem(VIS_KEY);
+        localStorage.removeItem(SEARCH_KEY);
+        localStorage.removeItem(SORT_KEY);
+      } catch {}
+      setVisibleMap({ lake:true, flow_type:true, name:true, source:true, is_primary:true, updated_at:false });
+      setQuery('');
+      setSort({ id: 'created_at', dir: 'desc' });
+      triggerResetWidths();
+    },
   };
 }

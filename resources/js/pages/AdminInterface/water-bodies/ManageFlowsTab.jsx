@@ -18,8 +18,8 @@ export default function ManageFlowsTab() {
         tableId={s.TABLE_ID}
         search={{ value: s.query, onChange: s.setQuery, placeholder: 'Search Tributaries...' }}
         filters={[]}
-        columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}
-  onResetWidths={() => { s.triggerResetWidths(); try { localStorage.removeItem(s.TABLE_ID + '::sort'); } catch {}; s.setSort && s.setSort({ id: 'flow_type', dir: 'asc' }); }}
+          columnPicker={{ columns: s.columns, visibleMap: s.visibleMap, onVisibleChange: s.setVisibleMap }}
+        onResetWidths={() => { s.triggerResetWidths(); s.restoreDefaults && s.restoreDefaults(); try { localStorage.removeItem(s.TABLE_ID + '::sort'); } catch {}; s.setSort && s.setSort({ id: 'flow_type', dir: 'asc' }); }}
         onRefresh={s.fetchRows}
         onAdd={s.openCreate}
         onToggleFilters={() => s.setFiltersOpen((v) => !v)}
