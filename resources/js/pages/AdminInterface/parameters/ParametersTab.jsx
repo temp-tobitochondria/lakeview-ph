@@ -340,28 +340,23 @@ function ParametersTab() {
           sort={sort}
           onSortChange={handleSortChange}
           toolbar={
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minWidth: 0, gap: 8 }}>
-              <div>
-                <button type="button" className="pill-btn primary" onClick={openCreateModal}>
-                  <FiPlus />
-                  <span>Add Water Quality Parameter</span>
-                </button>
-              </div>
+            <div className="params-toolbar" style={{ width: '100%' }}>
               <TableToolbar
-                tableId={GRID_TABLE_ID}
-                search={{ value: query, onChange: setQuery, placeholder: 'Search Parameters...' }}
-                columnPicker={{
-                  columns: columnsForPicker,
-                  visibleMap,
-                  onVisibleChange: (map) => {
-                    const next = { ...map, code: true }; 
-                    setVisibleMap(next);
-                  },
-                }}
-                onResetWidths={() => { setGridResetSignal((s) => s + 1); try { localStorage.removeItem(GRID_SORT_KEY); } catch {} ; setSort && setSort({ id: 'id', dir: 'desc' }); }}
-                onRefresh={handleRefresh}
-              />
-            </div>
+              tableId={GRID_TABLE_ID}
+              search={{ value: query, onChange: setQuery, placeholder: 'Search Parameters...' }}
+              columnPicker={{
+                columns: columnsForPicker,
+                visibleMap,
+                onVisibleChange: (map) => {
+                  const next = { ...map, code: true }; 
+                  setVisibleMap(next);
+                },
+              }}
+              onResetWidths={() => { setGridResetSignal((s) => s + 1); try { localStorage.removeItem(GRID_SORT_KEY); } catch {} ; setSort && setSort({ id: 'id', dir: 'desc' }); }}
+              onRefresh={handleRefresh}
+              onAdd={openCreateModal}
+            />
+          </div>
           }
           loading={loading}
           loadingLabel="Loading parameters…"

@@ -302,11 +302,13 @@ function StandardsTab() {
           ]}
           columnPicker={{ label: "Columns", locked: ["code"], defaultHidden: ["notes"] }}
           toolbar={{
-            left: (
-              <button type="button" className="pill-btn primary" onClick={() => { setPage(1); setNewRows((prev) => [`__new__-${Date.now()}`, ...prev]); }}>
-                <FiPlus />
-                    <span>Add Standard</span>
-              </button>
+            right: (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
+                <button type="button" className="pill-btn primary" onClick={() => { setPage(1); setNewRows((prev) => [`__new__-${Date.now()}`, ...prev]); }}>
+                  <FiPlus />
+                  <span>Add Standard</span>
+                </button>
+              </div>
             ),
           }}
           loading={loading}
