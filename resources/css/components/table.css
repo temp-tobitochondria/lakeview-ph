@@ -100,6 +100,12 @@
 }
 .lv-table-pager .pager-text { color: #4b5563; }
 
+@media (max-width: 479px) {
+  .lv-table-pager {
+    justify-content: center;
+  }
+}
+
 /* ====================================================================== */
 /* 🔧 COLUMN PICKER                                                       */
 /* ====================================================================== */
@@ -205,16 +211,80 @@
 @media (max-width: 820px)  { .col-sm-hide { display: none; } }
 @media (max-width: 560px)  { .col-xs-hide { display: none; } }
 
+/* Card-based layout for smaller devices */
+@media (max-width: 1023px) {
+  .lv-table-wrap .lv-table-scroller {
+    display: none;
+  }
+
+  .table-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .table-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .card-field {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f4f6;
+    gap: 16px;
+  }
+
+  .card-field:last-child {
+    border-bottom: none;
+  }
+
+  .card-field strong {
+    font-weight: 600;
+    color: #374151;
+    flex-shrink: 0;
+    min-width: 120px;
+  }
+
+  .card-value {
+    color: #111827;
+    text-align: left;
+    flex: 1;
+    word-break: break-word;
+  }
+
+  .card-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .table-cards .lv-empty {
+    text-align: center;
+    padding: 28px 16px;
+    color: #6b7280;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+  }
+}
+
 @media (max-width: 1024px) {
   .org-toolbar { grid-template-columns: 1fr auto; grid-auto-flow: row; }
 }
 @media (max-width: 820px) {
   .org-toolbar { grid-template-columns: 1fr; }
-  .org-actions-right { justify-content: flex-start; }
+  .org-actions-right { justify-content: center; }
 }
 
 /* ====================================================================== */
-/* 🔽 ADVANCED FILTERS PANEL (below toolbar)                              */
+/*  ADVANCED FILTERS PANEL (below toolbar)                              */
 /* ====================================================================== */
 .advanced-filters {
   margin: 10px 0 6px 0;
@@ -317,6 +387,100 @@
 
 /* Ensure consistent auto row sizing (prevents overlap in some browsers) */
 .advanced-filters-grid { grid-auto-rows: minmax(0, auto); }
+
+/* Responsive breakpoints */
+/* 4K and larger: keep 4 columns */
+@media (min-width: 1921px) {
+  .advanced-filters-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Laptop L: 1440-1920px */
+@media (min-width: 1440px) and (max-width: 1920px) {
+  .advanced-filters-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Laptop: 1024-1439px */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .advanced-filters-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Tablet: 768-1023px */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .advanced-filters-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .af-field > span {
+    font-size: 0.8rem;
+  }
+  .af-field input,
+  .af-field select {
+    padding: 8px 9px;
+  }
+}
+
+/* Mobile L: 640-767px */
+@media (min-width: 640px) and (max-width: 767px) {
+  .advanced-filters-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .af-field > span {
+    font-size: 0.8rem;
+  }
+  .af-field input,
+  .af-field select {
+    padding: 8px 9px;
+  }
+}
+
+/* Mobile M: 480-639px */
+@media (min-width: 480px) and (max-width: 639px) {
+  .advanced-filters-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .advanced-filters {
+    padding: 10px;
+  }
+  .af-field > span {
+    font-size: 0.75rem;
+  }
+  .af-field input,
+  .af-field select {
+    padding: 7px 8px;
+  }
+}
+
+/* Mobile S: <480px */
+@media (max-width: 479px) {
+  .advanced-filters-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .advanced-filters {
+    padding: 8px;
+  }
+  .advanced-filters-header {
+    margin-bottom: 8px;
+  }
+  .af-field > span {
+    font-size: 0.7rem;
+  }
+  .af-field input,
+  .af-field select {
+    padding: 6px 7px;
+  }
+  .af-range {
+    gap: 6px;
+  }
+}
 
 /* Medium+ screens: allow multi-column layout with comfortable min width */
 @media (min-width: 680px) {

@@ -247,7 +247,6 @@ export default function AdminUsersPage() {
         icon={<FiUsersIcon />}
         title="Users"
         description="Manage user accounts, roles, and access for the system."
-        actions={<button className="pill-btn" onClick={openCreate}>+ New User</button>}
       />
 
       <div className="card" style={{ padding: 12, borderRadius: 12, marginBottom: 12 }}>
@@ -257,6 +256,7 @@ export default function AdminUsersPage() {
           filters={[]} // no basic filters now
           columnPicker={columnPickerAdapter}
           onRefresh={() => fetchUsers(buildParams())}
+          onAdd={openCreate}
           onToggleFilters={() => setShowAdvanced(s => !s)}
           filtersBadgeCount={activeAdvCount}
         />
@@ -273,14 +273,11 @@ export default function AdminUsersPage() {
           actions={actions}
           resetSignal={0}
           columnPicker={false} // using external column picker (toolbar)
-          hidePager={true} // hide internal pager; we use server pager below
+          hidePager={false} // use internal pager
+          serverSide={true}
+          pagination={{ page: page, totalPages: meta.last_page }}
+          onPageChange={goPage}
         />
-        {/* Server pagination controls (independent of TableLayout internal pagination) */}
-        <div className="lv-table-pager" style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="pill-btn ghost sm" disabled={page <= 1} onClick={() => goPage(page - 1)}>&lt; Prev</button>
-          <span className="pager-text">Page {page} of {meta.last_page} · {meta.total} total</span>
-          <button className="pill-btn ghost sm" disabled={page >= meta.last_page} onClick={() => goPage(page + 1)}>Next &gt;</button>
-        </div>
       </div>
 
       <Modal

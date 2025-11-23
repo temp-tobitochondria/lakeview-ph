@@ -1,4 +1,5 @@
 import React from "react";
+import { useWindowSize } from "../../hooks/useWindowSize";
 
 /**
  * Collapsible "Advanced Filters" panel
@@ -12,7 +13,9 @@ import React from "react";
  * - onClearAll?: () => void
  */
 export default function FilterPanel({ open, fields = [], onClearAll }) {
-  if (!open) return null;
+  const { width } = useWindowSize();
+  const isMobile = width < 768;
+  if (!open || isMobile) return null;
 
   return (
     <div className="advanced-filters" role="region" aria-label="Advanced filters">

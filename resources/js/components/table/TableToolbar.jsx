@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FiSearch, FiFilter, FiSettings, FiRotateCcw, FiRefreshCw, FiDownload, FiPlus } from "react-icons/fi";
 import ColumnPicker from "./ColumnPicker";
+import { useWindowSize } from "../../hooks/useWindowSize";
 
 /**
  * Reusable table toolbar (non-sticky by default)
@@ -29,6 +30,8 @@ export default function TableToolbar({
   onToggleFilters,
   filtersBadgeCount = 0,
 }) {
+  const { width } = useWindowSize();
+  const isMobile = width < 1024;
   const SEARCH_KEY = `${tableId}::search`;
   const FILT_KEY   = `${tableId}::filters`;
 
@@ -154,7 +157,7 @@ export default function TableToolbar({
 
       {/* Right actions */}
       <div className="org-actions-right" role="group" aria-label="Table actions">
-        {onToggleFilters && (
+        {onToggleFilters && !isMobile && (
           <button
             className="pill-btn ghost"
             onClick={onToggleFilters}
@@ -185,13 +188,13 @@ export default function TableToolbar({
           </button>
         )}
 
-        {onResetWidths && (
+        {onResetWidths && !isMobile && (
           <button className="pill-btn ghost" onClick={onResetWidths} title="Reset column widths" aria-label="Reset column widths">
             <FiRotateCcw /><span className="hide-sm">Reset</span>
           </button>
         )}
 
-        {columnPicker && (
+        {columnPicker && !isMobile && (
           <ColumnPicker
             columns={columnPicker.columns}
             visible={columnPicker.visibleMap}
@@ -207,7 +210,7 @@ export default function TableToolbar({
 
         {onRefresh && (
           <button className="pill-btn ghost" onClick={onRefresh} title="Refresh table" aria-label="Refresh table">
-            <FiRefreshCw /><span className="hide-sm">Refresh</span>
+            <FiRefreshCw /><span>Refresh</span>
           </button>
         )}
 
@@ -219,7 +222,7 @@ export default function TableToolbar({
 
         {onAdd && (
           <button className="pill-btn primary" onClick={onAdd} title="Add new" aria-label="Add new">
-            <FiPlus /><span className="hide-sm">Add</span>
+            <FiPlus /><span>Add</span>
           </button>
         )}
       </div>

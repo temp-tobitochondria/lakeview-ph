@@ -206,7 +206,6 @@ export default function AdminOrganizationsPage() {
         icon={<FiBriefcaseIcon />}
         title="Organizations"
         description="Manage registered organizations and their contact details."
-        actions={<button className="pill-btn" onClick={openCreate}>+ New Organization</button>}
       />
 
       <div className="card" style={{ padding:12, borderRadius:12, marginBottom:12 }}>
@@ -216,6 +215,7 @@ export default function AdminOrganizationsPage() {
           filters={[]}
           columnPicker={columnPickerAdapter}
           onRefresh={() => fetchOrgs(buildParams())}
+          onAdd={openCreate}
           onToggleFilters={() => setShowAdvanced(s => !s)}
           filtersBadgeCount={activeAdvCount}
         />
@@ -230,13 +230,7 @@ export default function AdminOrganizationsPage() {
                 <FiSettings />
               </button>
             </div>
-          )}]} data={normalized} pageSize={perPage} actions={actions} columnPicker={false} hidePager={true} loading={loading} />
-
-        <div className="lv-table-pager" style={{ marginTop:10, display:'flex', gap:8, alignItems:'center' }} aria-live="polite" aria-atomic="true">
-          <button className="pill-btn ghost sm" disabled={page <= 1} onClick={() => goPage(page - 1)}>&lt; Prev</button>
-          <span className="pager-text">Page {page} of {meta.last_page} · {meta.total} total</span>
-            <button className="pill-btn ghost sm" disabled={page >= meta.last_page} onClick={() => goPage(page + 1)}>Next &gt;</button>
-        </div>
+          )}]} data={normalized} pageSize={perPage} actions={actions} columnPicker={false} hidePager={false} loading={loading} serverSide={true} pagination={{ page: page, totalPages: meta.last_page }} onPageChange={goPage} />
       </div>
 
       <OrganizationForm

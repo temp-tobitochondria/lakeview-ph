@@ -15,6 +15,7 @@ import { FiColumns } from "react-icons/fi";
  * - toolbar: React.ReactNode | { left?: React.ReactNode, right?: React.ReactNode }
  */
 import LoadingSpinner from "../components/LoadingSpinner";
+import { useWindowSize } from "../hooks/useWindowSize";
 
 export default function TableLayout({
   tableId = "lv-table",
@@ -39,6 +40,9 @@ export default function TableLayout({
   sort = { id: null, dir: 'asc' },
   onSortChange = () => {},
 }) {
+  const { width } = useWindowSize();
+  const isMobile = width < 1024;
+  const effectiveVirtualize = virtualize && !isMobile;
   const enableColumnPicker = !!columnPicker;
   const columnPickerConfig = typeof columnPicker === "object" && columnPicker !== null ? columnPicker : {};
   const columnPickerLabel = columnPickerConfig.label || "Columns";
@@ -352,7 +356,7 @@ export default function TableLayout({
   const [scrollTop, setScrollTop] = useState(0);
 
   useEffect(() => {
-    if (!virtualize) return;
+    if (!effectiveVirtualize) return;
     const el = scrollerRef.current;
     if (!el) return;
     const measure = () => setViewportH(el.clientHeight || 0);
@@ -362,16 +366,16 @@ export default function TableLayout({
     const onScroll = () => setScrollTop(el.scrollTop || 0);
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { try { ro.disconnect(); } catch {} el.removeEventListener('scroll', onScroll); };
-  }, [virtualize]);
+  }, [effectiveVirtualize]);
 
   // Compute windowed slice
   const total = paged.length;
-  const estPerView = viewportH > 0 ? Math.ceil(viewportH / rowHeight) : 20;
-  const startIdx = virtualize ? Math.max(0, Math.floor(scrollTop / rowHeight) - overscan) : 0;
-  const endIdx = virtualize ? Math.min(total, Math.ceil((scrollTop + viewportH) / rowHeight) + overscan) : total;
-  const topSpacer = virtualize ? startIdx * rowHeight : 0;
-  const bottomSpacer = virtualize ? Math.max(0, (total - endIdx) * rowHeight) : 0;
-  const visibleRows = virtualize ? paged.slice(startIdx, endIdx) : paged;
+  const estPerView = effectiveVirtualize ? (viewportH > 0 ? Math.ceil(viewportH / rowHeight) : 20) : total;
+  const startIdx = effectiveVirtualize ? Math.max(0, Math.floor(scrollTop / rowHeight) - overscan) : 0;
+  const endIdx = effectiveVirtualize ? Math.min(total, Math.ceil((scrollTop + viewportH) / rowHeight) + overscan) : total;
+  const topSpacer = effectiveVirtualize ? startIdx * rowHeight : 0;
+  const bottomSpacer = effectiveVirtualize ? Math.max(0, (total - endIdx) * rowHeight) : 0;
+  const visibleRows = effectiveVirtualize ? paged.slice(startIdx, endIdx) : paged;
 
   return (
     <div className="lv-table-wrap" style={{ position: 'relative' }} aria-busy={loading ? 'true' : 'false'}>
@@ -380,7 +384,7 @@ export default function TableLayout({
           <div className="lv-toolbar-left" style={{ flex: 1 }}>{toolbarSlots.left}</div>
           <div className="lv-toolbar-right">
             {toolbarSlots.right}
-            {columnPickerControl && React.cloneElement(columnPickerControl, { disabled: loading })}
+            {!isMobile && columnPickerControl && React.cloneElement(columnPickerControl, { disabled: loading })}
           </div>
         </div>
       )}
@@ -406,119 +410,163 @@ export default function TableLayout({
         </div>
       )}
 
-      <div className="lv-table-scroller" ref={scrollerRef}>
-        <table className="lv-table">
-          <thead>
-            <tr>
+      {isMobile ? (
+        <div className="table-cards">
+          {visibleRows.map((row, idx) => (
+            <div key={row.id ?? idx} className="table-card">
               {displayColumns.map((col) => (
-                <th
-                  key={col.id}
-                  className={`lv-th ${col.className || ""}`}
-                  style={{ width: widths[col.id] ? `${widths[col.id]}px` : undefined }}
-                >
-                  <div className="lv-th-inner">
-                    <button
-                      type="button"
-                      className={`lv-th-label lv-sortable ${sort.id === col.id ? 'is-sorted' : ''}`}
-                      onClick={() => {
-                        if (loading) return;
-                        if (serverSide) {
-                          onSortChange(col.id);
-                        } else {
-                          // client-side sorting logic can be re-added here if needed
-                        }
-                      }}
-                      title="Sort"
-                      aria-label={`Sort by ${typeof col.header === 'string' ? col.header : (col.ariaLabel || 'column')}`}
-                    >
-                      {col.header}
-                      {sort.id === col.id && (
-                        <span style={{ marginLeft: 6, fontSize: 12, color: '#6b7280' }}>
-                          {sort.dir === 'asc' ? '▲' : '▼'}
-                        </span>
-                      )}
-                    </button>
-                    <span className="lv-resizer" onMouseDown={(e) => startResize(col.id, e)} />
-                  </div>
-                </th>
+                <div key={col.id} className="card-field">
+                  <strong>{col.header}:</strong>
+                  <div className="card-value">{getCellContent(row, col)}</div>
+                </div>
               ))}
               {actions?.length ? (
-                <th className="lv-th lv-th-actions sticky-right">
-                  <div className="lv-th-inner">
-                    <span className="lv-th-label">Actions</span>
-                  </div>
-                </th>
+                <div className="card-actions">
+                  {(typeof disableActionsWhen === 'function' && disableActionsWhen(row._raw ?? row)) ? null : (
+                    actions
+                      .filter((act) => {
+                        if (typeof act.visible === 'function') return act.visible(row._raw ?? row);
+                        if (typeof act.visible === 'boolean') return act.visible;
+                        return true;
+                      })
+                      .map((act, i) => (
+                        <button
+                          key={i}
+                          className={`icon-btn simple ${act.type === "delete" ? "danger" : act.type === "edit" ? "accent" : ""}`}
+                          title={act.title || act.label}
+                          onClick={() => { if (!loading) act.onClick?.(row._raw ?? row); }}
+                          aria-label={act.title || act.label}
+                          disabled={loading}
+                        >
+                          {act.icon}
+                        </button>
+                      ))
+                  )}
+                </div>
               ) : null}
-            </tr>
-          </thead>
-
-          <tbody>
-            {virtualize && total > 0 && (
-              <tr aria-hidden="true"><td colSpan={displayColumns.length + (actions?.length ? 1 : 0)} style={{ height: `${topSpacer}px`, padding: 0, border: 0 }} /></tr>
-            )}
-            {visibleRows.map((row, idx) => (
-              <tr key={row.id ?? idx}>
+            </div>
+          ))}
+          {!paged.length && (
+            <div className="lv-empty">
+              {loading ? null : 'No records found.'}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="lv-table-scroller" ref={scrollerRef}>
+          <table className="lv-table">
+            <thead>
+              <tr>
                 {displayColumns.map((col) => (
-                  <td
+                  <th
                     key={col.id}
-                    className={`lv-td ${col.className || ""}`}
+                    className={`lv-th ${col.className || ""}`}
                     style={{ width: widths[col.id] ? `${widths[col.id]}px` : undefined }}
                   >
-                    {getCellContent(row, col)}
-                  </td>
+                    <div className="lv-th-inner">
+                      <button
+                        type="button"
+                        className={`lv-th-label lv-sortable ${sort.id === col.id ? 'is-sorted' : ''}`}
+                        onClick={() => {
+                          if (loading) return;
+                          if (serverSide) {
+                            onSortChange(col.id);
+                          } else {
+                            // client-side sorting logic can be re-added here if needed
+                          }
+                        }}
+                        title="Sort"
+                        aria-label={`Sort by ${typeof col.header === 'string' ? col.header : (col.ariaLabel || 'column')}`}
+                      >
+                        {col.header}
+                        {sort.id === col.id && (
+                          <span style={{ marginLeft: 6, fontSize: 12, color: '#6b7280' }}>
+                            {sort.dir === 'asc' ? '▲' : '▼'}
+                          </span>
+                        )}
+                      </button>
+                      <span className="lv-resizer" onMouseDown={(e) => startResize(col.id, e)} />
+                    </div>
+                  </th>
                 ))}
                 {actions?.length ? (
-                  <td className="lv-td sticky-right lv-td-actions">
-                    {(typeof disableActionsWhen === 'function' && disableActionsWhen(row._raw ?? row)) ? null : (
-                      <div className="lv-actions-inline">
-                        {actions
-                          .filter((act) => {
-                            if (typeof act.visible === 'function') return act.visible(row._raw ?? row);
-                            if (typeof act.visible === 'boolean') return act.visible;
-                            return true;
-                          })
-                          .map((act, i) => (
-                          <button
-                            key={i}
-                            className={`icon-btn simple ${act.type === "delete" ? "danger" : act.type === "edit" ? "accent" : ""}`}
-                            title={act.title || act.label}
-                            onClick={() => { if (!loading) act.onClick?.(row._raw ?? row); }}
-                            aria-label={act.title || act.label}
-                            disabled={loading}
-                          >
-                            {act.icon}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </td>
+                  <th className="lv-th lv-th-actions sticky-right">
+                    <div className="lv-th-inner">
+                      <span className="lv-th-label">Actions</span>
+                    </div>
+                  </th>
                 ) : null}
               </tr>
-            ))}
-            {virtualize && total > 0 && (
-              <tr aria-hidden="true"><td colSpan={displayColumns.length + (actions?.length ? 1 : 0)} style={{ height: `${bottomSpacer}px`, padding: 0, border: 0 }} /></tr>
-            )}
+            </thead>
 
-            {!paged.length && (
-              <tr>
-                <td className="lv-empty" colSpan={displayColumns.length + (actions?.length ? 1 : 0)}>
-                  {/* Avoid showing the inline spinner when the overlay spinner is active to prevent stacked spinners */}
-                  {loading ? null : 'No records found.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            <tbody>
+              {effectiveVirtualize && total > 0 && (
+                <tr aria-hidden="true"><td colSpan={displayColumns.length + (actions?.length ? 1 : 0)} style={{ height: `${topSpacer}px`, padding: 0, border: 0 }} /></tr>
+              )}
+              {visibleRows.map((row, idx) => (
+                <tr key={row.id ?? idx}>
+                  {displayColumns.map((col) => (
+                    <td
+                      key={col.id}
+                      className={`lv-td ${col.className || ""}`}
+                      style={{ width: widths[col.id] ? `${widths[col.id]}px` : undefined }}
+                    >
+                      {getCellContent(row, col)}
+                    </td>
+                  ))}
+                  {actions?.length ? (
+                    <td className="lv-td sticky-right lv-td-actions">
+                      {(typeof disableActionsWhen === 'function' && disableActionsWhen(row._raw ?? row)) ? null : (
+                        <div className="lv-actions-inline">
+                          {actions
+                            .filter((act) => {
+                              if (typeof act.visible === 'function') return act.visible(row._raw ?? row);
+                              if (typeof act.visible === 'boolean') return act.visible;
+                              return true;
+                            })
+                            .map((act, i) => (
+                            <button
+                              key={i}
+                              className={`icon-btn simple ${act.type === "delete" ? "danger" : act.type === "edit" ? "accent" : ""}`}
+                              title={act.title || act.label}
+                              onClick={() => { if (!loading) act.onClick?.(row._raw ?? row); }}
+                              aria-label={act.title || act.label}
+                              disabled={loading}
+                            >
+                              {act.icon}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+              {effectiveVirtualize && total > 0 && (
+                <tr aria-hidden="true"><td colSpan={displayColumns.length + (actions?.length ? 1 : 0)} style={{ height: `${bottomSpacer}px`, padding: 0, border: 0 }} /></tr>
+              )}
+
+              {!paged.length && (
+                <tr>
+                  <td className="lv-empty" colSpan={displayColumns.length + (actions?.length ? 1 : 0)}>
+                    {/* Avoid showing the inline spinner when the overlay spinner is active to prevent stacked spinners */}
+                    {loading ? null : 'No records found.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {!hidePager && (
         <div className="lv-table-pager">
           <button className="pill-btn ghost sm" disabled={loading || page <= 1} onClick={() => { if (!loading) onPageChange(page - 1); }}>
-            {"< Prev"}
+            {isMobile ? "<" : "< Prev"}
           </button>
             <span className="pager-text">Page {page} of {totalPages}</span>
           <button className="pill-btn ghost sm" disabled={loading || page >= totalPages} onClick={() => { if (!loading) onPageChange(page + 1); }}>
-            {"Next >"}
+            {isMobile ? ">" : "Next >"}
           </button>
         </div>
       )}

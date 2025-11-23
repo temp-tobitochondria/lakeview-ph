@@ -23,10 +23,10 @@ function AdminWaterCat() {
               className={`pill-btn ${activeTab === "lakes" ? "primary" : ""}`}
               onClick={() => setActiveTab("lakes")}
             >
-              Manage Lakes
+              Lakes
             </button>
-            <button type="button" className={`pill-btn ${activeTab === "watersheds" ? "primary" : ""}`} onClick={() => setActiveTab("watersheds")}>Manage Watersheds</button>
-            <button type="button" className={`pill-btn ${activeTab === "flows" ? "primary" : ""}`} onClick={() => setActiveTab("flows")}>Manage Tributaries</button>
+            <button type="button" className={`pill-btn ${activeTab === "watersheds" ? "primary" : ""}`} onClick={() => setActiveTab("watersheds")}>Watersheds</button>
+            <button type="button" className={`pill-btn ${activeTab === "flows" ? "primary" : ""}`} onClick={() => setActiveTab("flows")}>Tributaries</button>
           </div>
         )}
       />
