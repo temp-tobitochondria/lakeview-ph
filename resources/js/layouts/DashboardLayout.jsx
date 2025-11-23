@@ -7,6 +7,7 @@ import {
   FiUser,
   FiChevronsLeft,
   FiChevronsRight,
+  FiChevronLeft,
 } from "react-icons/fi";
 import { api, logout as apiLogout, clearToken, getToken, getUser, me as fetchMe } from "../lib/api";
 import DashboardBoot from "../components/DashboardBoot"; // Overlay loader for dashboards
@@ -90,6 +91,13 @@ export default function DashboardLayout({ links, user, children }) {
             <img src="/lakeview-logo-alt.webp" alt="LakeView PH Logo" />
             <span className="dashboard-logo-text">LakeView PH</span>
           </div>
+          <button
+            className="sidebar-close"
+            onClick={() => setCollapsed(true)}
+            aria-label="Close sidebar"
+          >
+            <FiChevronLeft size={24} />
+          </button>
 
           {/* Navigation */}
           <ul className="dashboard-nav-links" role="navigation" aria-label="Dashboard">
@@ -120,16 +128,6 @@ export default function DashboardLayout({ links, user, children }) {
             <FiLogOut size={18} /> <span className="signout-text">Sign out</span>
           </div>
         </div>
-
-        {/* Drawer toggle (stick to right side, vertically centered) */}
-        <button
-          className="sidebar-toggle drawer"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          {collapsed ? <FiChevronsRight size={18} /> : <FiChevronsLeft size={18} />}
-        </button>
       </aside>
 
       {/* Main Content */}
@@ -139,6 +137,14 @@ export default function DashboardLayout({ links, user, children }) {
             <div className="page-header-icon">{activeLink.icon}</div>
             <h1 className="page-header-title">{activeLink.label}</h1>
             <div className="page-header-actions">
+              <NavLink
+                className="btn-icon"
+                onClick={() => setCollapsed((v) => !v)}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={collapsed ? "Expand" : "Collapse"}
+              >
+                {collapsed ? <FiChevronsRight size={18} /> : <FiChevronsLeft size={18} />}
+              </NavLink>
               <NavLink to="/" className="btn-icon" title="View Public Map">
                 <FiMap size={18} />
               </NavLink>

@@ -48,29 +48,6 @@
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-/* Drawer-style sidebar toggle */
-.sidebar-toggle.drawer {
-  position: absolute;
-  top: 50%;
-  right: -14px; /* like a handle outside */
-  transform: translateY(-50%);
-  background: #1e293b;
-  border: 2px solid #fff;
-  border-radius: 20px;   /* ✅ pill shape */
-  width: 32px;
-  height: 60px;          /* taller pill */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #cbd5e1;
-  cursor: pointer;
-  transition: background 0.2s ease, right 0.25s ease;
-  z-index: 10;
-}
-.sidebar-toggle.drawer:hover {
-  background: #334155;
-}
-
 /* Sidebar: Nav */
 .dashboard-nav-links {
   list-style: none;
@@ -175,33 +152,28 @@
 
 /* Collapsed */
 .dashboard-sidebar.collapsed {
-  width: 72px;
-}
-.dashboard-sidebar.collapsed .dashboard-logo {
-  justify-content: center;
-  padding: 16px 0;
-}
-.dashboard-sidebar.collapsed .dashboard-logo img {
-  margin: 0;
-  width: 40px;
-  height: 40px;
-}
-.dashboard-sidebar.collapsed .dashboard-logo-text,
-.dashboard-sidebar.collapsed .dashboard-user-info .user-name,
-.dashboard-sidebar.collapsed .dashboard-signout .signout-text,
-.dashboard-sidebar.collapsed .dashboard-nav-links li a .link-text {
-  display: none !important;
-}
-.dashboard-sidebar.collapsed .dashboard-nav-links li a {
-  justify-content: center;
-  padding: 14px 0;
-}
-.dashboard-sidebar.collapsed .dashboard-nav-links li a svg {
-  margin: 0;
-  font-size: 22px;
+  width: 0px;
+  margin: 16px 0;
+  overflow: hidden;
 }
 
-/* Scrollbars (WebKit) */
+/* Close button (hidden by default, shown on mobile) */
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: transparent;
+  border: none;
+  color: #f1f5f9;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+.sidebar-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
 .dashboard-nav-links::-webkit-scrollbar {
   width: 8px;
 }
@@ -221,34 +193,6 @@
   object-fit: contain;  /* prevents distortion */
   margin-right: 12px;   /* spacing for expanded */
 }
-.dashboard-sidebar.collapsed .dashboard-logo {
-  justify-content: center;
-  padding: 16px 0;       /* balanced top/bottom */
-}
-.dashboard-sidebar.collapsed .dashboard-logo img {
-  margin: 0;             /* remove side gap */
-  width: 40px;           /* make it slightly bigger when centered */
-  height: 40px;
-}
-
-/* === Toggle button fixes === */
-.sidebar-toggle {
-  margin-left: auto;
-  background: transparent;
-  border: none;
-  color: #cbd5e1;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sidebar-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
 
 /* === Nav icons centering === */
 .dashboard-nav-links li a {
@@ -256,11 +200,71 @@
   align-items: center;
   justify-content: flex-start;
 }
-.dashboard-sidebar.collapsed .dashboard-nav-links li a {
-  justify-content: center; /* center icons in collapsed mode */
-  padding: 14px 0;
+
+/* === Responsive Design === */
+
+/* Mobile S/M/L (up to 768px) - Full screen drawer */
+@media (max-width: 768px) {
+  .dashboard-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    z-index: 1000;
+    transition: transform 0.3s ease;
+  }
+
+  .dashboard-sidebar.collapsed {
+    transform: translateX(-100%);
+    width: 100vw; /* keep width for transform */
+    margin: 0;
+  }
+
+  .sidebar-close {
+    display: block;
+  }
+
+  /* Adjust logo and nav for full screen */
+  .dashboard-logo {
+    padding: 20px;
+  }
+
+  .dashboard-nav-links {
+    padding: 0 20px;
+  }
+
+  .dashboard-user-section {
+    padding: 16px 20px;
+  }
 }
-.dashboard-sidebar.collapsed .dashboard-nav-links li a svg {
-  margin: 0;
-  font-size: 22px; /* make icons a bit bigger */
+
+/* Tablet (768px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .dashboard-sidebar {
+    width: 240px; /* slightly smaller for tablets */
+  }
+}
+
+/* Laptop (1024px - 1440px) */
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .dashboard-sidebar {
+    width: 260px; /* standard */
+  }
+}
+
+/* Laptop L (1440px - 2560px) */
+@media (min-width: 1441px) and (max-width: 2560px) {
+  .dashboard-sidebar {
+    width: 280px; /* slightly larger */
+  }
+}
+
+/* 4K (2560px+) */
+@media (min-width: 2561px) {
+  .dashboard-sidebar {
+    width: 320px; /* even larger for 4K */
+  }
 }
