@@ -507,6 +507,7 @@ class LakeController extends Controller
                 ->select(
                     'l.id','l.name','l.alt_name','l.region','l.province','l.municipality',
                     'l.surface_area_km2','l.elevation_m','l.mean_depth_m','l.class_code',
+                    'l.flows_status',
                     'l.created_at','l.updated_at',
                     'w.name as watershed_name',
                     'ly.id as layer_id',
@@ -627,6 +628,7 @@ class LakeController extends Controller
                         'surface_area_km2' => $r->surface_area_km2,
                         'elevation_m'      => $r->elevation_m,
                         'mean_depth_m'     => $r->mean_depth_m,
+                        'flows_status'     => $r->flows_status,
                         'geometry_source'  => $r->layer_id ? 'layer' : 'coordinates',
                         'layer_id'         => $r->layer_id,
                     ],

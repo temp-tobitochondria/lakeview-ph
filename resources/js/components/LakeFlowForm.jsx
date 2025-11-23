@@ -41,7 +41,7 @@ export default function LakeFlowForm({ open, mode='create', initialValue=EMPTY, 
         <label className="lv-field">
           <span>Lake*</span>
           <select value={form.lake_id} required onChange={e=>setForm(f=>({...f,lake_id:e.target.value}))} disabled={lakesLoading}>
-            <option value="">{lakesLoading ? 'Loading lakes...' : '-- Select Lake --'}</option>
+            <option value="">{lakesLoading ? 'Loading lakes...' : 'Select lake'}</option>
             {!lakesLoading && lakes.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>

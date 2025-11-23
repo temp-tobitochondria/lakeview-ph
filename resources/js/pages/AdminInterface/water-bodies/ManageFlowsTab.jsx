@@ -3,7 +3,7 @@ import FilterPanel from '../../../components/table/FilterPanel';
 import Modal from '../../../components/Modal';
 import AppMap from '../../../components/AppMap';
 import MapViewport from '../../../components/MapViewport';
-import { GeoJSON, CircleMarker } from 'react-leaflet';
+import { GeoJSON, CircleMarker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import TableToolbar from '../../../components/table/TableToolbar';
 import TableLayout from '../../../layouts/TableLayout';
@@ -94,15 +94,23 @@ export default function ManageFlowsTab() {
         onCancel={()=>s.setFormOpen(false)}
         onSubmit={s.submit}
       />
-      <Modal open={s.viewOpen} onClose={()=>s.setViewOpen(false)} title="View Flow Point" width={900} ariaLabel="View Flow">
+      <Modal open={s.viewOpen} onClose={()=>s.setViewOpen(false)} title={s.viewFlowPoint?.flow_type === 'inflow' ? 'View Inlet Point' : s.viewFlowPoint?.flow_type === 'outflow' ? 'View Outlet Point' : 'View Tributary Point'} width={900} ariaLabel="View Tributary">
         <div style={{ height: 480, borderRadius: 8, overflow: 'hidden' }}>
           <AppMap view="osm" whenCreated={(m)=>{ s.viewMapRef.current = m; }} disableDrag={true} zoomControl={false} scrollWheelZoom={false}>
             {s.viewFeature && (
-              <GeoJSON data={s.viewFeature} style={{ color:'#2563eb', weight:2, fillOpacity:0.08 }} />
+              <GeoJSON
+                data={s.viewFeature}
+                pointToLayer={(feature, latlng) => {
+                  const marker = L.circleMarker(latlng, { color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.9, radius: 8 });
+                  marker.bindTooltip(feature.properties.name || 'Lake', { permanent: false, direction: 'top' });
+                  return marker;
+                }}
+                style={{ color:'#2563eb', weight:2, fillOpacity:0.08 }}
+              />
             )}
             {s.viewFlowPoint && (
               <CircleMarker center={[s.viewFlowPoint.lat, s.viewFlowPoint.lon]} radius={8} pathOptions={{ color:'#ef4444', fillColor:'#ef4444', fillOpacity:0.9 }}>
-                {/* Popup handled by map's default behavior */}
+                <Tooltip permanent={false} direction="top">{s.viewFlowPoint.name || 'Tributary'}</Tooltip>
               </CircleMarker>
             )}
             {/* If geometry exists, fit bounds after creation */}

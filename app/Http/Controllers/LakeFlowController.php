@@ -7,6 +7,7 @@ use App\Models\Lake;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class LakeFlowController extends Controller
 {
@@ -109,6 +110,10 @@ class LakeFlowController extends Controller
         }
         $data['created_by'] = Auth::id();
         $flow = LakeFlow::create($data);
+        if ($flow->lake) {
+            $flow->lake->recomputeFlowsStatus();
+        }
+        $this->bustLakeCache();
         $flow->load(['lake:id,name','creator:id,name']);
         return response()->json($this->serialize($flow), 201);
     }
@@ -135,14 +140,27 @@ class LakeFlowController extends Controller
         if (array_key_exists('is_primary', $data)) {
             $data['is_primary'] = $data['is_primary'] ? DB::raw('TRUE') : DB::raw('FALSE');
         }
+        $oldLakeId = $flow->lake_id;
         $flow->update($data);
+        if ($oldLakeId != $flow->lake_id) {
+             Lake::find($oldLakeId)?->recomputeFlowsStatus(true);
+        }
+        if ($flow->lake) {
+            $flow->lake->recomputeFlowsStatus();
+        }
+        $this->bustLakeCache();
         $flow->load(['lake:id,name','creator:id,name']);
         return $this->serialize($flow);
     }
 
     public function destroy(LakeFlow $flow)
     {
+        $lake = $flow->lake;
         $flow->delete();
+        if ($lake) {
+            $lake->recomputeFlowsStatus(true);
+        }
+        $this->bustLakeCache();
         return response()->json(['message' => 'Flow deleted']);
     }
 
@@ -157,5 +175,13 @@ class LakeFlowController extends Controller
             } catch (\Throwable $e) {}
         }
         return $arr;
+    }
+
+    protected function bustLakeCache()
+    {
+        try {
+            $v = (int) Cache::get('ver:public:lakes', 1); Cache::forever('ver:public:lakes', $v + 1);
+            $va = (int) Cache::get('ver:lakes', 1); Cache::forever('ver:lakes', $va + 1);
+        } catch (\Throwable $e) {}
     }
 }

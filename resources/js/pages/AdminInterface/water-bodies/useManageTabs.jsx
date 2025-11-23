@@ -780,7 +780,8 @@ export function useManageWatershedsTabLogic() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
-  const [sort, setSort] = useState({ id: "name", dir: "asc" });
+  // Default sort changed to created_at DESC for consistency with Lakes tab
+  const [sort, setSort] = useState({ id: "created_at", dir: "desc" });
 
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
@@ -998,7 +999,8 @@ export function useManageFlowsTabLogic() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adv, setAdv] = useState({});
   const [pagination, setPagination] = useState({ page: 1, perPage: 5, total: 0, lastPage: 1 });
-  const [sort, setSort] = useState({ id: 'lake', dir: 'asc' });
+  // Default sort changed to created_at DESC for consistency across admin tables
+  const [sort, setSort] = useState({ id: 'created_at', dir: 'desc' });
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState('create');
   const [formInitial, setFormInitial] = useState(null);
