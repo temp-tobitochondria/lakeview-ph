@@ -74,7 +74,7 @@ function MiniMapWrapper() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedback, onOpenKyc, onAboutDataToggle }) {
+function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedback, onOpenKyc, onAboutDataToggle, appBadgeCount = 0 }) {
   const [me, setMe] = useState(() => getCurrentUser()); // start with cached user if available
   const containerRef = useRef(null);
   const suppressNextOutsideCloseRef = useRef(false);
@@ -260,7 +260,33 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
               onClick={onOpenKyc ? (e) => { e.preventDefault(); onOpenKyc(); if (!pinned) onClose?.(); } : handleNav('/kyc')}
             >
               <FiUser className="sidebar-icon" />
-              <span>Contribute / Join an Org</span>
+              <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', paddingRight: 8 }}>
+                Contribute / Join an Org
+                {appBadgeCount > 0 && (
+                  <span
+                    aria-label={`${appBadgeCount} application update${appBadgeCount>1?'s':''}`}
+                    title={`${appBadgeCount} application update${appBadgeCount>1?'s':''}`}
+                    style={{
+                      position: 'absolute',
+                      top: -8,
+                      right: -18,
+                      background: '#dc2626',
+                      color: '#fff',
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 0 2px #fff, 0 2px 4px rgba(0,0,0,0.25)',
+                      padding: '0 4px',
+                      pointerEvents: 'none'
+                    }}
+                  >{appBadgeCount > 99 ? '99+' : appBadgeCount}</span>
+                )}
+              </span>
             </a>
           </li>
         )}

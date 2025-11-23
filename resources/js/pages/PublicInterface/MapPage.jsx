@@ -39,6 +39,7 @@ import AboutData from "./AboutData";
 import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
 import AboutPage from "./AboutPage";
 import UserManual from "./UserManual";
+import useOrgApplicationsBadge from "./hooks/useOrgApplicationsBadge";
 function MapWithContextMenu({ children }) {
   const map = useMap();
   return children(map);
@@ -109,6 +110,9 @@ function MapPage() {
     map.once('click', once);
   });
   const { userRole, authUser, authOpen, authMode, openAuth, closeAuth, setAuthMode } = useAuthRole();
+
+  // Organization application status badge (public users)
+  const { count: appBadgeCount, hasBadge: hasAppBadge } = useOrgApplicationsBadge({ pollMs: 90000 });
 
   useEffect(() => {
     const onOpen = () => setSettingsOpen(true);
@@ -363,6 +367,7 @@ function MapPage() {
           onOpenKyc={() => setKycOpen(true)}
           onOpenFeedback={() => { setFeedbackOpen(true); if (!sidebarPinned) setSidebarOpen(false); }}
           onAboutDataToggle={(open) => setAboutDataMenuOpen(open)}
+          appBadgeCount={appBadgeCount}
         />
 
         <MapWithContextMenu>
@@ -419,6 +424,7 @@ function MapPage() {
         onClear={searchApi.handleClearSearch}
         onTyping={(val) => { if (val && val.length >= 2) { searchApi.setSearchMode('suggest'); searchApi.setSearchOpen(false); } }}
         mode={searchApi.searchMode}
+        appBadgeCount={appBadgeCount}
       />
       <SearchResultsPopover
         open={searchApi.searchOpen}

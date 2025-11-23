@@ -208,7 +208,31 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
     finally { setKycSaving(false); }
   };
 
-  const uploadDoc = async (e) => { const file = e.target.files?.[0]; const type = e.target.getAttribute('data-type'); if (!file || !type) return; const fd = new FormData(); fd.append('file', file); fd.append('type', type); try { const res = await api.upload('/kyc/documents', fd); setKycDocs(d => [...d, res?.data].filter(Boolean)); toastSuccess('Document uploaded'); } catch { toastError('Upload failed'); } finally { e.target.value=''; } };
+  const uploadDoc = async (e) => {
+    const file = e.target.files?.[0];
+    const type = e.target.getAttribute('data-type');
+    if (!file || !type) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('type', type);
+    const objectUrl = URL.createObjectURL(file);
+    const isImageLocal = /^image\//.test(file.type);
+    try {
+      const res = await api.upload('/kyc/documents', fd);
+      const serverDoc = res?.data || {};
+      // Augment with local preview data (helps when server strips extension or mime)
+      serverDoc.previewUrl = objectUrl;
+      serverDoc.previewIsImage = isImageLocal;
+      serverDoc.original_name = serverDoc.original_name || file.name;
+      serverDoc.mime = serverDoc.mime || file.type;
+      setKycDocs(d => [...d, serverDoc].filter(Boolean));
+      toastSuccess('Document uploaded');
+    } catch {
+      // Revoke if upload fails
+      try { URL.revokeObjectURL(objectUrl); } catch {}
+      toastError('Upload failed');
+    } finally { e.target.value=''; }
+  };
   const deleteDoc = async (id) => { try { await api.delete(`/kyc/documents/${id}`); setKycDocs(d => d.filter(x => x.id !== id)); } catch { toastError('Delete failed'); } };
 
   const finalizeApplication = async () => {
@@ -220,6 +244,8 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
       setSubmitOk(true);
   if (res?.message) { try { const { Toast } = await import('../../lib/alerts'); Toast.fire({ icon: 'success', title: res.message, timer: 6000 }); } catch { toastSuccess(res.message); } }
       try { const mine = await api.get('/org-applications/mine'); setMyApplication(mine?.data || null); } catch {}
+      // Trigger immediate refresh for badge consumers
+      try { window.dispatchEvent(new Event('lv-application-updated')); } catch {}
       exitWizard();
       if (onClose) onClose();
     } catch (e) {
@@ -232,6 +258,18 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
   const formatBytes = (bytes) => { const b = Number(bytes || 0); if (!b) return '—'; const k=1024; const sizes=['B','KB','MB','GB']; const i=Math.floor(Math.log(b)/Math.log(k)); return `${(b/Math.pow(k,i)).toFixed(i===0?0:1)} ${sizes[i]}`; };
 
   const applicationsArray = (myAppCount > 1 ? myApplications : (myApplication ? [myApplication] : []));
+
+  // Acknowledge viewing of application statuses when list is visible
+  useEffect(() => {
+    const isPublic = user && (!role || role === 'public');
+    if (!embedded) return; // only modal scenario for badge
+    if (!open) return;
+    if (!isPublic) return;
+    if (loading) return;
+    if (inWizard) return; // user is in wizard, not viewing list yet
+    // User sees applications list (even if empty) – dispatch viewed event to clear badge
+    try { window.dispatchEvent(new Event('lv-applications-viewed')); } catch {}
+  }, [applicationsArray, open, embedded, user, role, loading, inWizard]);
 
   const content = (<>
     {!user && (
@@ -295,7 +333,10 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
                               try { const me = await fetchMe({ maxAgeMs: 5 * 60 * 1000 }); if (me) setCurrentUser(me); } catch {}
                               try { const mine = await api.get('/org-applications/mine'); setMyApplication(mine?.data || null); } catch {}
                               try { const cnt = await api.get('/org-applications/mine/count'); setMyAppCount(cnt?.data?.count || 0); } catch {}
-                              setMyApplications([]); toastSuccess('Membership accepted'); if (onClose) onClose();
+                              setMyApplications([]); toastSuccess('Membership accepted');
+                              // Signal application change for badge refresh
+                              try { window.dispatchEvent(new Event('lv-application-updated')); } catch {}
+                              if (onClose) onClose();
                             } catch (e) {
                               const code = e?.response?.status;
                               if (code === 409) toastError('Cannot accept', 'You may already belong to an organization.');
@@ -426,13 +467,40 @@ export default function KycPage({ embedded = true, open = true, onClose }) {
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:12, marginTop:10 }}>
                     {kycDocs.map(doc => {
                       const lowerPath = String(doc.path || '').toLowerCase();
-                      const isImage = (doc.mime || '').startsWith('image/') || /(png|jpe?g|gif|webp|bmp)$/i.test(lowerPath);
-                      const isPdf = (doc.mime || '') === 'application/pdf' || /\.pdf$/i.test(lowerPath);
                       const url = doc.url || (doc.path ? (String(doc.path).startsWith('/storage') ? doc.path : `/storage/${doc.path}`) : '#');
+                      const filename = doc.original_name || doc.filename || '';
+                      const isImage = (() => {
+                        if ((doc.mime || '').startsWith('image/')) return true;
+                        if (doc.previewIsImage) return true;
+                        if (/(png|jpe?g|gif|webp|bmp)$/i.test(lowerPath)) return true;
+                        if (/(png|jpe?g|gif|webp|bmp)$/i.test(filename.toLowerCase())) return true;
+                        return false;
+                      })();
+                      const isPdf = (() => {
+                        if ((doc.mime || '') === 'application/pdf') return true;
+                        if (/\.pdf$/i.test(lowerPath)) return true;
+                        if (/\.pdf$/i.test(filename.toLowerCase())) return true;
+                        return false;
+                      })();
+                      const previewSource = isImage ? (doc.previewUrl || url) : null;
                       return (
-                        <div key={doc.id} style={{ border:`1px solid ${cardBorder}`, borderRadius:10, overflow:'hidden', background: docCardBg }}>
-                          <div style={{ height:160, background: previewBg, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            {isImage ? (<img src={url} alt={doc.type} loading="lazy" style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain' }} />) : isPdf ? (<span style={{ color:'#64748b' }}>PDF Preview</span>) : (<span style={{ color:'#64748b' }}>File</span>)}
+                        <div key={doc.id || doc.previewUrl} style={{ border:`1px solid ${cardBorder}`, borderRadius:10, overflow:'hidden', background: docCardBg }}>
+                          <div style={{ height:160, background: previewBg, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
+                            {previewSource ? (
+                              <img
+                                src={previewSource}
+                                alt={doc.type}
+                                loading="lazy"
+                                style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', cursor:'zoom-in' }}
+                                onClick={() => {
+                                  try { window.open(url, '_blank'); } catch {}
+                                }}
+                              />
+                            ) : isPdf ? (
+                              <span style={{ color:'#64748b' }}>PDF Document</span>
+                            ) : (
+                              <span style={{ color:'#64748b' }}>{String(doc.type || 'File')}</span>
+                            )}
                           </div>
                           <div style={{ padding:10, fontSize:13 }}>
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>

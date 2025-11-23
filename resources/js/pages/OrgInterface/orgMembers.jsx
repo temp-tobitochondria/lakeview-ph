@@ -12,7 +12,8 @@ import TableToolbar from "../../components/table/TableToolbar";
 import TableLayout from "../../layouts/TableLayout";
 
 // Constants
-const CONTRIBUTOR_ROLE_ID = 3;
+const CONTRIBUTOR_ROLE_ID = 3; // legacy constant for contributor filtering
+const ORG_ADMIN_ROLE_NAME = 'org_admin';
 const FIXED_ROLE = 'contributor';
 const TABLE_ID = 'org-contributors';
 const VIS_KEY = `${TABLE_ID}::visible`;
@@ -20,11 +21,12 @@ const VIS_KEY = `${TABLE_ID}::visible`;
 // Initial form values
 const emptyContributor = { name: '', email: '', password: '', role: FIXED_ROLE };
 
-// Normalize API users -> table rows (only used fields)
-const normalizeContributors = (rows = []) => rows.map(u => ({
+// Normalize API users -> table rows (include role for display)
+const normalizeMembers = (rows = []) => rows.map(u => ({
   id: u.id,
   name: u.name || '',
   email: u.email || '',
+  role: u.role || (u.role_id === CONTRIBUTOR_ROLE_ID ? 'contributor' : ''),
   _raw: u,
 }));
 
@@ -43,7 +45,7 @@ export default function OrgMembers() {
   const [q, setQ] = useState('');
 
   // Column visibility
-  const defaultsVisible = useMemo(() => ({ name: true, email: true }), []);
+  const defaultsVisible = useMemo(() => ({ name: true, email: true, role: true }), []);
   const [visibleMap, setVisibleMap] = useState(() => { try { const raw = localStorage.getItem(VIS_KEY); return raw ? JSON.parse(raw) : defaultsVisible; } catch { return defaultsVisible; } });
   useEffect(() => { try { localStorage.setItem(VIS_KEY, JSON.stringify(visibleMap)); } catch {} }, [visibleMap]);
 
@@ -58,6 +60,7 @@ export default function OrgMembers() {
   const baseColumns = useMemo(() => [
     { id: 'name', header: 'Name', accessor: 'name' },
     { id: 'email', header: 'Email', accessor: 'email', width: 240 },
+    { id: 'role', header: 'Role', accessor: 'role', width: 140 },
   ], []);
   const visibleColumns = useMemo(() => baseColumns.filter(c => visibleMap[c.id] !== false), [baseColumns, visibleMap]);
 
@@ -65,16 +68,21 @@ export default function OrgMembers() {
   const unwrap = (res) => (res?.data ?? res);
 
   // Fetch contributors
-  const fetchContributors = async (tid) => {
+  const fetchMembers = async (tid) => {
     setLoading(true); setError(null);
     try {
       const res = unwrap(await cachedGet(`/org/${tid}/users`, { ttlMs: 5 * 60 * 1000 }));
-      const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : res?.data?.data || []);
-      const contribs = list.filter(u => (u.role_id === CONTRIBUTOR_ROLE_ID) || (u.role === FIXED_ROLE));
-      setRows(contribs);
+      // Laravel paginator shape { data: [...], meta: {...} }
+      const rawList = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.data?.data || []);
+      // Safely derive role name for each user
+      const members = rawList.map(u => {
+        const roleName = u.role?.name || u.role_name || u.role || (u.role_id === CONTRIBUTOR_ROLE_ID ? 'contributor' : undefined);
+        return { ...u, role: roleName };
+      });
+      setRows(members);
     } catch (e) {
       console.error('Failed to load contributors', e);
-      setError(e?.response?.data?.message || 'Failed to load contributors');
+      setError(e?.response?.data?.message || 'Failed to load members');
     } finally { setLoading(false); }
   };
 
@@ -100,10 +108,10 @@ export default function OrgMembers() {
 
   // Fetch contributors whenever tenantId becomes available / changes
   useEffect(() => {
-    if (tenantId) fetchContributors(tenantId);
+    if (tenantId) fetchMembers(tenantId);
   }, [tenantId]);
 
-  const reload = () => { if (tenantId) fetchContributors(tenantId); };
+  const reload = () => { if (tenantId) fetchMembers(tenantId); };
 
   // Open / Edit
   const openCreate = () => { setMode('create'); setEditingId(null); setInitial(emptyContributor); setOpen(true); };
@@ -179,7 +187,7 @@ export default function OrgMembers() {
   ], [openEdit, deleteContributor]);
 
   // Normalized rows (for TableLayout)
-  const normalized = useMemo(() => normalizeContributors(rows), [rows]);
+  const normalized = useMemo(() => normalizeMembers(rows), [rows]);
 
   // Apply search client-side
   const debounceRef = useRef(null);
@@ -209,7 +217,7 @@ export default function OrgMembers() {
       <DashboardHeader
         icon={<FiUsers />}
         title="Members"
-        description="Manage contributors for your organization. Add, edit, or remove contributors as needed."
+        description="View and manage all organization members (admins & contributors)."
         actions={<button className="pill-btn" onClick={openCreate}>+ New Contributor</button>}
       />
 
@@ -237,7 +245,7 @@ export default function OrgMembers() {
             columnPicker={false}
           />
         )}
-        <div style={{ marginTop:8, fontSize:12, color:'#6b7280' }}>{filtered.length} contributor{filtered.length!==1?'s':''} shown</div>
+        <div style={{ marginTop:8, fontSize:12, color:'#6b7280' }}>{filtered.length} member{filtered.length!==1?'s':''} shown</div>
       </div>
 
       <Modal
