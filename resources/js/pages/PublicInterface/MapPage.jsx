@@ -40,6 +40,7 @@ import DataSummaryTable from '../../components/stats-modal/DataSummaryTable';
 import AboutPage from "./AboutPage";
 import UserManual from "./UserManual";
 import useOrgApplicationsBadge from "./hooks/useOrgApplicationsBadge";
+import WelcomeModal, { shouldShowWelcome } from "../../components/modals/WelcomeModal";
 function MapWithContextMenu({ children }) {
   const map = useMap();
   return children(map);
@@ -113,6 +114,14 @@ function MapPage() {
 
   // Organization application status badge (public users)
   const { count: appBadgeCount, hasBadge: hasAppBadge } = useOrgApplicationsBadge({ pollMs: 90000 });
+
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const show = shouldShowWelcome({ user: authUser, pathname: location.pathname });
+      setWelcomeOpen(show);
+    } catch { setWelcomeOpen(false); }
+  }, [authUser, location.pathname]);
 
   useEffect(() => {
     const onOpen = () => setSettingsOpen(true);
@@ -515,6 +524,18 @@ function MapPage() {
           }
         }}
       />
+
+      {!authUser && welcomeOpen && (
+        <WelcomeModal
+          open={welcomeOpen}
+          onClose={() => setWelcomeOpen(false)}
+          onLogin={() => {
+            // Open login flow
+            try { setWelcomeOpen(false); } catch {}
+            openAuth('login');
+          }}
+        />
+      )}
 
       {kycOpen && authUser && (!authUser.role || authUser.role === 'public') && (
         <KycPage embedded={true} open={kycOpen} onClose={() => setKycOpen(false)} />
