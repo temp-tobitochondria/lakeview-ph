@@ -14,7 +14,7 @@ import DashboardBoot from "../components/DashboardBoot"; // Overlay loader for d
 import { confirm, alertSuccess } from "../lib/alerts"; // ⬅️ SweetAlert2 helpers
 
 export default function DashboardLayout({ links, user, children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth <= 768);
   const location = useLocation();
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
@@ -103,7 +103,7 @@ export default function DashboardLayout({ links, user, children }) {
           <ul className="dashboard-nav-links" role="navigation" aria-label="Dashboard">
             {links.map((link, i) => (
               <li key={i}>
-                <NavLink to={link.path} end={link.exact || false} title={link.label}>
+                <NavLink to={link.path} end={link.exact || false} title={link.label} onClick={() => { if (window.innerWidth <= 768) setCollapsed(true); }}>
                   {link.icon}
                   <span className="link-text">{link.label}</span>
                 </NavLink>

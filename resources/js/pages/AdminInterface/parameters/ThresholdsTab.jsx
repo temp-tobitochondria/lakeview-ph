@@ -342,6 +342,7 @@ function ThresholdsTab() {
             columnPicker={{ label: "Columns", locked: ["class_code"] }}
             loading={loading}
             loadingLabel="Loading thresholds…"
+            hidePager={true}
           />
         </div>
       </div>
