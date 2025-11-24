@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useEffect } from 'react';
+import { useWindowSize } from '../hooks/useWindowSize';
 import Modal from './Modal';
 import { GeoJSON } from 'react-leaflet';
 import AppMap from './AppMap';
@@ -49,9 +50,23 @@ export default function PolygonChooser({
     });
   }, [pendingFeatures, pendingCrs]);
 
+  const { width } = useWindowSize();
+  // Choose a good modal width based on viewport — defaults to 960 on larger screens,
+  // but shrink for tablets and phones.
+  const modalWidth = (() => {
+    if (!width) return 960;
+    if (width >= 2560) return 1200;
+    if (width >= 1440) return 960;
+    if (width >= 1024) return 880;
+    if (width >= 768) return 720;
+    return Math.max(320, Math.floor(width * 0.95));
+  })();
+
+  const gridTemplate = width && width < 900 ? '1fr' : '320px 1fr';
+
   return (
-    <Modal open={open} onClose={onClose} title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>Choose a Polygon</span>} width={960}>
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 12, minHeight: 420 }}>
+    <Modal open={open} onClose={onClose} title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>Choose a Polygon</span>} width={modalWidth}>
+      <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: 12, minHeight: 420 }}>
         <div className="org-form" style={{ overflowY: 'auto' }}>
           <div className="form-group">
             <label>Polygon</label>

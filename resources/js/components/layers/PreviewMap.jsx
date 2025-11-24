@@ -31,7 +31,7 @@ export default function PreviewMap({ geometry, color = "#2563eb", viewport, view
     return null;
   }, [viewport, geometry]);
   return (
-    <div style={{ height: 420, borderRadius: 12, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+    <div className="map-preview" style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #e5e7eb" }}>
       <AppMap
         view="osm"
         style={{ height: "100%", width: "100%" }}

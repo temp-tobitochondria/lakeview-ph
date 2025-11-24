@@ -88,7 +88,7 @@ export default function Wizard({
           {steps.map((s, idx) => {
             const state = idx === stepIndex ? "active" : idx < stepIndex ? "done" : "";
             return (
-              <div key={s.key} className={`wizard-step ${state}`}>
+              <div key={s.key} className={`wizard-step ${state}`} aria-label={s.title}>
                 <span className="step-index">{idx + 1}</span>
                 <span className="step-label">{s.title}</span>
               </div>

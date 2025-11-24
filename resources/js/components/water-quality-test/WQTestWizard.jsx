@@ -772,7 +772,7 @@ export default function WQTestWizard({
             </button>
           </div>
 
-          <div className="table-wrapper">
+          <div className="table-wrapper" style={{ overflowX: 'auto' }}>
             <table className="lv-table">
               <thead>
                 <tr>
@@ -935,7 +935,7 @@ export default function WQTestWizard({
               {!((data.results || []).length) ? (
                 <div className="no-data">No parameters.</div>
               ) : (
-                <div className="table-wrapper">
+                <div className="table-wrapper" style={{ overflowX: 'auto' }}>
                   <table className="lv-table">
                     <thead>
                       <tr>

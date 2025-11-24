@@ -56,12 +56,50 @@
 .wizard-nav {
   display: flex; align-items: center; gap: 10px; margin-top: 12px;
 }
+/* Small screens: allow steps to scroll horizontally when stacked */
+@media (max-width: 720px) {
+  .wizard-steps {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 8px 0 12px;
+  }
+  /* compact the steps visually on mobile: show only the numeric badge */
+  .wizard-step { min-width: 54px; flex: 0 0 auto; padding: 6px 8px; gap: 6px; justify-content: center; }
+  .wizard-step .step-index { width: 34px; height: 34px; font-size: 0.9rem; }
+  /* visually hide the step label but keep it accessible to screen readers */
+  .wizard-step .step-label { position: absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
+  .dropzone { padding: 16px; }
+}
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 /* Map preview container already uses inline styles; add this only if you prefer classes */
 .map-preview {
-  height: 360px;
+  height: 420px; /* default */
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid #e5e7eb;
+}
+
+/* Responsive map heights */
+@media (min-width: 2561px) {
+  .map-preview { height: 760px; }
+}
+@media (min-width: 1441px) and (max-width: 2560px) {
+  .map-preview { height: 560px; }
+}
+@media (min-width: 1024px) and (max-width: 1440px) {
+  .map-preview { height: 420px; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .map-preview { height: 360px; }
+}
+@media (min-width: 640px) and (max-width: 767px) {
+  .map-preview { height: 320px; }
+}
+@media (min-width: 480px) and (max-width: 639px) {
+  .map-preview { height: 260px; }
+}
+@media (max-width: 479px) {
+  .map-preview { height: 200px; }
 }

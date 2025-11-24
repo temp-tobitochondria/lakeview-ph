@@ -23,3 +23,74 @@
 .swal2-container.swal2-top-end > .swal2-popup.swal-popup {
   border-radius: 12px !important;
 }
+
+/* Responsive adjustments */
+/* Mobile SML (< 640px) */
+@media (max-width: 639px) {
+  .swal-popup {
+    padding: 0.75rem 1rem !important;
+    border-radius: 10px !important;
+  }
+  .swal-title {
+    font-size: 1.125rem !important; /* smaller title */
+  }
+  .swal-text {
+    font-size: 0.875rem !important; /* smaller text */
+  }
+  .swal-confirm, .swal-cancel {
+    padding: 0.375rem 0.75rem !important; /* smaller buttons */
+    font-size: 0.875rem !important;
+  }
+}
+
+/* Tablet (640px - 1023px) */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .swal-popup {
+    padding: 1rem 1.125rem !important;
+  }
+  .swal-title {
+    font-size: 1.25rem !important;
+  }
+  .swal-text {
+    font-size: 0.9375rem !important;
+  }
+  .swal-confirm, .swal-cancel {
+    padding: 0.5rem 1rem !important;
+  }
+}
+
+/* Laptop (1024px - 1439px) - default styles apply */
+
+/* Laptop L (1440px - 1919px) */
+@media (min-width: 1440px) and (max-width: 1919px) {
+  .swal-popup {
+    padding: 1.25rem 1.5rem !important;
+  }
+  .swal-title {
+    font-size: 1.5rem !important;
+  }
+  .swal-text {
+    font-size: 1rem !important;
+  }
+  .swal-confirm, .swal-cancel {
+    padding: 0.625rem 1.25rem !important;
+  }
+}
+
+/* 4K (> 1920px) */
+@media (min-width: 1920px) {
+  .swal-popup {
+    padding: 1.5rem 2rem !important;
+    max-width: 600px !important; /* prevent overly wide on huge screens */
+  }
+  .swal-title {
+    font-size: 1.75rem !important;
+  }
+  .swal-text {
+    font-size: 1.125rem !important;
+  }
+  .swal-confirm, .swal-cancel {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 1.125rem !important;
+  }
+}

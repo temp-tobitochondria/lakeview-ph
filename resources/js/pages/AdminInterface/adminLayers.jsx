@@ -14,7 +14,7 @@ const ADMIN_VISIBILITY_OPTIONS = [
 export default function AdminLayers({ currentUserRole = ROLES.SUPERADMIN }) { // assume superadmin when mounted under admin interface
   // After a successful publish, remember which body was used
   const [lastBody, setLastBody] = useState({ type: "lake", id: "" });
-  const [activeTab, setActiveTab] = useState("upload"); // 'upload' | 'view'
+  const [activeTab, setActiveTab] = useState("upload"); // 'upload' | 'manage'
   const [initialSearch, setInitialSearch] = useState("");
 
   return (
@@ -29,13 +29,13 @@ export default function AdminLayers({ currentUserRole = ROLES.SUPERADMIN }) { //
               className={`pill-btn ${activeTab === 'upload' ? 'primary' : ''}`}
               onClick={() => setActiveTab('upload')}
             >
-              Upload Layer
+              Upload
             </button>
             <button
-              className={`pill-btn ${activeTab === 'view' ? 'primary' : ''}`}
-              onClick={() => setActiveTab('view')}
+              className={`pill-btn ${activeTab === 'manage' ? 'primary' : ''}`}
+              onClick={() => setActiveTab('manage')}
             >
-              View Layers
+              Manage
             </button>
           </>
         )}
@@ -56,14 +56,14 @@ export default function AdminLayers({ currentUserRole = ROLES.SUPERADMIN }) { //
             }
             // After upload, prefill search with layer name
             if (r.name) setInitialSearch(String(r.name));
-            // Switch to the View tab after a successful publish
-            setActiveTab('view');
+            // Switch to the Manage tab after a successful publish
+            setActiveTab('manage');
             console.log("Layer published:", res);
           }}
         />
       )}
 
-      {activeTab === 'view' && (
+      {activeTab === 'manage' && (
         <LayerList
           initialBodyType={lastBody.type || "lake"}
           initialBodyId={lastBody.id || ""}
