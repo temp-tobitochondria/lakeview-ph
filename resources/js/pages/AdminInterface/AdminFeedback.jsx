@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { FiEye, FiMessageSquare } from 'react-icons/fi';
+import { FiEye, FiMessageSquare, FiFileText } from 'react-icons/fi';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import api from '../../lib/api';
 import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
@@ -96,7 +96,8 @@ export default function AdminFeedback() {
     const connect = () => {
       const maxId = rows.reduce((m, r) => r.id > m ? r.id : m, 0);
       try { invalidateHttpCache('/admin/feedback'); } catch {}
-      es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`);
+      // Ensure cookies/credentials are included for authenticated SSE endpoints
+      es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`, { withCredentials: true });
       es.addEventListener('feedback-created', (ev) => {
         try { invalidateHttpCache('/admin/feedback'); } catch {}
         fetchData({ page: 1 });
