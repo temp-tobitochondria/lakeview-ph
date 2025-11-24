@@ -165,6 +165,9 @@ async function request(method, url, { params, body, headers, raw, auth } = {}) {
       ...(headers || {}),
     },
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
+    // Include credentials (cookies) so same-origin or cross-site session auth (e.g., Laravel Sanctum)
+    // can be sent with requests. This avoids 403 Forbidden where the server requires session cookies.
+    credentials: 'include',
     // Attach global abort signal so we can cancel promptly on logout
     signal: _abortController && _abortController.signal ? _abortController.signal : undefined,
   };
