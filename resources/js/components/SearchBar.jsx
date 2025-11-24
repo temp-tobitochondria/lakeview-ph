@@ -4,7 +4,7 @@ import { FiMenu, FiSearch, FiFilter } from "react-icons/fi";
 import { MdLightbulbOutline } from "react-icons/md";
 // no dynamic suggestions; only static tips
 
-function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mode = 'suggest' }) {
+function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mode = 'suggest', appBadgeCount = 0 }) {
   const [text, setText] = useState("");
   const inputRef = useRef(null);
   const containerRef = useRef(null);
@@ -127,8 +127,31 @@ function SearchBar({ onMenuClick, onFilterClick, onSearch, onClear, onTyping, mo
   return (
     <div className="search-bar" ref={containerRef}>
       {/* ✅ Hamburger opens sidebar */}
-      <button className="btn-floating" onClick={onMenuClick} aria-label="Open menu">
+      <button className="btn-floating" onClick={onMenuClick} aria-label="Open menu" style={{ position: 'relative' }}>
         <FiMenu size={18} />
+        {appBadgeCount > 0 && (
+          <span
+            aria-label={`${appBadgeCount} application update${appBadgeCount>1?'s':''}`}
+            title={`${appBadgeCount} application update${appBadgeCount>1?'s':''}`}
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: -6,
+              background: '#dc2626',
+              color: '#fff',
+              minWidth: 18,
+              height: 18,
+              borderRadius: 9,
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 0 2px #fff, 0 2px 4px rgba(0,0,0,0.25)',
+              pointerEvents: 'none'
+            }}
+          >{appBadgeCount > 99 ? '99+' : appBadgeCount}</span>
+        )}
       </button>
 
       <div className="search-input-wrap">
