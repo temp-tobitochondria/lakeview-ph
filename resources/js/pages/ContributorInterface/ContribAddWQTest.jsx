@@ -45,7 +45,10 @@ export default function ContribAddWQTest() {
             const res = await api('/admin/sample-events', { method: 'POST', body: payload });
             try {
               invalidateHttpCache('/admin/sample-events');
-              if (organization?.id) invalidateHttpCache(`/contrib/${organization.id}/sample-events`);
+              // Invalidate contrib cache for the contributor org. Prefer explicit organization id
+              // returned by the server (res.data) in case `organization` state wasn't populated yet.
+              const oid = res?.data?.organization_id ?? res?.data?.organization?.id ?? organization?.id;
+              if (oid) invalidateHttpCache(`/contrib/${oid}/sample-events`);
             } catch {}
             closeLoading();
             await alertSuccess('Saved', 'Your water quality test has been saved.');
