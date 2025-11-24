@@ -16,7 +16,8 @@ import {
 } from "../../utils/geo";
 
 import { createLayer, fetchLakeOptions, fetchWatershedOptions } from "../../lib/layers";
-import { alertSuccess, alertError, showLoading, closeLoading } from "../../lib/alerts";
+import { api } from '../../lib/api';
+import { alertSuccess, alertError, showLoading, closeLoading, confirm } from "../../lib/alerts";
 import { parseSpatialFile, ACCEPTED_EXT_REGEX } from "../../utils/parsers";
 import shp from 'shpjs';
 import PolygonChooser from '../../components/PolygonChooser';
@@ -391,8 +392,12 @@ export default function LayerWizard({
   // Step 1: Upload
     {
       key: "upload",
-  title: "Upload Spatial File",
+      title: "Upload Spatial File",
       canNext: (d) => !!d.uploadGeom,
+      onInvalid: ({ data }) => {
+        if (!data.uploadGeom) return alertError('Missing geometry', 'Please upload or select a Polygon/MultiPolygon file before continuing.');
+        return null;
+      },
     render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">
@@ -466,6 +471,31 @@ export default function LayerWizard({
       key: "link",
       title: "Link to Body",
       canNext: (d) => !!d.bodyId,
+      onInvalid: ({ data }) => {
+        if (!data.bodyId) return alertError('Missing target', 'Please select a Lake or Watershed to link this layer to.');
+        return null;
+      },
+      onBeforeNext: async ({ data }) => {
+        // When user has selected a body, check if it already has existing layers and block proceeding if so.
+        try {
+          const bt = data.bodyType || 'lake';
+          const id = data.bodyId;
+          if (!id) return true;
+          // query for existing layers attached to this body
+          const res = await api(`/layers?body_type=${encodeURIComponent(bt)}&body_id=${encodeURIComponent(id)}&per_page=1`);
+          const arr = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+          const has = (Array.isArray(arr) && arr.length > 0) || (res?.meta && typeof res.meta.total === 'number' && res.meta.total > 0);
+          if (has) {
+            await alertError('Layer exists', `This ${bt === 'lake' ? 'lake' : 'watershed'} already has an associated layer. Remove it first before adding another.`);
+            return false;
+          }
+          return true;
+        } catch (e) {
+          // if check fails, show an error and block progress
+          await alertError('Check failed', 'Could not verify existing layers. Please try again.');
+          return false;
+        }
+      },
     render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">
@@ -494,6 +524,10 @@ export default function LayerWizard({
       key: "meta",
       title: "Metadata",
       canNext: (d) => !!d.name,
+      onInvalid: ({ data }) => {
+        if (!data.name) return alertError('Missing name', 'Layer name is required.');
+        return null;
+      },
       render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">
@@ -518,6 +552,15 @@ export default function LayerWizard({
       key: "publish",
       title: "Publish",
       canNext: (d) => !!d.uploadGeom && !!d.bodyType && !!d.bodyId && !!d.name,
+      onBeforeFinish: async ({ data }) => {
+        // final validation (mirrors onPublish checks) and confirmation prompt
+        if (!data.uploadGeom) { alertError('Missing geometry', 'Please upload or select a Polygon/MultiPolygon file before publishing.'); return false; }
+        if (!data.bodyType || !data.bodyId) { alertError('Missing target', 'Select a target (lake or watershed) before publishing.'); return false; }
+        if (!data.name) { alertError('Missing name', 'Layer name is required before publishing.'); return false; }
+
+        const ok = await confirm({ title: 'Confirm publish', text: 'Publish this layer now?', confirmButtonText: 'Publish' });
+        return !!ok;
+      },
       render: ({ data: wdata, setData: wSetData }) => (
         <div className="dashboard-card">
           <div className="dashboard-card-header">

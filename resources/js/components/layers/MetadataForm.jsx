@@ -10,7 +10,7 @@ export default function MetadataForm({ name, notes, onChange }) {
           type="text"
           value={name}
           onChange={(e) => set({ name: e.target.value })}
-          placeholder="e.g., Official shoreline 2024"
+          placeholder="e.g.,  Lake Sampaloc"
         />
       </div>
 

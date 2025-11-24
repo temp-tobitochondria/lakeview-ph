@@ -46,12 +46,22 @@ export default function Wizard({
   }, [current, data]);
 
   const goPrev = () => setStepIndex((i) => Math.max(0, i - 1));
-  const goNext = () => {
+  const goNext = async () => {
     if (!canGoNext) {
       // give the current step a chance to show an explanation / popup when next is attempted
       try { if (current && typeof current.onInvalid === 'function') current.onInvalid({ data, setData: updateData, stepIndex }); } catch (e) { /* ignore */ }
       return;
     }
+
+    // allow step to intercept/validate before moving forward
+    try {
+      if (current && typeof current.onBeforeNext === 'function') {
+        const res = current.onBeforeNext({ data, setData: updateData, stepIndex });
+        const resolved = res && typeof res.then === 'function' ? await res : res;
+        if (resolved === false) return;
+      }
+    } catch (e) { /* ignore */ }
+
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));
   };
   const finish = async () => {
@@ -121,9 +131,11 @@ export default function Wizard({
 
       {/* Nav */}
       <div className="wizard-nav">
-        <button className="pill-btn" disabled={isFirst} onClick={goPrev}>
-          <FiChevronLeft /> <span className="hide-sm">{labels.back}</span>
-        </button>
+        {!isFirst && (
+          <button className="pill-btn" onClick={goPrev}>
+            <FiChevronLeft /> <span className="hide-sm">{labels.back}</span>
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         {!isLast ? (
           <button

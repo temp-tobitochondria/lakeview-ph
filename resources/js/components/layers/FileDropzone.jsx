@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { alertError } from '../../lib/alerts';
 
-export default function FileDropzone({ accept = ".geojson,.json,.kml,.zip,.gpkg", onFile, dropText = "Drop a spatial file here or click to select", acceptedText = "Accepted: .geojson, .json, .kml, .zip (zipped Shapefile with .shp/.dbf/.prj; Polygon/MultiPolygon geometries), .gpkg (GeoPackage)", selectedFile: propSelectedFile }) {
+export default function FileDropzone({ accept = ".geojson,.json,.kml,.zip,.gpkg", onFile, dropText = "Drop a spatial file here or click to select", acceptedText = "Accepted: .geojson, .kml, .zip (zipped Shapefile with .shp/.dbf/.prj; Polygon/MultiPolygon geometries), .gpkg (GeoPackage)", selectedFile: propSelectedFile }) {
   const inputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(propSelectedFile);
 
