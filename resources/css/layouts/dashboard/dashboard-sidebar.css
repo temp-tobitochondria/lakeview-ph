@@ -137,6 +137,8 @@
 }
 .dashboard-user-info {
   color: #cbd5e1;
+  /* Match padding with .dashboard-signout so the icon/text align horizontally */
+  padding: 8px 10px;
 }
 .dashboard-signout {
   cursor: pointer;
@@ -144,6 +146,9 @@
   transition: all 0.25s ease;
   border-radius: 8px;
   padding: 8px 10px;
+  /* Ensure consistent alignment with .dashboard-user-info */
+  align-items: center;
+  display: flex;
 }
 .dashboard-signout:hover {
   background: rgba(248, 113, 113, 0.1);
@@ -152,9 +157,45 @@
 
 /* Collapsed */
 .dashboard-sidebar.collapsed {
-  width: 0px;
-  margin: 16px 0;
+  /* Keep a slim rail instead of disappearing */
+  width: 72px; /* icon rail width */
+  margin: 16px; /* preserve outer spacing */
   overflow: hidden;
+  transition: width 0.25s ease, transform 0.25s ease;
+}
+
+/* Hide text labels but retain icons */
+.dashboard-sidebar.collapsed .dashboard-logo-text { display: none; }
+.dashboard-sidebar.collapsed .dashboard-nav-links { padding: 0 8px; }
+.dashboard-sidebar.collapsed .dashboard-nav-links li a {
+  padding: 12px 12px;
+  justify-content: center;
+}
+.dashboard-sidebar.collapsed .dashboard-nav-links li a svg {
+  margin-right: 0;
+  font-size: 22px;
+}
+/* Assume link text wrapped in span elements; hide them to show only icons */
+.dashboard-sidebar.collapsed .dashboard-nav-links li a span { display: none; }
+.dashboard-sidebar.collapsed .dashboard-user-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 8px;
+  border-top: 1px solid #334155;
+}
+.dashboard-sidebar.collapsed .dashboard-user-info,
+.dashboard-sidebar.collapsed .dashboard-signout {
+  justify-content: center;
+  padding: 8px;
+}
+/* Hide textual labels, keep SVG/person & signout icons */
+.dashboard-sidebar.collapsed .dashboard-user-info span,
+.dashboard-sidebar.collapsed .dashboard-signout span { display: none; }
+
+/* Preserve active indicator positioning inside narrow rail */
+.dashboard-sidebar.collapsed .dashboard-nav-links li a.active::before {
+  left: 4px;
 }
 
 /* Close button (hidden by default, shown on mobile) */
