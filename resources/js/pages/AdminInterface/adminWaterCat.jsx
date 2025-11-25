@@ -1,6 +1,4 @@
 ﻿import React, { useState } from "react";
-import { FiMap } from "react-icons/fi";
-
 import ManageLakesTab from "./water-bodies/ManageLakesTab";
 import ManageWatershedsTab from "./water-bodies/ManageWatershedsTab";
 import ManageFlowsTab from "./water-bodies/ManageFlowsTab";

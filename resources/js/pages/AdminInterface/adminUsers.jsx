@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import TableToolbar from "../../components/table/TableToolbar";
 import FilterPanel from "../../components/table/FilterPanel";
 import api, { me as fetchMe } from "../../lib/api";
@@ -43,25 +43,17 @@ export default function AdminUsersPage() {
   const ADV_KEY = `${TABLE_ID}::filters_advanced`;
 
   // Other advanced filter inputs removed; only role is persisted/used.
-  const [fName, setFName] = useState("");
-  const [fEmail, setFEmail] = useState("");
 
   // Existing filters
   const [fRole, setFRole] = useState(() => {
     try { const s = JSON.parse(localStorage.getItem(ADV_KEY) || '{}'); return s.role || ""; } catch { return ""; }
   });
-  // Status filter removed
-  const [fCreatedRange, setFCreatedRange] = useState([null, null]);
-  const [fUpdatedRange, setFUpdatedRange] = useState([null, null]);
+  // Status filter removed (created/updated range fields removed)
 
-  // Persist only the role filter for users
   useEffect(() => {
     try { localStorage.setItem(ADV_KEY, JSON.stringify({ role: fRole || "" })); } catch {}
   }, [fRole]);
 
-  // Column visibility persistence (like watercat)
-  // Default visible columns: show name, email, role. Created/Updated are hidden by default
-  // and can be toggled via the column picker.
   const defaultsVisible = useMemo(() => ({ name: true, email: true, role: true, created_at: false, updated_at: false }), []);
   const [visibleMap, setVisibleMap] = useState(() => {
     try {
@@ -299,7 +291,6 @@ export default function AdminUsersPage() {
         />
       </Modal>
 
-      {/* Removed diagnostic preview section */}
     </div>
   );
 }
