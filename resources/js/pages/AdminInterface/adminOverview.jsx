@@ -15,7 +15,6 @@ import { FiHome } from 'react-icons/fi';
 
 /* KPI Grid */
 function KPIGrid() {
-  // Local state lifted into parent via hooks in AdminOverview; here we just render placeholders
   return (
     <div className="kpi-grid">
       <KpiCard id="orgs" icon={<FiBriefcase />} title="Organizations" to="/admin-dashboard/organizations" />
@@ -27,8 +26,7 @@ function KPIGrid() {
 }
 
 function KpiCard({ id, icon, title, to }) {
-  // We'll read values from the DOM-level shared store via a simple event-based approach
-  // The AdminOverview component will dispatch a custom event with payload { id, value, loading, error }
+
   const [state, setState] = useState({ value: null, loading: true, error: null });
 
   useEffect(() => {
@@ -67,13 +65,6 @@ function KpiCard({ id, icon, title, to }) {
   return cardInner;
 }
 
-/* ============================================================
-   Overview Map
-   (Basemap only; no markers/features preloaded.)
-   ============================================================ */
-/* ============================================================
-   Page: AdminOverview
-   ============================================================ */
 export default function AdminOverview() {
   const [kpis, setKpis] = useState({
     orgs: { value: null, loading: true, error: null },
@@ -90,7 +81,6 @@ export default function AdminOverview() {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    // Mark all as loading
     publish('orgs', { loading: true });
     publish('users', { loading: true });
     publish('lakes', { loading: true });
@@ -103,7 +93,6 @@ export default function AdminOverview() {
         if (cached[k] != null) publish(k, { value: cached[k], loading: false });
       }
     }
-    // Try unified endpoint first
     try {
       const res = await api.get('/kpis');
       const data = res?.data?.data || res?.data || res; // support various wrappers
@@ -121,10 +110,8 @@ export default function AdminOverview() {
       if (!readySignaled) { window.dispatchEvent(new Event('lv-dashboard-ready')); setReadySignaled(true); }
       return; // success - stop
     } catch (e) {
-      // fallback to legacy summary route then granular
     }
 
-    // Legacy summary fallback
     try {
       const res = await api.get('/admin/kpis/summary');
       const d = res?.data?.data || res?.data || res;
@@ -142,7 +129,6 @@ export default function AdminOverview() {
       return;
     } catch (e) { /* continue */ }
 
-    // Final granular fallback
     try {
       const [orgRes, userRes, lakeRes, evRes] = await Promise.all([
         api.get('/admin/kpis/orgs'),
