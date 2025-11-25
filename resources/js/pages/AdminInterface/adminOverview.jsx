@@ -54,7 +54,6 @@ function KpiCard({ id, icon, title, to }) {
   );
 
   if (to) {
-    // Wrap the whole card in a Link so the entire card is clickable.
     return (
       <Link to={to} className="kpi-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
         {cardInner}
