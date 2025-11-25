@@ -71,7 +71,6 @@ export default function AdminOverview() {
     lakes: { value: null, loading: true, error: null },
     events: { value: null, loading: true, error: null },
   });
-  // Track if we've signaled dashboard readiness
   const [readySignaled, setReadySignaled] = useState(false);
 
   const publish = useCallback((id, payload) => {
