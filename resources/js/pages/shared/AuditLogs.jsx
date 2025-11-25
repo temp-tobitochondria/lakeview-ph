@@ -4,7 +4,6 @@ import api, { buildQuery, me as fetchMe } from '../../lib/api';
 import { cachedGet } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
-import FilterPanel from '../../components/table/FilterPanel';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { FiEye } from 'react-icons/fi';
 import Modal from '../../components/Modal';
@@ -82,17 +81,12 @@ export default function AuditLogs({ scope = 'admin' }) {
   // Cache for resolving threshold-specific metadata when payload lacks IDs
   const [thresholdMap, setThresholdMap] = useState(() => new Map()); // id -> { parameter_id, paramName, standard_id, stdLabel }
 
-  // Stable option catalogs (roles, tenants, entities) for admin; org only needs entities
-  const [allRoles, setAllRoles] = useState([]);
-  const [allTenants, setAllTenants] = useState([]); // { value, label }
-  const [allEntities, setAllEntities] = useState([]); // { base, full }
-
   // Detail modal state
   const [detailRow, setDetailRow] = useState(null);
   const openDetail = (row) => setDetailRow(row);
   const closeDetail = () => setDetailRow(null);
 
-  // Advanced filters
+  // Table ID
   const TABLE_ID = isAdminScope ? 'admin-audit-logs' : 'org-audit-logs';
 
   // Debounce ref for auto fetch
@@ -135,41 +129,6 @@ export default function AuditLogs({ scope = 'admin' }) {
         ? items.map(r => ({ ...r, before: parseMaybeJSON(r.before), after: parseMaybeJSON(r.after) }))
         : [];
       setRows(normalizedItems);
-
-      // Update stable option catalogs
-      if (isAdminScope && Array.isArray(normalizedItems)) {
-        // Roles
-        setAllRoles(prev => {
-          const set = new Set(prev);
-          for (const r of normalizedItems) {
-            const role = r.actor_role || (r.actor && r.actor.role);
-            if (role) set.add(role);
-          }
-          return Array.from(set).sort();
-        });
-        // Tenants
-        setAllTenants(prev => {
-          const map = new Map(prev.map(t => [String(t.value), t.label]));
-          for (const r of normalizedItems) {
-            if (r.tenant_id) {
-              const key = String(r.tenant_id);
-              if (!map.has(key)) map.set(key, r.tenant_name || `Organization ${key}`);
-            }
-          }
-          return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
-        });
-      }
-      // Entities
-      setAllEntities(prev => {
-        const map = new Map(prev.map(e => [e.full, e.base]));
-        for (const r of normalizedItems) if (r.model_type) {
-          const full = r.model_type;
-          const base = full.split('\\').pop();
-          if (base === 'SampleResult') continue;
-          if (!map.has(full)) map.set(full, base);
-        }
-        return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
-      });
 
       const pg = Array.isArray(body) ? null : (body || null);
       const metaObj = pg && typeof pg === 'object' && pg.meta && typeof pg.meta === 'object' ? pg.meta : pg;
@@ -299,43 +258,11 @@ export default function AuditLogs({ scope = 'admin' }) {
     }
   };
 
-  // Seed option catalogs for admin scope without duplicate calls
-  const seedOptions = async () => {
-    if (!isAdminScope) return;
-    if ((allRoles.length && allTenants.length && allEntities.length) || !me) return;
-    const rawBases = me && me.role && me.role.includes('admin') ? ['/admin/audit-logs', effectiveBase] : [effectiveBase];
-    const candidateBases = Array.from(new Set(rawBases));
-    for (const base of candidateBases) {
-      if (!base) continue;
-      try {
-        const res = await cachedGet(base, { params: { page: 1, per_page: 100 }, ttlMs: 2 * 60 * 1000 });
-        const items = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-        if (!Array.isArray(items) || items.length === 0) continue;
-        setAllRoles(prev => {
-          const set = new Set(prev);
-          for (const r of items) { const role = r.actor_role || (r.actor && r.actor.role); if (role) set.add(role); }
-          return Array.from(set).sort();
-        });
-        setAllTenants(prev => {
-          const map = new Map(prev.map(t => [String(t.value), t.label]));
-          for (const r of items) if (r.tenant_id) { const key = String(r.tenant_id); if (!map.has(key)) map.set(key, r.tenant_name || `Organization ${key}`); }
-          return Array.from(map.entries()).map(([value, label]) => ({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
-        });
-        setAllEntities(prev => {
-          const map = new Map(prev.map(e => [e.full, e.base]));
-          for (const r of items) if (r.model_type) { const full = r.model_type; const base = full.split('\\').pop(); if (base === 'SampleResult') continue; if (!map.has(full)) map.set(full, base); }
-          return Array.from(map.entries()).map(([full, base]) => ({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
-        });
-        if (allRoles.length || allTenants.length || allEntities.length) break;
-      } catch {/* ignore */}
-    }
-  };
-
   // Initial load
   useEffect(() => { (async () => { await fetchMeCached(); })(); }, []);
-  useEffect(() => { if (me) { seedOptions(); fetchLogs(buildParams({ page: 1 })); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me, isAdminScope]);
+  useEffect(() => { if (me) { fetchLogs(buildParams({ page: 1 })); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me, isAdminScope]);
 
-  // Auto refetch on advanced filter changes (debounced)
+  // Auto refetch when base changes (debounced)
   useEffect(() => {
     if (!effectiveBase) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -452,30 +379,6 @@ export default function AuditLogs({ scope = 'admin' }) {
   }, [isAdminScope, paramMap, stdMap, thresholdMap]);
 
   const visibleColumns = columns;
-
-  // Derived options
-  const derivedRoles = isAdminScope ? (allRoles.length ? allRoles : Array.from(new Set(rows.map(r => r.actor_role || (r.actor && r.actor.role)).filter(Boolean))).sort((a, b) => a.localeCompare(b))) : [];
-  const derivedTenants = isAdminScope ? (allTenants.length ? allTenants : (() => {
-    const map = new Map();
-    for (const r of rows) if (r.tenant_id) {
-      const key = String(r.tenant_id); if (!map.has(key)) map.set(key, r.tenant_name || `Organization ${key}`);
-    }
-    return Array.from(map.entries()).map(([value,label])=>({ value, label })).sort((a,b)=>a.label.localeCompare(b.label));
-  })()) : [];
-  const derivedEntities = allEntities.length ? allEntities : (() => {
-    const map = new Map();
-    for (const r of rows) if (r.model_type) {
-      const base = r.model_type.split('\\').pop();
-      map.set(r.model_type, base);
-    }
-    return Array.from(map.entries()).map(([full, base])=>({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
-  })();
-
-  // Clear stale entity filter if not available
-  useEffect(() => {
-    const allowed = new Set(derivedEntities.map(e => e.full));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedEntities]);
 
   const actions = [];
 
