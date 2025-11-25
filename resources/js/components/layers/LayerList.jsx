@@ -51,7 +51,6 @@ function LayerList({
   const [fBodyType, setFBodyType] = useState(""); // '', 'lake', 'watershed'
   const [fVisibility, setFVisibility] = useState(""); // '', 'public','admin'
   const [fDownloadableOnly, setFDownloadableOnly] = useState(""); // '', 'yes', 'no'
-  const [fCreatedBy, setFCreatedBy] = useState(""); // '' or specific creator
 
   // Column visibility management
   const defaultVisible = useMemo(() => ({ name: true, body: true, visibility: true, downloadable: true, creator: false, updated: false }), []);
@@ -75,15 +74,6 @@ function LayerList({
     if (row?.uploaded_by_name) return row.uploaded_by_name;
     return 'System Administrator';
   };
-
-  const uniqueCreators = useMemo(() => {
-    const creators = new Set();
-    layers.forEach(row => {
-      const creator = formatCreator(row);
-      creators.add(creator);
-    });
-    return Array.from(creators).sort();
-  }, [layers]);
 
   const [previewLayer, setPreviewLayer] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -162,7 +152,6 @@ function LayerList({
         bodyType: fBodyType || undefined,
         visibility: fVisibility || undefined,
         downloadable: fDownloadableOnly || undefined,
-        createdBy: fCreatedBy || undefined,
         q: search || undefined,
         sortBy: 'created_at',
         sortDir: 'desc',
@@ -188,7 +177,7 @@ function LayerList({
   useEffect(() => {
     const t = setTimeout(() => refresh(1), 250);
     return () => clearTimeout(t);
-  }, [search, fBodyType, fVisibility, fDownloadableOnly, fCreatedBy]);
+  }, [search, fBodyType, fVisibility, fDownloadableOnly]);
 
   useEffect(() => {
     if (!previewLayer?.geom_geojson) {
@@ -244,7 +233,7 @@ function LayerList({
     }
   };
 
-  const filtersBadgeCount = (fBodyType ? 1 : 0) + (fVisibility ? 1 : 0) + (fDownloadableOnly ? 1 : 0) + (fCreatedBy ? 1 : 0);
+  const filtersBadgeCount = (fBodyType ? 1 : 0) + (fVisibility ? 1 : 0) + (fDownloadableOnly ? 1 : 0);
 
   const columns = useMemo(() => {
     const arr = [];
@@ -312,10 +301,6 @@ function LayerList({
       { value: 'yes', label: 'Yes' },
       { value: 'no', label: 'No' },
     ]},
-    { id: 'created_by', label: 'Created by', type: 'select', value: fCreatedBy, onChange: setFCreatedBy, options: [
-      { value: '', label: 'All' },
-      ...uniqueCreators.map(c => ({ value: c, label: c }))
-    ]},
   ];
 
   return (
@@ -337,7 +322,6 @@ function LayerList({
               setFBodyType("");
               setFVisibility("");
               setFDownloadableOnly("");
-              setFCreatedBy("");
             }}
           />
 

@@ -94,37 +94,6 @@ export default function AuditLogs({ scope = 'admin' }) {
 
   // Advanced filters
   const TABLE_ID = isAdminScope ? 'admin-audit-logs' : 'org-audit-logs';
-  const VIS_KEY = `${TABLE_ID}::visible`;
-  const ADV_KEY = `${TABLE_ID}::filters_advanced`;
-
-  const [fAction, setFAction] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').action || ''; } catch { return ''; } });
-  const [fActorName, setFActorName] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').actor_name || ''; } catch { return ''; } });
-  const [fRole, setFRole] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').role || ''; } catch { return ''; } });
-  const [fTenant, setFTenant] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').tenant_id || ''; } catch { return ''; } });
-  const [fEntity, setFEntity] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').model_type || ''; } catch { return ''; } });
-  const [fTimeWindow, setFTimeWindow] = useState(() => { try { return JSON.parse(localStorage.getItem(ADV_KEY) || '{}').time_window || ''; } catch { return ''; } });
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Persist advanced filters
-  useEffect(() => {
-    try {
-      localStorage.setItem(ADV_KEY, JSON.stringify({
-        action: fAction || '',
-        actor_name: fActorName || '',
-        role: isAdminScope ? (fRole || '') : undefined,
-        tenant_id: isAdminScope ? (fTenant || '') : undefined,
-        model_type: fEntity || '',
-        time_window: fTimeWindow || '',
-      }));
-    } catch {}
-  }, [ADV_KEY, fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow, isAdminScope]);
-
-  // Column visibility
-  const defaultsVisible = useMemo(() => ({ summary: true, target: true, actions: true }), []);
-  const [visibleMap, setVisibleMap] = useState(() => {
-    try { const raw = localStorage.getItem(VIS_KEY); return raw ? JSON.parse(raw) : defaultsVisible; } catch { return defaultsVisible; }
-  });
-  useEffect(() => { try { localStorage.setItem(VIS_KEY, JSON.stringify(visibleMap)); } catch {}; }, [VIS_KEY, visibleMap]);
 
   // Debounce ref for auto fetch
   const debounceRef = useRef(null);
@@ -145,25 +114,6 @@ export default function AuditLogs({ scope = 'admin' }) {
 
   const buildParams = (overrides = {}) => {
     const params = { page, per_page: perPage, ...overrides };
-    if (fAction) params.action = fAction;
-    if (fActorName) params.actor_name = fActorName;
-    if (isAdminScope && fRole) params.role = fRole;
-    if (isAdminScope && fTenant) params.tenant_id = fTenant;
-    if (fEntity) params.model_type = fEntity;
-    if (fTimeWindow) {
-      const now = new Date();
-      let from;
-      switch (fTimeWindow) {
-        case '24h': from = new Date(now.getTime() - 24*60*60*1000); break;
-        case '7d': from = new Date(now.getTime() - 7*24*60*60*1000); break;
-        case '30d': from = new Date(now.getTime() - 30*24*60*60*1000); break;
-        default: from = null;
-      }
-      if (from) {
-        const two = (n) => String(n).padStart(2,'0');
-        params.date_from = `${from.getFullYear()}-${two(from.getMonth()+1)}-${two(from.getDate())}`;
-      }
-    }
     return params;
   };
 
@@ -392,7 +342,7 @@ export default function AuditLogs({ scope = 'admin' }) {
     debounceRef.current = setTimeout(() => { fetchLogs(buildParams({ page: 1 })); }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow, effectiveBase]);
+  }, [effectiveBase]);
 
   // Columns
   const columns = useMemo(() => {
@@ -501,10 +451,10 @@ export default function AuditLogs({ scope = 'admin' }) {
     ];
   }, [isAdminScope, paramMap, stdMap, thresholdMap]);
 
-  const visibleColumns = useMemo(() => columns.filter(c => visibleMap[c.id] !== false), [columns, visibleMap]);
+  const visibleColumns = columns;
 
   // Derived options
-  const derivedRoles = isAdminScope ? (allRoles.length ? allRoles : Array.from(new Set(rows.map(r => r.actor_role || (r.actor && r.actor.role)).filter(Boolean))).sort()) : [];
+  const derivedRoles = isAdminScope ? (allRoles.length ? allRoles : Array.from(new Set(rows.map(r => r.actor_role || (r.actor && r.actor.role)).filter(Boolean))).sort((a, b) => a.localeCompare(b))) : [];
   const derivedTenants = isAdminScope ? (allTenants.length ? allTenants : (() => {
     const map = new Map();
     for (const r of rows) if (r.tenant_id) {
@@ -515,7 +465,8 @@ export default function AuditLogs({ scope = 'admin' }) {
   const derivedEntities = allEntities.length ? allEntities : (() => {
     const map = new Map();
     for (const r of rows) if (r.model_type) {
-      const full = r.model_type; const base = full.split('\\').pop(); if (base === 'SampleResult') continue; if (!map.has(full)) map.set(full, base);
+      const base = r.model_type.split('\\').pop();
+      map.set(r.model_type, base);
     }
     return Array.from(map.entries()).map(([full, base])=>({ base, full })).sort((a,b)=>a.base.localeCompare(b.base));
   })();
@@ -523,7 +474,6 @@ export default function AuditLogs({ scope = 'admin' }) {
   // Clear stale entity filter if not available
   useEffect(() => {
     const allowed = new Set(derivedEntities.map(e => e.full));
-    if (fEntity && !allowed.has(fEntity)) setFEntity('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivedEntities]);
 
@@ -541,43 +491,6 @@ export default function AuditLogs({ scope = 'admin' }) {
     return out;
   };
 
-  const columnPickerAdapter = {
-    columns: columns.map(c => ({ id: c.id, header: c.header })),
-    visibleMap,
-    onVisibleChange: (m) => setVisibleMap(m),
-  };
-
-  // Advanced fields
-  const advancedFields = useMemo(() => {
-    const baseFields = [
-      { id: 'action', label: 'Action', type: 'select', value: fAction, onChange: v => setFAction(v), options: [
-        { value: '', label: 'All' }, { value: 'created', label: 'Created' }, { value: 'updated', label: 'Updated' }, { value: 'deleted', label: 'Deleted' }, { value: 'force_deleted', label: 'Force Deleted' }, { value: 'restored', label: 'Restored' },
-      ] },
-      { id: 'actor_name', label: 'Name', type: 'text', value: fActorName, onChange: v => setFActorName(v) },
-      { id: 'model_type', label: 'Entity', type: 'select', value: fEntity, onChange: v => setFEntity(v), options: [ { value:'', label:'All' }, ...derivedEntities.map(e=>({ value:e.full, label:e.base })) ] },
-      { id: 'time_window', label: 'Time Window', type: 'select', value: fTimeWindow, onChange: v => setFTimeWindow(v), options: [
-        { value:'', label:'All' }, { value:'24h', label:'Last 24h' }, { value:'7d', label:'Last 7d' }, { value:'30d', label:'Last 30d' }
-      ] },
-    ];
-    if (!isAdminScope) return baseFields;
-    return [
-      baseFields[0],
-      baseFields[1],
-      { id: 'role', label: 'Role', type: 'select', value: fRole, onChange: v => setFRole(v), options: [ { value:'', label:'All' }, ...derivedRoles.map(r=>({ value:r, label:r })) ] },
-      { id: 'group_tei', label: 'Scope', type: 'group', children: [
-        { id: 'tenant_id', label: 'Organization', type: 'select', value: fTenant, onChange: v => setFTenant(v), options: [ { value:'', label:'All' }, ...derivedTenants ] },
-        baseFields[2],
-        baseFields[3],
-      ]},
-    ];
-  }, [isAdminScope, fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow, derivedRoles, derivedTenants, derivedEntities]);
-
-  const activeAdvCount = useMemo(() => [fAction, fActorName, isAdminScope ? fRole : null, isAdminScope ? fTenant : null, fEntity, fTimeWindow].filter(Boolean).length, [fAction, fActorName, fRole, fTenant, fEntity, fTimeWindow, isAdminScope]);
-
-  const clearAdvanced = () => {
-    setFAction(''); setFActorName(''); if (isAdminScope) { setFRole(''); setFTenant(''); } setFEntity(''); setFTimeWindow(''); fetchLogs(buildParams({ page: 1 }));
-  };
-
   const goPage = (p) => fetchLogs(buildParams({ page: p }));
 
   // Client-side filtered data for display
@@ -587,27 +500,8 @@ export default function AuditLogs({ scope = 'admin' }) {
       const summaryText = columns[0].render(r) || '';
       if (!summaryText.toLowerCase().includes(q.toLowerCase())) return false;
     }
-    if (fActorName) {
-      const nm = (r.actor_name||'').toLowerCase();
-      if (!nm.includes(fActorName.toLowerCase())) return false;
-    }
-    if (isAdminScope && fRole) {
-      const rv = (r.actor_role || (r.actor && r.actor.role) || '').toLowerCase();
-      if (rv !== fRole.toLowerCase()) return false;
-    }
-    if (isAdminScope && fTenant) {
-      if (String(r.tenant_id) !== String(fTenant)) return false;
-    }
-    if (fEntity && r.model_type !== fEntity) return false;
-    if (fTimeWindow) {
-      const ev = r.event_at ? new Date(r.event_at) : null; if (!ev) return false;
-      const now = new Date(); const diff = now - ev; const day = 24*60*60*1000;
-      if (fTimeWindow==='24h' && diff>day) return false;
-      if (fTimeWindow==='7d' && diff>7*day) return false;
-      if (fTimeWindow==='30d' && diff>30*day) return false;
-    }
     return true;
-  }), [rows, q, fActorName, fRole, fTenant, fEntity, fTimeWindow, isAdminScope, columns]);
+  }), [rows, q, isAdminScope, columns]);
 
   // Render
   if (!isAdminScope && !isOrgAdmin) {
@@ -647,17 +541,8 @@ export default function AuditLogs({ scope = 'admin' }) {
         <TableToolbar
           tableId={TABLE_ID}
           search={{ value: q, onChange: (val) => setQ(val), placeholder: 'Search Logs...' }}
-          filters={[]}
-          columnPicker={{
-            columns: columns.map(c => ({ id: c.id, header: c.header })),
-            visibleMap,
-            onVisibleChange: (m) => setVisibleMap(m),
-          }}
           onRefresh={() => fetchLogs(buildParams(), { force: true })}
-          onToggleFilters={() => setShowAdvanced(s => !s)}
-          filtersBadgeCount={activeAdvCount}
         />
-        <FilterPanel open={showAdvanced} fields={advancedFields} onClearAll={clearAdvanced} />
         {error && <div className="lv-error" style={{ padding: 8, color: 'var(--danger)' }}>{error}</div>}
       </div>
       <div className="card" style={{ padding: 12, borderRadius: 12 }}>
