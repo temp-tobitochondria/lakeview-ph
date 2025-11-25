@@ -198,7 +198,6 @@ export default function AdminUsersPage() {
     { label: 'Delete', title: 'Delete', type: 'delete', icon: <FiTrash2 />, onClick: (raw) => deleteUser(raw) },
   ], [openEdit, deleteUser]);
 
-  // Normalized & paged manually (server pagination) -> we let TableLayout paginate client-side too, but we show server pages separately.
   const normalized = useMemo(() => normalizeUsers(rows), [rows]);
 
   // Only show Role in advanced filters for users
