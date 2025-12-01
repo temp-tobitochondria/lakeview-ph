@@ -63,6 +63,8 @@ export default function LakeFeedbackModal({ open, onClose, lake }) {
 
   const reset = () => {
     setType(''); setTitle(''); setDescription(''); setFiles([]); setGuestName(''); setGuestEmail(''); if (hpRef.current) hpRef.current.value = '';
+    setTDesc(false); // clear touched validation state
+    setError(''); // clear any error messages
   };
 
   const fetchMine = useCallback(async (opts={}) => {

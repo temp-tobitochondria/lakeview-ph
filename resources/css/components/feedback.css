@@ -38,8 +38,8 @@
 .lv-modal-card.auth-card .feedback-form-card { width: 100%; margin: 0; }
 .lv-modal-card.auth-card .feedback-form-card h3 { margin-top: 0; }
 
-/* Tighten grid spacing slightly for visual balance */
-.lv-modal-card.auth-card .lv-settings-grid { gap: 16px; }
+/* Remove grid layout - form card should span full width */
+.lv-modal-card.auth-card .lv-settings-grid { display: block; }
 
 /* Center the submissions block as well */
 .lv-modal-card.auth-card .feedback-submissions { margin-top: 24px; width: 100%; margin-left: 0; margin-right: 0; }
@@ -69,8 +69,6 @@
     padding-left: 12px;
     padding-right: 12px;
   }
-  /* stack form areas into a single column */
-  .lv-modal-card.auth-card .lv-settings-grid { grid-template-columns: 1fr; gap: 12px; }
   /* shrink heading font sizes slightly */
   .lv-modal-card.auth-card .feedback-form-card h3 { font-size: 16px; }
   /* textarea and inputs full width */
@@ -95,7 +93,6 @@
 @media (min-width: 640px) and (max-width: 1023px) {
   .lv-modal-card.auth-card { width: 90%; }
   .lv-modal-card.auth-card .feedback-layout, .lv-modal-card.auth-card .feedback-submissions { padding-left: 14px; padding-right: 14px; }
-  .lv-modal-card.auth-card .lv-settings-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
   .lv-modal-card.auth-card .feedback-action-row { display:flex; gap:10px; justify-content:flex-start; }
   .lv-modal-card.auth-card .insight-card img { height: 100px; }
   .lv-modal-card.auth-card .preview-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
@@ -104,7 +101,6 @@
 /* Laptop (1024px - 1439px) default */
 @media (min-width: 1024px) and (max-width: 1439px) {
   .lv-modal-card.auth-card { width: 640px; }
-  .lv-modal-card.auth-card .lv-settings-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
   .lv-modal-card.auth-card .feedback-list .insight-card { padding: 14px; }
 }
 

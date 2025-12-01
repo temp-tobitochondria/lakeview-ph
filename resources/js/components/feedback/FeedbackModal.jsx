@@ -100,7 +100,12 @@ export default function FeedbackModal({ open, onClose, width = 640 }) {
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [open, onClose]);
 
-  const resetForm = () => { setTitle(''); setCategory(''); setMessage(''); setGuestName(''); setGuestEmail(''); setFiles([]); if (honeypotRef.current) honeypotRef.current.value=''; };
+  const resetForm = () => { 
+    setTitle(''); setCategory(''); setMessage(''); setGuestName(''); setGuestEmail(''); setFiles([]); 
+    if (honeypotRef.current) honeypotRef.current.value=''; 
+    setTTitle(false); setTMessage(false); setTCategory(false); // clear touched validation states
+    setError(''); // clear any error messages
+  };
 
   // File selection and previews (screenshots only)
   const ALLOWED_MIME = ['image/png', 'image/jpeg'];
