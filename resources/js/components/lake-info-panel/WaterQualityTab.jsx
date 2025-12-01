@@ -25,6 +25,39 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 
 import LoadingSpinner from "../LoadingSpinner";
 
+// Plugin to shade out-of-compliance regions (below min and above max thresholds)
+const complianceShadingPlugin = {
+  id: 'complianceShading',
+  beforeDatasetsDraw(chart, args, pluginOptions) {
+    try {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea || !scales || !scales.y) return;
+      const y = scales.y;
+      const { left, right, top, bottom } = chartArea;
+      const min = pluginOptions?.min;
+      const max = pluginOptions?.max;
+      if (min == null && max == null) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(239,68,68,0.08)';
+      // Shade area above max (non-compliant high)
+      if (max != null) {
+        const yMaxPx = y.getPixelForValue(Number(max));
+        const h = Math.max(0, yMaxPx - top);
+        if (h > 0) ctx.fillRect(left, top, right - left, h);
+      }
+      // Shade area below min (non-compliant low)
+      if (min != null) {
+        const yMinPx = y.getPixelForValue(Number(min));
+        const h = Math.max(0, bottom - yMinPx);
+        if (h > 0) ctx.fillRect(left, yMinPx, right - left, h);
+      }
+      ctx.restore();
+    } catch (_) {
+      // no-op
+    }
+  },
+};
+
 /**
  * Props
  * - lake: { id, name, class_code? }
@@ -365,6 +398,7 @@ function WaterQualityTab({ lake }) {
               responsive: true,
               maintainAspectRatio: false,
               plugins: {
+                complianceShading: { min: p?.threshold?.min ?? null, max: p?.threshold?.max ?? null },
                 legend: { display: true, position: 'bottom', labels: { color: '#fff', boxWidth: 8, font: { size: 10 } } },
                 tooltip: {
                   callbacks: {
@@ -423,7 +457,7 @@ function WaterQualityTab({ lake }) {
                   </div>
                 </div>
                 <div className="wq-chart">
-                  <Line data={p.chartData} options={timeOptions} />
+                  <Line data={p.chartData} options={timeOptions} plugins={[complianceShadingPlugin]} />
                 </div>
               </div>
             );
