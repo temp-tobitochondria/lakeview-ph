@@ -289,10 +289,6 @@ export default function TableLayout({
     return Array.isArray(data) ? data.slice(start, start + size) : [];
   }, [serverSide, data, page, pageSize]);
 
-  // useEffect(() => {
-  //   if (page > totalPages) setPage(totalPages);
-  // }, [totalPages, page]);
-
   const getCellContent = (row, col) => {
     if (col.render) return col.render(row._raw ?? row, row);
     if (col.accessor) return row[col.accessor];

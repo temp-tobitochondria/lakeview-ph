@@ -298,6 +298,11 @@ export default function AuditLogs({ scope = 'admin' }) {
           }
           const ts = r.event_at ? ` at ${fmt(r.event_at)}` : '';
           const base = modelBase;
+          if (base === 'User' && r.action === 'created') {
+            const after = r.after || {};
+            const userName = after.name || r.entity_name || after.email || 'New User';
+            return `${truncate(userName)} Registered${ts}`;
+          }
           if (base === 'ParameterThreshold') {
             const after = r.after || {};
             const before = r.before || {};

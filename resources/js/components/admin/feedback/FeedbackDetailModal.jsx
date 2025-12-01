@@ -83,6 +83,30 @@ export default function FeedbackDetailModal({ open, onClose, item, onSave }) {
                 <span style={{ fontSize: 12, fontWeight: 600 }}>Lake:</span> <span>{item.lake.name}</span>
               </div>
             )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Submitted By:</span>
+              {item.is_guest ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="badge" style={{ background:'#f59e0b20', color:'#b45309', padding:'2px 6px', borderRadius:6, fontSize:11 }}>Guest</span>
+                    <span style={{ fontSize: 12 }}>{item.guest_name || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>No name provided</span>}</span>
+                  </div>
+                  {item.guest_email ? (
+                    <span style={{ fontSize: 11, color: '#64748b' }}>{item.guest_email}</span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>No email provided</span>
+                  )}
+                </div>
+              ) : (
+                <span style={{ fontSize: 12 }}>{item.user?.name || '—'}</span>
+              )}
+            </div>
+            {!item.is_guest && item.tenant?.name && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Organization:</span>
+                <span style={{ fontSize: 12 }}>{item.tenant.name}</span>
+              </div>
+            )}
             <div style={{ fontSize: 11, color: '#64748b' }}>Submitted: {new Date(item.created_at).toLocaleString()}</div>
           </div>
           <div>

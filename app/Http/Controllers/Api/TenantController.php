@@ -39,6 +39,13 @@ class TenantController extends Controller
         $updatedFrom  = $request->query('updated_from');
         $updatedTo    = $request->query('updated_to');
 
+        // Sorting params (mirror users/org UI). Allowed columns list prevents SQL injection.
+        $requestSort = trim((string)$request->query('sort_by', 'name'));
+        $requestDir  = strtolower((string)$request->query('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['id','name','slug','type','contact_email','phone','address','created_at','updated_at'];
+        $sortBy = in_array($requestSort, $allowedSort, true) ? $requestSort : 'name';
+        $sortDir = $requestDir;
+
         $qb = Tenant::query()
             ->when($withDeleted, fn($w) => $w->withTrashed())
             // active filter removed
@@ -60,10 +67,18 @@ class TenantController extends Controller
             ->when($createdFrom, function ($w) use ($createdFrom) { if (is_string($createdFrom) && strlen($createdFrom) === 10) { $w->whereDate('created_at', '>=', $createdFrom); } })
             ->when($createdTo, function ($w) use ($createdTo) { if (is_string($createdTo) && strlen($createdTo) === 10) { $w->whereDate('created_at', '<=', $createdTo); } })
             ->when($updatedFrom, function ($w) use ($updatedFrom) { if (is_string($updatedFrom) && strlen($updatedFrom) === 10) { $w->whereDate('updated_at', '>=', $updatedFrom); } })
-            ->when($updatedTo, function ($w) use ($updatedTo) { if (is_string($updatedTo) && strlen($updatedTo) === 10) { $w->whereDate('updated_at', '<=', $updatedTo); } })
-            ->orderBy('name');
+            ->when($updatedTo, function ($w) use ($updatedTo) { if (is_string($updatedTo) && strlen($updatedTo) === 10) { $w->whereDate('updated_at', '<=', $updatedTo); } });
 
-        $paginator = $qb->paginate($perPage);
+        // Apply sorting (simple columns only; no joins required)
+        $qb->orderBy($sortBy, $sortDir);
+        $page = max(1, (int)$request->query('page', 1));
+        $paginator = $qb->paginate($perPage, ['*'], 'page', $page)->appends([
+            'q' => $q,
+            'with_deleted' => $withDeleted ? 1 : 0,
+            'per_page' => $perPage,
+            'sort_by' => $sortBy,
+            'sort_dir' => $sortDir,
+        ]);
 
         // Transform including core contact fields (status deprecated; omit 'active')
         $paginator->getCollection()->transform(fn (Tenant $t) => [

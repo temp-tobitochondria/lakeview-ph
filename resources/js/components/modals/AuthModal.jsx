@@ -58,15 +58,62 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
   // Responsive states
   const [modalWidth, setModalWidth] = useState(760);
 
+  // Validation functions
+  const validateFullName = (name) => {
+    if (!name || name.trim().length === 0) return "Full name is required.";
+    if (name.trim().length < 2) return "Full name must be at least 2 characters.";
+    if (name.length > 50) return "Full name must not exceed 50 characters.";
+    if (!/^[a-zA-Z\s]+$/.test(name)) return "Full name must contain only letters and spaces.";
+    return null;
+  };
+
+  const validateEmail = (email) => {
+    if (!email || email.trim().length === 0) return "Email is required.";
+    if (email.length > 254) return "Email must not exceed 254 characters.";
+    if (/\s/.test(email)) return "Email must not contain spaces.";
+    if (!/^[a-zA-Z0-9]/.test(email)) return "Email must start with a letter or number.";
+    if (!/[a-zA-Z0-9]$/.test(email)) return "Email must end with a letter or number.";
+    if (!email.includes('@')) return "Email must contain @.";
+    const emailRegex = /^[a-zA-Z0-9][a-zA-Z0-9._-]*@[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) return "Please enter a valid email address.";
+    return null;
+  };
+
+  const validatePassword = (pwd) => {
+    if (!pwd || pwd.length === 0) return "Password is required.";
+    if (pwd.length < 8) return "Password must be at least 8 characters.";
+    if (pwd.length > 64) return "Password must not exceed 64 characters.";
+    if (/\s/.test(pwd)) return "Password must not contain spaces.";
+    if (!/[A-Z]/.test(pwd)) return "Password must contain at least 1 uppercase letter.";
+    if (!/\d/.test(pwd)) return "Password must contain at least 1 number.";
+    if (!/[^A-Za-z0-9]/.test(pwd)) return "Password must contain at least 1 special character.";
+    return null;
+  };
+
   // Derived
   const passwordsMatch = regPassword.length > 0 && regPassword === regPassword2;
+  const resetPasswordsMatch = password.length > 0 && password === password2;
   const canResend = resendIn <= 0;
-  const strongPassword = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(regPassword);
+  
+  const strongPassword = validatePassword(regPassword) === null;
+  const strongResetPassword = validatePassword(password) === null;
+  const validFullName = validateFullName(fullName) === null;
+  const validRegEmail = validateEmail(regEmail) === null;
+  
   const passwordCriteria = [
-    { label: 'At least 8 characters', ok: regPassword.length >= 8 },
+    { label: 'At least 8 characters', ok: regPassword.length >= 8 && regPassword.length <= 64 },
     { label: '1 uppercase letter', ok: /[A-Z]/.test(regPassword) },
     { label: '1 number', ok: /\d/.test(regPassword) },
     { label: '1 special character', ok: /[^A-Za-z0-9]/.test(regPassword) },
+    { label: 'No spaces', ok: !/\s/.test(regPassword) || regPassword.length === 0 },
+  ];
+
+  const resetPasswordCriteria = [
+    { label: 'At least 8 characters', ok: password.length >= 8 && password.length <= 64 },
+    { label: '1 uppercase letter', ok: /[A-Z]/.test(password) },
+    { label: '1 number', ok: /\d/.test(password) },
+    { label: '1 special character', ok: /[^A-Za-z0-9]/.test(password) },
+    { label: 'No spaces', ok: !/\s/.test(password) || password.length === 0 },
   ];
 
   useEffect(() => { setMode(initialMode); }, [initialMode]);
@@ -214,8 +261,38 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
     e.preventDefault();
     setErr("");
 
+    // Validate full name
+    const nameError = validateFullName(fullName);
+    if (nameError) {
+      setErr(nameError);
+      alertError("Invalid Full Name", nameError);
+      return;
+    }
+
+    // Validate email
+    const emailError = validateEmail(regEmail);
+    if (emailError) {
+      setErr(emailError);
+      alertError("Invalid Email", emailError);
+      return;
+    }
+
+    // Validate password
+    const passwordError = validatePassword(regPassword);
+    if (passwordError) {
+      setErr(passwordError);
+      alertError("Invalid Password", passwordError);
+      return;
+    }
+
+    if (!termsAccepted) {
+      alertError("Terms & Conditions Required", "You must accept the Terms & Conditions to register.");
+      return;
+    }
+
     if (!passwordsMatch) {
       setErr("Passwords do not match.");
+      alertError("Password Mismatch", "Passwords do not match.");
       return;
     }
 
@@ -334,8 +411,17 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
     e.preventDefault();
     setErr("");
 
+    // Validate password
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setErr(passwordError);
+      alertError("Invalid Password", passwordError);
+      return;
+    }
+
     if (password !== password2) {
       setErr("Passwords do not match.");
+      alertError("Password Mismatch", "Passwords do not match.");
       return;
     }
 
@@ -441,8 +527,31 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
           {/* ===== REGISTER ===== */}
           {mode === "register" && (
             <form onSubmit={handleRegister}>
-              <input type="text" placeholder="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required />
-              <input type="email" placeholder="Email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} autoComplete="email" required />
+              <input 
+                type="text" 
+                placeholder="Full Name" 
+                value={fullName} 
+                onChange={(e) => setFullName(e.target.value)} 
+                autoComplete="name" 
+                maxLength={50}
+                required 
+              />
+              {fullName.length > 0 && !validFullName && (
+                <div className="auth-error" role="alert">{validateFullName(fullName)}</div>
+              )}
+
+              <input 
+                type="email" 
+                placeholder="Email" 
+                value={regEmail} 
+                onChange={(e) => setRegEmail(e.target.value)} 
+                autoComplete="email" 
+                maxLength={254}
+                required 
+              />
+              {regEmail.length > 0 && !validRegEmail && (
+                <div className="auth-error" role="alert">{validateEmail(regEmail)}</div>
+              )}
               <div className="pw-wrapper">
                 <input
                   type={showPwd.reg1 ? "text" : "password"}
@@ -450,6 +559,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
                   autoComplete="new-password"
+                  maxLength={64}
                   required
                 />
                 <button
@@ -468,6 +578,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                   value={regPassword2}
                   onChange={(e) => setRegPassword2(e.target.value)}
                   autoComplete="new-password"
+                  maxLength={64}
                   required
                 />
                 <button
@@ -524,11 +635,10 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                   <span>I agree to the <button type="button" className="auth-link inline" onClick={() => setShowTerms(true)}>Terms & Conditions</button></span>
                   <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} required />
                 </label>
-                {!termsAccepted && regPassword.length > 0 && (<div className="terms-warning" role="alert">Please accept Terms & Conditions.</div>)}
               </div>
 
-              <button type="submit" className="auth-btn" disabled={loading || !passwordsMatch || !strongPassword || !termsAccepted}>
-                {loading ? "Sending code..." : (!strongPassword ? 'Password not strong enough' : !termsAccepted ? 'Accept Terms to Continue' : 'REGISTER')}
+              <button type="submit" className="auth-btn" disabled={loading || !passwordsMatch || !strongPassword}>
+                {loading ? "Sending code..." : (!strongPassword ? 'Password not strong enough' : 'Register to Lakeview!')}
               </button>
 
               <p className="auth-switch">Already have an account? <button type="button" className="auth-link" onClick={() => { setShowTerms(false); setMode("login"); }}>Log In</button></p>
@@ -568,6 +678,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
+                  maxLength={64}
                   required
                 />
                 <button
@@ -586,6 +697,7 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                   value={password2}
                   onChange={(e) => setPassword2(e.target.value)}
                   autoComplete="new-password"
+                  maxLength={64}
                   required
                 />
                 <button
@@ -598,7 +710,22 @@ export default function AuthModal({ open, onClose, mode: initialMode = "login" }
                 </button>
               </div>
               {password !== password2 && password2.length > 0 && (<div className="auth-error" role="alert">Passwords do not match.</div>)}
-              <button type="submit" className="auth-btn" disabled={loading || password !== password2}>{loading ? "Updating..." : "UPDATE PASSWORD"}</button>
+
+              {/* Password strength & criteria for reset */}
+              {password.length > 0 && (
+                <div className="password-strength" aria-live="polite">
+                  <div className={`bar ${strongResetPassword ? 'ok' : ''}`}></div>
+                  <ul className="criteria">
+                    {resetPasswordCriteria.map(c => (
+                      <li key={c.label} className={c.ok ? 'ok' : 'bad'}>
+                        {c.ok ? <FiCheck /> : <FiAlertCircle />} {c.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <button type="submit" className="auth-btn" disabled={loading || !resetPasswordsMatch || !strongResetPassword}>{loading ? "Updating..." : "UPDATE PASSWORD"}</button>
               <p className="auth-switch">Back to <button type="button" className="auth-link" onClick={() => setMode("login")}>Log In</button></p>
             </form>
           )}

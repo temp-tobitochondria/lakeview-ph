@@ -426,6 +426,13 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
                 className="sidebar-row"
                 onClick={(e) => {
                   e.preventDefault();
+                  // Don't close sidebar if user is selecting text
+                  try {
+                    const sel = typeof window !== 'undefined' && window.getSelection ? window.getSelection().toString() : '';
+                    if (sel && sel.length > 0) {
+                      return;
+                    }
+                  } catch {}
                   try {
                     window.dispatchEvent(new Event('lv-open-about-data'));
                   } catch {}
@@ -442,6 +449,13 @@ function Sidebar({ isOpen, onClose, pinned, setPinned, onOpenAuth, onOpenFeedbac
                 }`}
                 onClick={(e) => {
                   e.preventDefault();
+                  // Don't close sidebar if user is selecting text
+                  try {
+                    const sel = typeof window !== 'undefined' && window.getSelection ? window.getSelection().toString() : '';
+                    if (sel && sel.length > 0) {
+                      return;
+                    }
+                  } catch {}
                   try {
                     window.dispatchEvent(new Event('lv-open-privacy'));
                   } catch {}

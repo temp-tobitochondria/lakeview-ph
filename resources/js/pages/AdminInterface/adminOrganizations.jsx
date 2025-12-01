@@ -101,15 +101,16 @@ export default function AdminOrganizationsPage() {
     try {
       // Bypass cache to ensure fresh fields after backend changes
       const res = await cachedGet('/admin/tenants', { params, ttlMs: 0 });
-      const payload = res.data;
+      // Keep full Laravel paginator (do NOT unwrap .data)
+      const payload = res;
       const items = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
       setRows(items);
       // Robust pagination meta: support meta object or top-level fields
-      const m = payload?.meta || {};
+      const m = payload?.meta || payload; // paginator fields may be top-level
       const total = m.total ?? payload?.total ?? null;
-      const per = m.per_page ?? payload?.per_page ?? params.per_page ?? PER_PAGE;
-      const cp = Number(m.current_page ?? payload?.current_page ?? params.page ?? 1) || 1;
-      let lp = m.last_page ?? payload?.last_page;
+      const per = m.per_page ?? m.perPage ?? payload?.per_page ?? payload?.perPage ?? params.per_page ?? PER_PAGE;
+      const cp = Number(m.current_page ?? m.currentPage ?? payload?.current_page ?? payload?.currentPage ?? params.page ?? 1) || 1;
+      let lp = m.last_page ?? m.lastPage ?? payload?.last_page ?? payload?.lastPage;
       if (lp == null) {
         if (total != null) {
           const t = Number(total);
@@ -141,10 +142,16 @@ export default function AdminOrganizationsPage() {
   const perPage = PER_PAGE;
   const goPage = (p) => fetchOrgs(buildParams({ page: p }));
 
-  // Handle header sort toggles (TableLayout will call onSortChange with column id)
+  // Enhanced header sort toggles (first click heuristic similar to adminUsers)
   const handleSortChange = (colId) => {
     if (!colId) return;
-    const nextDir = (sort.id === colId && sort.dir === 'asc') ? 'desc' : 'asc';
+    let nextDir;
+    if (sort.id !== colId) {
+      // id / *_at timestamps default descending, others ascending
+      nextDir = (colId === 'id' || /_at$/.test(colId)) ? 'desc' : 'asc';
+    } else {
+      nextDir = sort.dir === 'asc' ? 'desc' : 'asc';
+    }
     const next = { id: colId, dir: nextDir };
     setSort(next);
     fetchOrgs(buildParams({ page: 1, sort_by: next.id, sort_dir: next.dir }));

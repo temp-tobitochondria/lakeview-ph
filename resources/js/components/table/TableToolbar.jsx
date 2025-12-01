@@ -20,7 +20,7 @@ import { useWindowSize } from "../../hooks/useWindowSize";
  */
 export default function TableToolbar({
   tableId,
-  search = { value: "", onChange: () => {}, placeholder: "Search…" },
+  search = null,
   filters = [],
   columnPicker,
   onResetWidths,
@@ -36,16 +36,18 @@ export default function TableToolbar({
   const FILT_KEY   = `${tableId}::filters`;
 
   // Debounced search input (300ms)
-  const [localQuery, setLocalQuery] = useState(search.value || "");
-  useEffect(() => setLocalQuery(search.value || ""), [search.value]);
+  const hasSearch = Boolean(search && typeof search === 'object');
+  const [localQuery, setLocalQuery] = useState(hasSearch ? (search.value || "") : "");
+  useEffect(() => { if (hasSearch) setLocalQuery(search.value || ""); }, [hasSearch ? search.value : ""]);
   useEffect(() => {
+    if (!hasSearch) return; // nothing to sync
     const t = setTimeout(() => {
       if (localQuery !== search.value) search.onChange?.(localQuery);
       try { localStorage.setItem(SEARCH_KEY, localQuery); } catch {}
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localQuery]);
+  }, [localQuery, hasSearch]);
 
   // Persist simple filters (write-through)
   useEffect(() => {
@@ -60,38 +62,40 @@ export default function TableToolbar({
     const handler = (e) => {
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea") return;
-      if (e.key === "/") { e.preventDefault(); inputRef.current?.focus(); }
+      if (e.key === "/" && hasSearch) { e.preventDefault(); inputRef.current?.focus(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [hasSearch]);
 
   return (
     <div className="org-toolbar" role="region" aria-label="Table toolbar">
       {/* Search */}
-      <div className="org-search" role="search">
-        <FiSearch className="toolbar-icon" aria-hidden="true" />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={search.placeholder || "Search…"}
-          value={localQuery}
-          onChange={(e) => setLocalQuery(e.target.value)}
-          aria-label="Search table"
-        />
-        {!!localQuery && (
-          <button
-            type="button"
-            className="pill-btn ghost"
-            onClick={() => setLocalQuery("")}
-            title="Clear"
-            aria-label="Clear search"
-            style={{ height: 28, padding: "0 8px", marginLeft: 6 }}
-          >
-            ×
-          </button>
-        )}
-      </div>
+      {hasSearch && (
+        <div className="org-search" role="search">
+          <FiSearch className="toolbar-icon" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={(search && search.placeholder) || "Search…"}
+            value={localQuery}
+            onChange={(e) => setLocalQuery(e.target.value)}
+            aria-label="Search table"
+          />
+          {!!localQuery && (
+            <button
+              type="button"
+              className="pill-btn ghost"
+              onClick={() => setLocalQuery("")}
+              title="Clear"
+              aria-label="Clear search"
+              style={{ height: 28, padding: "0 8px", marginLeft: 6 }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Basic filters (config-driven) */}
       {filters.map((f) => {

@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateFeedbackRequest;
 use App\Models\Feedback;
+use App\Models\User;
+use App\Models\Tenant;
+use App\Models\Lake;
 use App\Events\FeedbackUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -49,13 +52,15 @@ class FeedbackController extends Controller
     }
     public function index(Request $request)
     {
-        $q = Feedback::query()->with(['user:id,name,email','tenant:id,name','lake:id,name']);
+        $q = Feedback::query()
+            ->with(['user:id,name,email','tenant:id,name','lake:id,name']);
         $like = $this->likeOp();
 
         if ($status = $request->query('status')) {
             $q->where('status', $status);
         }
-        if ($search = $request->query('search')) {
+        $search = trim((string)$request->query('search', ''));
+        if ($search !== '') {
             $fieldsParam = $request->query('search_fields');
             $allowed = ['name','title','message'];
             $fields = collect(explode(',', (string)$fieldsParam))
@@ -65,7 +70,7 @@ class FeedbackController extends Controller
                 ->values()
                 ->all();
             if (empty($fields)) {
-                $fields = ['name']; // default to name-only
+                $fields = ['name','title','message']; // default to all searchable fields
             }
             $q->where(function($qq) use ($search, $fields, $like) {
                 if (in_array('name', $fields)) {
@@ -99,11 +104,50 @@ class FeedbackController extends Controller
                 $q->where('is_guest', false)->whereHas('user.role', function($qq) use ($roleParam) { $qq->where('name', $roleParam); });
             }
         }
-        $q->orderByDesc('created_at');
+        // Server-side sorting
+        $sortBy = strtolower(trim((string)$request->query('sort_by', 'created_at')));
+        $sortDir = strtolower(trim((string)$request->query('sort_dir', 'desc')));
+        $dir = $sortDir === 'asc' ? 'asc' : 'desc';
+        // Apply sorting without joins to keep paginator counts correct
+        switch ($sortBy) {
+            case 'title':
+                $q->orderBy('feedback.title', $dir);
+                break;
+            case 'status':
+                $q->orderBy('feedback.status', $dir);
+                break;
+            case 'user':
+                $q->orderBy(
+                    User::select('name')->whereColumn('users.id', 'feedback.user_id')->limit(1),
+                    $dir
+                );
+                break;
+            case 'org':
+                $q->orderBy(
+                    Tenant::select('name')->whereColumn('tenants.id', 'feedback.tenant_id')->limit(1),
+                    $dir
+                );
+                break;
+            case 'lake':
+                $q->orderBy(
+                    Lake::select('name')->whereColumn('lakes.id', 'feedback.lake_id')->limit(1),
+                    $dir
+                );
+                break;
+            case 'created_at':
+            default:
+                $q->orderBy('feedback.created_at', $dir);
+                break;
+        }
 
-        $rows = $q->paginate($request->integer('per_page', 20));
+        // Manual pagination to ensure accurate total/last_page even with complex orderBy
+        $perPage = max(1, (int) $request->integer('per_page', 10));
+        $page = max(1, (int) $request->integer('page', 1));
+        // Use Eloquent count on a reordered clone to avoid any ORDER BY side-effects
+        $total = (clone $q)->reorder()->count();
+        $items = $q->forPage($page, $perPage)->get();
         // Transform attachment image paths to fully qualified public URLs for frontend preview reliability.
-        $rows->getCollection()->transform(function ($fb) {
+        $items->transform(function ($fb) {
             // images: safe copy-modify-assign
             $imgs = is_array($fb->images) ? $fb->images : [];
             $fb->images = array_map(fn($p) => $this->publicImageUrl((string)$p), $imgs);
@@ -122,7 +166,14 @@ class FeedbackController extends Controller
             }
             return $fb;
         });
-        return response()->json($rows);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        return response()->json([
+            'data' => $items,
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'last_page' => $lastPage,
+        ]);
     }
 
     public function show(Feedback $feedback)

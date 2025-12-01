@@ -33,7 +33,8 @@ const normalizeUsers = (rows = []) => rows.map(u => ({
 export default function AdminUsersPage() {
   // raw user rows from API
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
+  // Unified pagination state (mirrors lakes tab logic)
+  const [pagination, setPagination] = useState({ page: 1, perPage: 10, total: 0, lastPage: 1 });
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -101,8 +102,8 @@ export default function AdminUsersPage() {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const page = meta.current_page ?? 1;
-  const perPage = 10;
+  const page = pagination.page;
+  const perPage = pagination.perPage;
 
   const unwrap = (res) => (res?.data ?? res);
   const toast = (title, icon = "success") => Swal.fire({ toast: true, position: "top-end", timer: 1600, showConfirmButton: false, icon, title });
@@ -123,35 +124,36 @@ export default function AdminUsersPage() {
     try {
       // Keep axios response and parse payload; disable cache to reflect DB
       const raw = await cachedGet("/admin/users", { params, ttlMs: 0 });
-      const payload = raw?.data ?? raw;
+      // IMPORTANT: Do NOT unwrap raw.data here; Laravel paginator returns metadata alongside data array.
+      const payload = raw; // keep full paginator object
       const items = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
       const filtered = myId ? items.filter(u => u.id !== myId) : items;
       setRows(filtered);
+      // Parse pagination (supports Laravel paginator or generic shapes)
+      const m = payload?.meta ?? payload?.pagination ?? payload; // paginator fields may be top-level
+      const totalRaw = m.total ?? payload?.total;
+      const perRaw = m.per_page ?? m.perPage ?? payload?.per_page ?? payload?.perPage ?? params.per_page ?? pagination.perPage;
+      const cpRaw = m.current_page ?? m.currentPage ?? payload?.current_page ?? payload?.currentPage ?? params.page ?? 1;
+      let lpRaw = m.last_page ?? m.lastPage ?? payload?.last_page ?? payload?.lastPage;
 
-      // Read pagination from common shapes: Laravel { meta: {...} }, or { pagination: {...} }, or top-level
-      const m = payload?.meta ?? payload?.pagination ?? {};
-      const total = m.total ?? payload?.total ?? null;
-      const per = m.per_page ?? m.perPage ?? payload?.per_page ?? payload?.perPage ?? params.per_page ?? perPage;
-      const cp = Number(m.current_page ?? m.currentPage ?? payload?.current_page ?? payload?.currentPage ?? params.page ?? 1) || 1;
-      let lp = m.last_page ?? m.lastPage ?? payload?.last_page ?? payload?.lastPage;
-
-      // If last_page not supplied, compute from total when available; otherwise keep prior or assume current page
-      if (lp == null) {
-        if (total != null) {
-          const t = Number(total);
-          lp = Number.isFinite(t) ? Math.max(1, Math.ceil(t / Number(per || perPage))) : 1;
-        } else {
-          // Avoid inflating total pages as you navigate; stick to known value or current page
-          lp = (meta?.last_page && Number(meta.last_page)) || cp;
-        }
+      const perNum = Number(perRaw) > 0 ? Number(perRaw) : pagination.perPage;
+      const totalNum = totalRaw != null ? Number(totalRaw) : items.length;
+      const cpNum = Number(cpRaw) > 0 ? Number(cpRaw) : 1;
+      if (lpRaw == null) {
+        lpRaw = Math.max(1, Math.ceil(totalNum / perNum));
       }
+      const lpNum = Number(lpRaw) > 0 ? Number(lpRaw) : 1;
 
-      setMeta({
-        current_page: cp,
-        last_page: Number(lp) || 1,
-        per_page: per,
-        total: total != null ? Number(total) : items.length,
-      });
+      // Debug pagination (remove after verification)
+      try {
+        // Only log when lastPage stays 1 but total suggests more data; helps diagnose server response shape
+        if (lpNum === 1 && totalNum > perNum) {
+          // eslint-disable-next-line no-console
+          console.log('[adminUsers] Pagination anomaly (after fix)', { payloadKeys: Object.keys(payload || {}), totalNum, perNum, cpNum, lpNum, rawPayload: payload });
+        }
+      } catch {}
+
+      setPagination({ page: cpNum, perPage: perNum, total: totalNum, lastPage: lpNum });
     } catch (e) {
       console.error("Failed to load users", e);
       Swal.fire("Failed to load users", e?.response?.data?.message || "", "error");
@@ -172,11 +174,22 @@ export default function AdminUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const goPage = (p) => fetchUsers(buildParams({ page: p }));
+  const goPage = (p) => {
+    setPagination((prev) => ({ ...prev, page: p }));
+    fetchUsers(buildParams({ page: p }));
+  };
 
+  // Enhanced sort handler: first click preference based on data type
+  // Numeric/date columns default to desc, text columns to asc
   const handleSortChange = (colId) => {
     if (!colId) return;
-    const nextDir = (sort.id === colId && sort.dir === 'asc') ? 'desc' : 'asc';
+    let nextDir;
+    if (sort.id !== colId) {
+      // heuristic: id / *_at treated as numeric/date => default desc else asc
+      if (colId === 'id' || /_at$/.test(colId)) nextDir = 'desc'; else nextDir = 'asc';
+    } else {
+      nextDir = sort.dir === 'asc' ? 'desc' : 'asc';
+    }
     const next = { id: colId, dir: nextDir };
     setSort(next);
     fetchUsers(buildParams({ page: 1, sort_by: next.id, sort_dir: next.dir }));
@@ -306,7 +319,7 @@ export default function AdminUsersPage() {
           columnPicker={false} // using external column picker (toolbar)
           hidePager={false} // use internal pager
           serverSide={true}
-          pagination={{ page: page, totalPages: meta.last_page }}
+          pagination={{ page: pagination.page, totalPages: pagination.lastPage }}
           onPageChange={goPage}
           sort={sort}
           onSortChange={handleSortChange}

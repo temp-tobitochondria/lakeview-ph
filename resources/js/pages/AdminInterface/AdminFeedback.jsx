@@ -4,6 +4,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import api from '../../lib/api';
 import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 import TableToolbar from '../../components/table/TableToolbar';
+import TableLayout from '../../layouts/TableLayout';
 import { STATUS_ORDER, STATUS_LABEL, SEARCH_SCOPE_MAP } from '../../components/admin/feedback/feedbackConstants';
 import StatusPill from '../../components/admin/feedback/StatusPill';
 import AttachmentsModal from '../../components/admin/feedback/AttachmentsModal';
@@ -16,12 +17,13 @@ export default function AdminFeedback() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, perPage: 10, current: 1, last: 1 });
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [category, setCategory] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   // searchScope options: name | title | message | name_title | name_message | title_message | all
-  const [searchScope, setSearchScope] = useState('name');
+  const [searchScope, setSearchScope] = useState('all');
   const [selected, setSelected] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   // Bulk selection & actions state (CSV export removed per request)
@@ -31,6 +33,20 @@ export default function AdminFeedback() {
   const [docsOpen, setDocsOpen] = useState(false);
   const [docsItem, setDocsItem] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Sorting logic (client-side on current page set) — define early to avoid TDZ
+  const SORT_KEY = 'admin-feedback::sort';
+  const [sort, setSort] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SORT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.id && (parsed.dir === 'asc' || parsed.dir === 'desc')) return parsed;
+      }
+    } catch {}
+    return { id: null, dir: 'asc' };
+  });
+  useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch {} }, [sort]);
 
   // Column picker wiring
   const COLUMNS = useMemo(() => ([
@@ -57,13 +73,68 @@ export default function AdminFeedback() {
   }));
   const visibleColumns = useMemo(() => COLUMNS.filter(c => visibleMap[c.id] !== false).map(c => c.id), [COLUMNS, visibleMap]);
 
-  const fetchData = useCallback(async (opts={}) => {
-    const p = opts.page || page;
+  // Normalize various paginator payload shapes into a consistent object
+  const parsePagination = (payload, fallbackPage) => {
+    let items = [];
+    let current;
+    let last;
+
+    // Common Laravel paginator shapes
+    if (Array.isArray(payload)) {
+      items = payload;
+    } else if (Array.isArray(payload?.data)) {
+      items = payload.data;
+      current = payload?.current_page ?? payload?.currentPage;
+      last = payload?.last_page ?? payload?.lastPage;
+    } else if (payload?.data && Array.isArray(payload?.data?.data)) {
+      // Nested data + meta
+      items = payload.data.data;
+      current = payload.data?.current_page ?? payload.data?.currentPage ?? payload?.meta?.current_page ?? payload?.meta?.currentPage;
+      last = payload.data?.last_page ?? payload.data?.lastPage ?? payload?.meta?.last_page ?? payload?.meta?.lastPage;
+    } else if (Array.isArray(payload?.items)) {
+      items = payload.items;
+      current = payload?.meta?.current_page ?? payload?.meta?.currentPage;
+      last = payload?.meta?.last_page ?? payload?.meta?.lastPage;
+    } else if (Array.isArray(payload?.results)) {
+      items = payload.results;
+    }
+
+    // Fallbacks for page and last_page using totals
+    const totalVal = Number(
+      payload?.total ?? payload?.meta?.total ?? payload?.data?.total ?? items.length ?? 0
+    ) || 0;
+    const perPageVal = Number(
+      payload?.per_page ?? payload?.perPage ?? payload?.meta?.per_page ?? payload?.meta?.perPage ?? payload?.data?.per_page ?? 10
+    ) || 10;
+
+    if (!last) {
+      const computed = totalVal > 0 && perPageVal > 0 ? Math.ceil(totalVal / perPageVal) : undefined;
+      last = (payload?.last_page ?? payload?.lastPage ?? payload?.meta?.last_page ?? payload?.meta?.lastPage ?? computed ?? 1);
+    }
+
+    const curNum = Math.max(1, Number(current ?? fallbackPage ?? 1) || 1);
+    const lastNum = Math.max(1, Number(last || 1) || 1);
+    return {
+      items,
+      current: curNum,
+      last: lastNum,
+      perPage: perPageVal,
+      total: totalVal,
+    };
+  };
+
+  const fetchData = useCallback(async (targetPage) => {
+    const p = Math.max(1, Number(targetPage ?? page) || 1);
     setLoading(true);
     setError('');
     const params = new URLSearchParams();
     params.set('page', p);
     params.set('per_page', 10);
+    // Send server-side sort params to ensure paginator consistency
+    if (sort?.id) {
+      params.set('sort_by', sort.id);
+      params.set('sort_dir', sort.dir === 'asc' ? 'asc' : 'desc');
+    }
     const trimmed = search.trim();
     if (trimmed) {
       params.set('search', trimmed);
@@ -74,43 +145,57 @@ export default function AdminFeedback() {
     if (category) params.set('category', category);
     if (roleFilter) params.set('role', roleFilter);
     try {
-      const res = await cachedGet(`/admin/feedback`, { params: Object.fromEntries(params.entries()), ttlMs: 2 * 60 * 1000 });
-      const payload = res?.data || res;
-      const dataArr = payload?.data ? payload.data : (Array.isArray(payload) ? payload : []);
-      setRows(dataArr);
+      // Bypass cache to ensure accurate pagination metadata
+      try { invalidateHttpCache('/admin/feedback'); } catch {}
+      const res = await api.get(`/admin/feedback`, { params: Object.fromEntries(params.entries()) });
+      // api.get returns parsed JSON directly (not wrapped like Axios)
+      // Backend returns: { data: [...], current_page, last_page, total, per_page }
+      const payload = res;
+      const parsed = parsePagination(payload, p);
+      setRows(parsed.items);
       setSelectedIds([]);
-      setPage(payload?.current_page || p);
-      setLastPage(payload?.last_page || p);
-    } catch {
+      setPage(parsed.current);
+      setLastPage(parsed.last);
+      setMeta({ total: parsed.total, perPage: parsed.perPage, current: parsed.current, last: parsed.last });
+    } catch (e) {
+      console.error('[AdminFeedback] fetch error:', e);
       setError('Failed to load feedback.');
     } finally {
       setLoading(false);
     }
-  }, [page, search, searchScope, status, category, roleFilter]);
+  }, [page, search, searchScope, status, category, roleFilter, sort?.id, sort?.dir]);
 
-  useEffect(() => { fetchData({ page:1 }); }, [search, status, category, roleFilter]);
+  // Refetch when sort changes to use backend ordering
+  useEffect(() => { fetchData(1); }, [sort?.id, sort?.dir]);
 
-  // Real-time updates via Server-Sent Events (SSE)
+  useEffect(() => { fetchData(1); }, [search, status, category, roleFilter]);
+
+  // Real-time updates via Server-Sent Events (SSE) with graceful fallback to polling
+  const [sseEnabled, setSseEnabled] = useState(true);
   useEffect(() => {
+    if (!sseEnabled) return; // disabled after first fatal error
     let es;
     const connect = () => {
       const maxId = rows.reduce((m, r) => r.id > m ? r.id : m, 0);
       try { invalidateHttpCache('/admin/feedback'); } catch {}
-      // Ensure cookies/credentials are included for authenticated SSE endpoints
-      es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`, { withCredentials: true });
-      es.addEventListener('feedback-created', (ev) => {
-        try { invalidateHttpCache('/admin/feedback'); } catch {}
-        fetchData({ page: 1 });
-      });
-      es.onerror = () => {
-        if (es) es.close();
-        // Reconnect after short delay
-        setTimeout(connect, 5000);
-      };
+      try {
+        es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`);
+        es.addEventListener('feedback-created', () => {
+          try { invalidateHttpCache('/admin/feedback'); } catch {}
+          fetchData(1);
+        });
+        es.onerror = () => {
+          if (es) es.close();
+          // If server doesn't return text/event-stream, the browser aborts; stop retrying
+          setSseEnabled(false);
+        };
+      } catch {
+        setSseEnabled(false);
+      }
     };
     connect();
     return () => { if (es) es.close(); };
-  }, [rows, fetchData]);
+  }, [rows, fetchData, sseEnabled]);
 
   // Auto-refresh the list periodically when the tab is visible
   useEffect(() => {
@@ -120,7 +205,7 @@ export default function AdminFeedback() {
       try {
         if (document.visibilityState === 'visible') {
           try { invalidateHttpCache('/admin/feedback'); } catch {}
-          await fetchData({ page: 1 });
+          await fetchData(1);
         }
       } finally {
         timer = setTimeout(tick, intervalMs);
@@ -134,20 +219,7 @@ export default function AdminFeedback() {
   const handleSaved = (updated) => {
     setRows(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
   };
-
-  // Sorting logic (client-side on current page set)
-  const SORT_KEY = 'admin-feedback::sort';
-  const [sort, setSort] = useState(() => {
-    try {
-      const raw = localStorage.getItem(SORT_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.id && (parsed.dir === 'asc' || parsed.dir === 'desc')) return parsed;
-      }
-    } catch {}
-    return { id: null, dir: 'asc' };
-  });
-  useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch {} }, [sort]);
+  // Sorting logic (client-side on current page set) — now uses early-defined `sort`
 
   const getSortValue = (row, id) => {
     switch (id) {
@@ -211,6 +283,93 @@ export default function AdminFeedback() {
     } catch (e) { /* ignore */ } finally { setBulkApplying(false); }
   };
 
+  // Build TableLayout columns mirroring other admin pages
+  const baseColumns = useMemo(() => ([
+    {
+      id: 'title', header: 'Title', width: 240,
+      render: (r) => (
+        <div>
+          <div style={{ fontWeight:600, fontSize:13 }}>{r.title}</div>
+          <div style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.message}</div>
+        </div>
+      )
+    },
+    {
+      id: 'user', header: 'User',
+      render: (r) => (
+        <span style={{ fontSize:12 }}>
+          {r.is_guest ? (
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+              <span className="badge" style={{ background:'#f59e0b20', color:'#b45309', padding:'2px 6px', borderRadius:6, fontSize:11 }}>Guest</span>
+              {r.guest_name || '—'}
+            </span>
+          ) : (r.user?.name || '—')}
+        </span>
+      )
+    },
+    {
+      id: 'source', header: 'Source',
+      render: (r) => {
+        const isLake = !!r.lake?.id;
+        const label = isLake ? 'Lake Panel' : 'System';
+        const color = isLake ? '#3b82f6' : '#64748b';
+        return <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{label}</span>;
+      }
+    },
+    {
+      id: 'lake', header: 'Lake',
+      render: (r) => (<span style={{ fontSize:12 }}>{r.lake?.name || '—'}</span>)
+    },
+    {
+      id: 'category', header: 'Category',
+      render: (r) => (<span style={{ fontSize:12 }}>{r.category ? <span className="feedback-category-badge">{r.category}</span> : '—'}</span>)
+    },
+    {
+      id: 'docs', header: 'Documents',
+      render: (r) => {
+        const toCanonical = (raw) => {
+          if (!raw || typeof raw !== 'string') return '';
+          try { if (raw.startsWith('http')) { const u = new URL(raw); return u.pathname.replace(/^\//,''); } } catch {}
+          return raw.replace(/^\//,'');
+        };
+        const baseImgs = Array.isArray(r.images) ? r.images.filter(x => typeof x === 'string') : [];
+        const metaFiles = Array.isArray(r?.metadata?.files) ? r.metadata.files : [];
+        const metaPaths = metaFiles.map(f => (typeof f?.url === 'string' ? f.url : (typeof f?.path === 'string' ? f.path : null))).filter(Boolean);
+        const combined = [...baseImgs, ...metaPaths];
+        const seen = new Set();
+        const unique = [];
+        for (const c of combined) { const key = toCanonical(c); if (!key || seen.has(key)) continue; seen.add(key); unique.push(c); }
+        const total = unique.length;
+        if (total <= 0) return (<span style={{ fontSize:12 }}>—</span>);
+        return (
+          <button
+            className="pill-btn ghost sm"
+            onClick={() => { setDocsItem(r); setDocsOpen(true); }}
+            title={`View attachments (${total})`}
+          >
+            <FiFileText /> View ({total})
+          </button>
+        );
+      }
+    },
+    {
+      id: 'status', header: 'Status',
+      render: (r) => (<span style={{ fontSize:12 }}><StatusPill status={r.status} /></span>)
+    },
+    {
+      id: 'org', header: 'Org',
+      render: (r) => (<span style={{ fontSize:12 }}>{r.tenant?.name || ''}</span>)
+    },
+    {
+      id: 'created', header: 'Created',
+      render: (r) => (<span style={{ fontSize:12 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</span>)
+    },
+  ]), [rows, selectedIds]);
+
+  const visibleTableColumns = useMemo(() => baseColumns.filter(c => visibleMap[c.id] !== false), [baseColumns, visibleMap]);
+
+  const normalized = useMemo(() => sortedRows.map(r => ({ id: r.id, _raw: r })), [sortedRows]);
+
   return (
     <div className="content-page">
       <div className="dashboard-card" style={{ marginBottom: 16 }}>
@@ -228,7 +387,7 @@ export default function AdminFeedback() {
         search={{ value: search, onChange: setSearch, placeholder: 'Search Feedback...' }}
         columnPicker={{ columns: COLUMNS, visibleMap, onVisibleChange: setVisibleMap }}
         onToggleFilters={() => setShowFilters(v => !v)}
-        onRefresh={() => { try { invalidateHttpCache('/admin/feedback'); } catch {} fetchData({ page: 1 }); }}
+        onRefresh={() => { try { invalidateHttpCache('/admin/feedback'); } catch {} fetchData(1); }}
       />
 
       {showFilters && (
@@ -236,30 +395,10 @@ export default function AdminFeedback() {
         <div className="advanced-filters-header" style={{ marginBottom:10 }}>
           <strong>Filters</strong>
           <div style={{ display:'flex', gap:8 }}>
-            <button className="pill-btn ghost sm" onClick={() => { setSearch(''); setStatus(''); setCategory(''); setRoleFilter(''); setSearchScope('name'); fetchData({ page:1 }); }} disabled={loading}>Reset</button>
+            <button className="pill-btn ghost sm" onClick={() => { setSearch(''); setStatus(''); setCategory(''); setRoleFilter(''); setSearchScope('all'); fetchData(1); }} disabled={loading}>Reset</button>
           </div>
         </div>
-        {/* Dedicated search row */}
-        <div className="org-filter" style={{ width:'100%', marginBottom:14, display:'flex', flexDirection:'row', gap:8, alignItems:'flex-start' }}>
-          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:4 }}>
-            <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{ height: 32 }} />
-          </div>
-          <div style={{ width:200, display:'flex' }}>
-            <select
-              style={{ fontSize:'inherit', padding:'6px 8px', lineHeight:1.3, width:'100%', height:32 }}
-              value={searchScope}
-              onChange={e=>setSearchScope(e.target.value)}
-            >
-              <option value="name">Name</option>
-              <option value="title">Title</option>
-              <option value="message">Message</option>
-              <option value="name_title">Name + Title</option>
-              <option value="name_message">Name + Message</option>
-              <option value="title_message">Title + Message</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-        </div>
+        {/* Removed duplicate search bar from Filters panel (toolbar search remains) */}
         {/* Remaining filters grid */}
         <div className="advanced-filters-grid">
           <div className="org-filter">
@@ -294,6 +433,8 @@ export default function AdminFeedback() {
   )}
 
       <div className="table-wrapper" style={{ marginTop:18 }}>
+        {/* TEMP: debug pagination meta to investigate "no next" issue */}
+        {/* Pagination meta debug was temporary; removed for production UI */}
         {selectedIds.length > 0 && (
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f1f5f9', padding:'6px 10px', borderRadius:8, marginBottom:8 }}>
             <span style={{ fontSize:12 }}>{selectedIds.length} selected</span>
@@ -305,153 +446,21 @@ export default function AdminFeedback() {
             <button className="pill-btn ghost sm" onClick={()=>{ setSelectedIds([]); setBulkStatus(''); }}>Clear</button>
           </div>
         )}
-        <div className="lv-table-wrap">
-          <table className="lv-table">
-            <thead>
-              <tr>
-                <th className="lv-th" style={{ width:32 }}>
-                  <div className="lv-th-inner">
-                    <input type="checkbox" aria-label="Select all on page" checked={selectedIds.length>0 && selectedIds.length===rows.length} onChange={toggleSelectAll} disabled={rows.length===0} />
-                  </div>
-                </th>
-                {visibleColumns.map(col => (
-                  <th key={col} className="lv-th">
-                    <div className="lv-th-inner">
-                      <button
-                        type="button"
-                        className={`lv-th-label lv-sortable ${sort.id === col ? 'is-sorted' : ''}`}
-                        onClick={() => applySort(col)}
-                        aria-label={`Sort by ${col}`}
-                      >
-                        {COLUMNS.find(c => c.id === col)?.header || col}
-                        {sort.id === col && (
-                          <span style={{ marginLeft: 6, fontSize: 12, color: '#6b7280' }}>
-                            {sort.dir === 'asc' ? '▲' : '▼'}
-                          </span>
-                        )}
-                      </button>
-                    </div>
-                  </th>
-                ))}
-                <th className="lv-th sticky-right"><div className="lv-th-inner"><span className="lv-th-label">Actions</span></div></th>
-              </tr>
-            </thead>
-            <tbody>
-              {!loading && rows.length === 0 && (
-                <tr><td className="lv-td" colSpan={2 + visibleColumns.length} style={{ textAlign:'center' }}>No feedback found.</td></tr>
-              )}
-              {loading && (
-                <tr><td className="lv-td" colSpan={2 + visibleColumns.length} style={{ textAlign:'center' }}><LoadingSpinner label="Loading feedback…" /></td></tr>
-              )}
-              {sortedRows.map(r => (
-                <tr key={r.id} className="lv-tr">
-                  <td className="lv-td" style={{ width:32 }}>
-                    <input type="checkbox" aria-label={`Select feedback ${r.id}`} checked={selectedIds.includes(r.id)} onChange={()=>toggleRow(r.id)} />
-                  </td>
-                  {visibleColumns.map(col => {
-                    if (col === 'title') {
-                      return (
-                        <td key={col} className="lv-td" style={{ maxWidth:240 }}>
-                          <div style={{ fontWeight:600, fontSize:13 }}>{r.title}</div>
-                          <div style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.message}</div>
-                        </td>
-                      );
-                    }
-                    if (col === 'user') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>
-                          {r.is_guest ? (
-                            <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
-                              <span className="badge" style={{ background:'#f59e0b20', color:'#b45309', padding:'2px 6px', borderRadius:6, fontSize:11 }}>Guest</span>
-                              {r.guest_name || '—'}
-                            </span>
-                          ) : (r.user?.name || '—')}
-                        </td>
-                      );
-                    }
-                    if (col === 'org') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>
-                          {r.tenant?.name || ''}
-                        </td>
-                      );
-                    }
-                    if (col === 'lake') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>{r.lake?.name || '—'}</td>
-                      );
-                    }
-                    if (col === 'category') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>{r.category ? <span className="feedback-category-badge">{r.category}</span> : '—'}</td>
-                      );
-                    }
-                    if (col === 'source') {
-                      const isLake = !!r.lake?.id;
-                      const label = isLake ? 'Lake Panel' : 'System';
-                      const color = isLake ? '#3b82f6' : '#64748b';
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>
-                          <span style={{ background: `${color}22`, color, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{label}</span>
-                        </td>
-                      );
-                    }
-                    if (col === 'docs') {
-                      // Deduplicate based on canonical path like in modal
-                      const toCanonical = (raw) => {
-                        if (!raw || typeof raw !== 'string') return '';
-                        try { if (raw.startsWith('http')) { const u = new URL(raw); return u.pathname.replace(/^\//,''); } } catch {}
-                        return raw.replace(/^\//,'');
-                      };
-                      const baseImgs = Array.isArray(r.images) ? r.images.filter(x => typeof x === 'string') : [];
-                      const metaFiles = Array.isArray(r?.metadata?.files) ? r.metadata.files : [];
-                      const metaPaths = metaFiles.map(f => (typeof f?.url === 'string' ? f.url : (typeof f?.path === 'string' ? f.path : null))).filter(Boolean);
-                      const combined = [...baseImgs, ...metaPaths];
-                      const seen = new Set();
-                      const unique = [];
-                      for (const c of combined) { const key = toCanonical(c); if (!key || seen.has(key)) continue; seen.add(key); unique.push(c); }
-                      const total = unique.length;
-                      if (total <= 0) return (<td key={col} className="lv-td" style={{ fontSize:12 }}>—</td>);
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>
-                          <button
-                            className="pill-btn ghost sm"
-                            onClick={() => { setDocsItem(r); setDocsOpen(true); }}
-                            title={`View attachments (${total})`}
-                          >
-                            <FiFileText /> View ({total})
-                          </button>
-                        </td>
-                      );
-                    }
-                    if (col === 'status') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}><StatusPill status={r.status} /></td>
-                      );
-                    }
-                    if (col === 'created') {
-                      return (
-                        <td key={col} className="lv-td" style={{ fontSize:12 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
-                      );
-                    }
-                    return null;
-                  })}
-                  <td className="lv-td sticky-right" style={{ fontSize:12 }}>
-                    <div className="lv-actions-inline">
-                      <button className="pill-btn ghost sm" onClick={() => openDetail(r)} title="View & edit"><FiEye size={14}/></button>
-                      {r.spam_score > 0 && <span title={`Spam score: ${r.spam_score}`} style={{ marginLeft:4, fontSize:10, color:'#dc2626' }}>⚠</span>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="lv-table-pager">
-          <span className="pager-text">Page {page} / {lastPage}</span>
-          <button className="pill-btn ghost sm" disabled={page <= 1 || loading} onClick={() => { const np = page - 1; setPage(np); fetchData({ page: np }); }}>Prev</button>
-          <button className="pill-btn ghost sm" disabled={page >= lastPage || loading} onClick={() => { const np = page + 1; setPage(np); fetchData({ page: np }); }}>Next</button>
-        </div>
+        <TableLayout
+          key={`pager-${lastPage}-${page}`}
+          tableId="admin-feedback-table"
+          columns={visibleTableColumns}
+          data={normalized}
+          actions={[{ label: 'View', title: 'View & edit', icon: <FiEye size={14} />, onClick: (row) => openDetail(row._raw ?? row) }]}
+          loading={loading}
+          hidePager={false}
+          pageSize={10}
+          serverSide={true}
+          pagination={{ page, totalPages: lastPage }}
+          sort={{ id: sort.id || null, dir: sort.dir || 'asc' }}
+          onSortChange={(colId) => applySort(colId)}
+          onPageChange={(p) => { const np = Math.max(1, Number(p) || 1); setPage(np); fetchData(np); }}
+        />
       </div>
 
       <FeedbackDetailModal

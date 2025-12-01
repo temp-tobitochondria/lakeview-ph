@@ -1,7 +1,7 @@
 // resources/js/pages/AdminInterface/AdminOrgApplications.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
-import { cachedGet } from '../../lib/httpCache';
+import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 import TableToolbar from '../../components/table/TableToolbar';
 import TableLayout from '../../layouts/TableLayout';
 import { FiClipboard, FiInfo } from 'react-icons/fi';
@@ -31,6 +31,12 @@ export default function AdminOrgApplications() {
     status: true,
   });
   const [statusInfoOpen, setStatusInfoOpen] = useState(false);
+  // Sorting state (mirror AdminUsers/AdminOrganizations heuristics)
+  const [sortBy, setSortBy] = useState('user');
+  const [sortDir, setSortDir] = useState('asc');
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   // Map status codes to formal labels for display
   const STATUS_LABELS = useMemo(() => ({
@@ -57,11 +63,19 @@ export default function AdminOrgApplications() {
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      // Always fetch fresh from DB; disable cache to avoid stale data
-      const res = await cachedGet('/admin/org-applications', { ttlMs: 0 });
-      setApps(res?.data || []);
+      // Proactively clear any cached responses for this endpoint
+      try { invalidateHttpCache('/admin/org-applications'); } catch {}
+      // Always fetch fresh from DB; bypass http cache and dedupe by using api.get directly
+      console.debug('[AdminOrgApplications] Fetching /admin/org-applications');
+      const res = await api.get('/admin/org-applications', { params: { _ts: Date.now() } });
+      const rows = res?.data || [];
+      console.debug('[AdminOrgApplications] Fetched rows:', rows.length, rows);
+      setApps(rows);
     } catch (e) {
-      try { const j = JSON.parse(e?.message||''); setError(j?.message || 'Failed to load.'); } catch { setError('Failed to load.'); }
+      let msg = 'Failed to load.';
+      try { const j = JSON.parse(e?.message||''); msg = j?.message || msg; } catch {}
+      console.error('[AdminOrgApplications] Fetch error:', e);
+      setError(msg);
     } finally { setLoading(false); }
   };
 
@@ -123,6 +137,59 @@ export default function AdminOrgApplications() {
       return parts.includes(q);
     });
   }, [statusFiltered, query]);
+
+  // Sorting comparator based on current sortBy/sortDir
+  const sorted = useMemo(() => {
+    const dir = (String(sortDir).toLowerCase() === 'desc') ? -1 : 1;
+    const cmp = (a, b) => {
+      switch (sortBy) {
+        case 'user': {
+          const av = (a.user?.name || '').toLowerCase();
+          const bv = (b.user?.name || '').toLowerCase();
+          return av.localeCompare(bv) * dir;
+        }
+        case 'applications': {
+          const av = (a.apps?.length || 0);
+          const bv = (b.apps?.length || 0);
+          return (av === bv ? 0 : (av < bv ? -1 : 1)) * dir;
+        }
+        case 'status': {
+          const av = (a.primary_app?.status || '').toLowerCase();
+          const bv = (b.primary_app?.status || '').toLowerCase();
+          return av.localeCompare(bv) * dir;
+        }
+        default: {
+          const av = String(a.id || '');
+          const bv = String(b.id || '');
+          return av.localeCompare(bv) * dir;
+        }
+      }
+    };
+    const arr = [...filtered];
+    arr.sort(cmp);
+    return arr;
+  }, [filtered, sortBy, sortDir]);
+
+  // Heuristic sort toggle: first click desc for id/timestamps, asc otherwise; subsequent toggles flip
+  const handleSortChange = (columnId) => {
+    if (!columnId) return;
+    if (columnId !== sortBy) {
+      const initialDesc = /^(id|created_at|updated_at)$/i.test(columnId);
+      setSortBy(columnId);
+      setSortDir(initialDesc ? 'desc' : 'asc');
+      setPage(1);
+      return;
+    }
+    setSortDir(prev => (String(prev).toLowerCase() === 'asc' ? 'desc' : 'asc'));
+    setPage(1);
+  };
+
+  // Client-side pagination (10 per page)
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(sorted.length / pageSize)), [sorted.length]);
+  const paged = useMemo(() => {
+    const start = (Math.max(1, page) - 1) * pageSize;
+    return sorted.slice(start, start + pageSize);
+  }, [sorted, page]);
 
   function exportCsv() {
     const cols = COLUMNS.filter(c => visibleMap[c.id] !== false && c.id !== 'actions');
@@ -217,11 +284,19 @@ export default function AdminOrgApplications() {
     [baseColumns, visibleMap]
   );
 
-  const normalized = useMemo(() => (filtered || []).map(r => ({
+  // Normalized rows passed to TableLayout. Previous implementation only kept id + status and lost
+  // the grouped metadata (user, apps list, primary_app, status_summary). That caused the table to appear
+  // empty or missing values because column renderers expect these properties. Preserve them here.
+  const normalized = useMemo(() => (paged || []).map(r => ({
     id: r.id,
+    user: r.user,
+    applications: r.apps.length,
     status: r.primary_app?.status ?? '',
+    status_summary: r.status_summary,
+    primary_app: r.primary_app,
+    apps: r.apps,
     _raw: r,
-  })), [filtered]);
+  })), [paged]);
 
   // No row actions for admin view.
 
@@ -238,6 +313,8 @@ export default function AdminOrgApplications() {
           Browse and review all user submissions for joining organizations. Decisions are handled by each organization’s administrators.
           <br />
           <span style={{ fontStyle: 'italic' }}>Tip: Click a user’s name to view all of their applications.</span>
+          <br />
+          <span className="muted" style={{ fontSize: 12 }}>Fetched: {apps.length} row{apps.length === 1 ? '' : 's'}</span>
         </p>
       </div>
 
@@ -260,7 +337,12 @@ export default function AdminOrgApplications() {
             actions={[]}
             loading={loading}
             hidePager={false}
-            pageSize={15}
+            pageSize={pageSize}
+            serverSide={true}
+            pagination={{ page, totalPages }}
+            sort={{ id: sortBy, dir: sortDir }}
+            onPageChange={(p) => setPage(Math.max(1, Number(p) || 1))}
+            onSortChange={handleSortChange}
           />
           <Modal
             open={statusInfoOpen}

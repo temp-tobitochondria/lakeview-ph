@@ -101,6 +101,8 @@ function DataPrivacyDisclaimer({ open, onClose }) {
       `}</style>
 
       <div className="privacy-content">
+        <h1>LakeView PH - Data Privacy Disclaimer</h1>
+        <p className="intro" style={{ fontStyle: 'italic', color: '#64748b' }}>Last Updated: November 29, 2025</p>
 
         <nav className="privacy-toc" aria-label="Table of contents">
           <a href="#p1">1. Purpose of Collecting Your Data</a>
@@ -204,7 +206,7 @@ function DataPrivacyDisclaimer({ open, onClose }) {
           <p>
             If you have questions or privacy requests, contact our Data Protection Officer (DPO):
           </p>
-          <p>Email: privacy@lakeview.ph (sample)  
+          <p>Email: bantaylawa.ph@gmail.com  
           Or send a message through the in-app Feedback form.</p>
         </section>
 

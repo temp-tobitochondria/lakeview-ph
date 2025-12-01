@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Pagination\LengthAwarePaginator;
 use App\Services\UserRoleAuditLogger;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -30,6 +31,13 @@ class UserController extends Controller
         $createdTo    = $request->query('created_to');   // expect YYYY-MM-DD
         $updatedFrom  = $request->query('updated_from');
         $updatedTo    = $request->query('updated_to');
+
+        // Sorting params (server-side)
+        $requestSort = trim((string)$request->query('sort_by', 'name'));
+        $requestDir  = strtolower((string)$request->query('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['id','name','email','created_at','updated_at','role'];
+        $sortBy = in_array($requestSort, $allowedSort, true) ? $requestSort : 'name';
+        $sortDir = $requestDir;
 
         $qb = User::query()
             // Global free-text (name OR email)
@@ -80,10 +88,35 @@ class UserController extends Controller
                     $w->whereDate('updated_at', '<=', $updatedTo);
                 }
             })
-            ->with(['role','tenant'])
-            ->orderBy('name');
+            ->with(['role','tenant']);
 
-        $paginator = $qb->paginate($pp);
+        // Apply sorting. Special case for role name.
+        if ($sortBy === 'role') {
+            // Left join roles for ordering by role name; ensure distinct users when later counting.
+            $qb->leftJoin('roles', 'roles.id', '=', 'users.role_id')
+               ->orderBy('roles.name', $sortDir)
+               ->select('users.*');
+        } else {
+            $qb->orderBy($sortBy, $sortDir);
+        }
+
+        // Manual length-aware pagination to avoid edge cases with joins affecting counts.
+        $page = max(1, (int)$request->query('page', 1));
+        // Clone the query BEFORE applying forPage for accurate total.
+        $countQuery = clone $qb;
+        // Explicit distinct on users.id in case of accidental multiplicative joins (future relationships).
+        $total = (int)$countQuery->distinct('users.id')->count('users.id');
+        $results = $qb->forPage($page, $pp)->get();
+        $lastPage = max(1, (int)ceil($total / $pp));
+        $paginator = new LengthAwarePaginator($results, $total, $pp, $page, [
+            'path' => $request->url(),
+            'query' => [
+                'q' => $q,
+                'per_page' => $pp,
+                'sort_by' => $sortBy,
+                'sort_dir' => $sortDir,
+            ],
+        ]);
 
         $paginator->getCollection()->transform(function (User $u) {
             return [

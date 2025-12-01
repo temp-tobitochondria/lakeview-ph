@@ -17,6 +17,14 @@ class FeedbackStreamController extends Controller
         $started = microtime(true);
         $timeoutSeconds = 45; // connection lifespan
         return response()->stream(function () use (&$lastId, $started, $timeoutSeconds) {
+            // Disable compression / buffering to allow streaming
+            if (function_exists('apache_setenv')) {
+                @apache_setenv('no-gzip', '1');
+            }
+            @ini_set('zlib.output_compression', '0');
+            @ini_set('output_buffering', 'off');
+            @ini_set('implicit_flush', '1');
+            @ob_implicit_flush(true);
             // Initial handshake comment
             echo ": feedback stream started\n\n";
             @ob_flush(); @flush();
@@ -42,7 +50,8 @@ class FeedbackStreamController extends Controller
             @ob_flush(); @flush();
         }, 200, [
             'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no', // for some proxies
         ]);
     }
