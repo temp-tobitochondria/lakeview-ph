@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 
 class OrgUserController extends Controller
 {
-    // GET /api/org/{tenant}/users?roles=contributor,org_admin&per_page=15
+    // GET /api/org/{tenant}/users?roles=contributor,org_admin&per_page=15&q=search&sort_by=name&sort_dir=asc
     public function index(Request $request, int $tenant)
     {
         $roleNames = array_filter(array_map('trim', explode(',', (string)$request->query('roles', 'contributor,org_admin'))));
@@ -19,13 +19,32 @@ class OrgUserController extends Controller
             $roleNames = [Role::CONTRIBUTOR, Role::ORG_ADMIN];
         }
 
-        $users = User::query()
+        $query = User::query()
             ->where('tenant_id', $tenant)
             ->whereHas('role', function ($q) use ($roleNames) {
                 $q->whereIn('name', $roleNames);
-            })
-            ->orderBy('name')
-            ->paginate($request->integer('per_page', 15));
+            });
+
+        // Search support
+        $search = trim($request->query('q', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'ILIKE', "%{$search}%")
+                  ->orWhere('email', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        // Sorting support
+        $sortBy = $request->query('sort_by', 'name');
+        $sortDir = strtolower($request->query('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSorts = ['id', 'name', 'email', 'created_at', 'updated_at'];
+        if (in_array($sortBy, $allowedSorts, true)) {
+            $query->orderBy($sortBy, $sortDir);
+        } else {
+            $query->orderBy('name', 'asc');
+        }
+
+        $users = $query->paginate($request->integer('per_page', 15));
 
         return response()->json($users);
     }

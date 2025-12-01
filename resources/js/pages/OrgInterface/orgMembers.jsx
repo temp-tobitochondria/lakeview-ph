@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo, useRef, useCallback } from "react"
 import { useLocation } from 'react-router-dom';
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
-import { FiEdit, FiTrash, FiUsers } from 'react-icons/fi';
+import { FiEdit, FiTrash, FiUsers, FiCheck, FiAlertCircle, FiEye, FiEyeOff } from 'react-icons/fi';
 import DashboardHeader from '../../components/DashboardHeader';
 import api, { me as fetchMe } from "../../lib/api";
 import { cachedGet, invalidateHttpCache } from "../../lib/httpCache";
@@ -20,7 +20,7 @@ const TABLE_ID = 'org-contributors';
 const VIS_KEY = `${TABLE_ID}::visible`;
 
 // Initial form values
-const emptyContributor = { name: '', email: '', password: '', role: FIXED_ROLE };
+const emptyContributor = { name: '', email: '', password: '', role: FIXED_ROLE, occupation: '', occupation_other: '' };
 
 // Normalize API users -> table rows (include role for display)
 const normalizeMembers = (rows = []) => rows.map(u => ({
@@ -46,6 +46,23 @@ export default function OrgMembers() {
   // Search
   const [q, setQ] = useState('');
 
+  // Unified pagination state (mirrors adminUsers logic)
+  const [pagination, setPagination] = useState({ page: 1, perPage: 10, total: 0, lastPage: 1 });
+
+  // Sorting state (persisted) similar to adminUsers
+  const SORT_KEY = `${TABLE_ID}::sort`;
+  const [sort, setSort] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SORT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.id === 'string' && (parsed.dir === 'asc' || parsed.dir === 'desc')) return parsed;
+      }
+    } catch {}
+    return { id: 'name', dir: 'asc' }; // default alphabetical by name
+  });
+  useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch {} }, [sort]);
+
   // Column visibility
   const defaultsVisible = useMemo(() => ({ name: true, email: true, role: true }), []);
   const [visibleMap, setVisibleMap] = useState(() => { try { const raw = localStorage.getItem(VIS_KEY); return raw ? JSON.parse(raw) : defaultsVisible; } catch { return defaultsVisible; } });
@@ -57,6 +74,53 @@ export default function OrgMembers() {
   const [initial, setInitial] = useState(emptyContributor);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showPwd, setShowPwd] = useState({ password: false, confirm: false });
+
+  // Validation functions (from AuthModal)
+  const validateFullName = (name) => {
+    if (!name || name.trim().length === 0) return "Full name is required.";
+    if (name.trim().length < 2) return "Full name must be at least 2 characters.";
+    if (name.length > 50) return "Full name must not exceed 50 characters.";
+    if (!/^[a-zA-Z\s]+$/.test(name)) return "Full name must contain only letters and spaces.";
+    return null;
+  };
+
+  const validateEmail = (email) => {
+    if (!email || email.trim().length === 0) return "Email is required.";
+    if (email.length > 254) return "Email must not exceed 254 characters.";
+    if (/\s/.test(email)) return "Email must not contain spaces.";
+    if (!/^[a-zA-Z0-9]/.test(email)) return "Email must start with a letter or number.";
+    if (!/[a-zA-Z0-9]$/.test(email)) return "Email must end with a letter or number.";
+    if (!email.includes('@')) return "Email must contain @.";
+    const emailRegex = /^[a-zA-Z0-9][a-zA-Z0-9._-]*@[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) return "Please enter a valid email address.";
+    return null;
+  };
+
+  const validatePassword = (pwd) => {
+    if (!pwd || pwd.length === 0) return "Password is required.";
+    if (pwd.length < 8) return "Password must be at least 8 characters.";
+    if (pwd.length > 64) return "Password must not exceed 64 characters.";
+    if (/\s/.test(pwd)) return "Password must not contain spaces.";
+    if (!/[A-Z]/.test(pwd)) return "Password must contain at least 1 uppercase letter.";
+    if (!/\d/.test(pwd)) return "Password must contain at least 1 number.";
+    if (!/[^A-Za-z0-9]/.test(pwd)) return "Password must contain at least 1 special character.";
+    return null;
+  };
+
+  // Derived validation states
+  const validFullName = validateFullName(initial.name) === null;
+  const validEmail = validateEmail(initial.email) === null;
+  const strongPassword = initial.password ? validatePassword(initial.password) === null : true;
+  const passwordsMatch = initial.password && initial.password === initial.password_confirmation;
+
+  const passwordCriteria = [
+    { label: 'At least 8 characters', ok: (initial.password?.length || 0) >= 8 && (initial.password?.length || 0) <= 64 },
+    { label: '1 uppercase letter', ok: /[A-Z]/.test(initial.password || '') },
+    { label: '1 number', ok: /\d/.test(initial.password || '') },
+    { label: '1 special character', ok: /[^A-Za-z0-9]/.test(initial.password || '') },
+    { label: 'No spaces', ok: !/\s/.test(initial.password || '') || !initial.password },
+  ];
 
   // Build base columns
   const baseColumns = useMemo(() => [
@@ -66,22 +130,54 @@ export default function OrgMembers() {
   ], []);
   const visibleColumns = useMemo(() => baseColumns.filter(c => visibleMap[c.id] !== false), [baseColumns, visibleMap]);
 
+  const page = pagination.page;
+  const perPage = pagination.perPage;
+
   const toast = (title, icon='success') => Swal.fire({ toast:true, position:'top-end', timer:1600, showConfirmButton:false, icon, title });
   const unwrap = (res) => (res?.data ?? res);
 
-  // Fetch contributors
-  const fetchMembers = async (tid) => {
+  // buildParams helper for constructing API parameters consistently (mirrors adminUsers)
+  const buildParams = (overrides = {}) => {
+    const params = { q, page, per_page: perPage, ...overrides };
+    if (sort && sort.id) {
+      params.sort_by = sort.id;
+      params.sort_dir = sort.dir === 'asc' ? 'asc' : 'desc';
+    }
+    return params;
+  };
+
+  // Fetch contributors with server-side pagination, sorting, and search (mirrors adminUsers)
+  const fetchMembers = async (tid, params = {}) => {
+    if (!tid) return;
     setLoading(true); setError(null);
     try {
-      const res = unwrap(await cachedGet(`/org/${tid}/users`, { ttlMs: 5 * 60 * 1000 }));
-      // Laravel paginator shape { data: [...], meta: {...} }
-      const rawList = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.data?.data || []);
+      // Use api.get directly to bypass cache completely (mirrors adminUsers approach)
+      const raw = await api.get(`/org/${tid}/users`, { params });
+      const payload = raw; // keep full paginator object
+      const items = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
       // Safely derive role name for each user
-      const members = rawList.map(u => {
+      const members = items.map(u => {
         const roleName = u.role?.name || u.role_name || u.role || (u.role_id === CONTRIBUTOR_ROLE_ID ? 'contributor' : undefined);
         return { ...u, role: roleName };
       });
       setRows(members);
+
+      // Parse pagination (supports Laravel paginator or generic shapes)
+      const m = payload?.meta ?? payload?.pagination ?? payload;
+      const totalRaw = m.total ?? payload?.total;
+      const perRaw = m.per_page ?? m.perPage ?? payload?.per_page ?? payload?.perPage ?? params.per_page ?? pagination.perPage;
+      const cpRaw = m.current_page ?? m.currentPage ?? payload?.current_page ?? payload?.currentPage ?? params.page ?? 1;
+      let lpRaw = m.last_page ?? m.lastPage ?? payload?.last_page ?? payload?.lastPage;
+
+      const perNum = Number(perRaw) > 0 ? Number(perRaw) : pagination.perPage;
+      const totalNum = totalRaw != null ? Number(totalRaw) : items.length;
+      const cpNum = Number(cpRaw) > 0 ? Number(cpRaw) : 1;
+      if (lpRaw == null) {
+        lpRaw = Math.max(1, Math.ceil(totalNum / perNum));
+      }
+      const lpNum = Number(lpRaw) > 0 ? Number(lpRaw) : 1;
+
+      setPagination({ page: cpNum, perPage: perNum, total: totalNum, lastPage: lpNum });
     } catch (e) {
       console.error('Failed to load contributors', e);
       setError(e?.response?.data?.message || 'Failed to load members');
@@ -110,10 +206,32 @@ export default function OrgMembers() {
 
   // Fetch contributors whenever tenantId becomes available / changes
   useEffect(() => {
-    if (tenantId) fetchMembers(tenantId);
+    if (tenantId) fetchMembers(tenantId, buildParams());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
-  const reload = () => { if (tenantId) fetchMembers(tenantId); };
+  const reload = () => { if (tenantId) fetchMembers(tenantId, buildParams()); };
+
+  const goPage = (p) => {
+    setPagination((prev) => ({ ...prev, page: p }));
+    if (tenantId) fetchMembers(tenantId, buildParams({ page: p }));
+  };
+
+  // Enhanced sort handler: first click preference based on data type (mirrors adminUsers)
+  // Numeric/date columns default to desc, text columns to asc
+  const handleSortChange = (colId) => {
+    if (!colId || !tenantId) return;
+    let nextDir;
+    if (sort.id !== colId) {
+      // heuristic: id / *_at treated as numeric/date => default desc else asc
+      if (colId === 'id' || /_at$/.test(colId)) nextDir = 'desc'; else nextDir = 'asc';
+    } else {
+      nextDir = sort.dir === 'asc' ? 'desc' : 'asc';
+    }
+    const next = { id: colId, dir: nextDir };
+    setSort(next);
+    fetchMembers(tenantId, buildParams({ page: 1, sort_by: next.id, sort_dir: next.dir }));
+  };
 
   // Open / Edit
   const openCreate = () => { setMode('create'); setEditingId(null); setInitial(emptyContributor); setOpen(true); };
@@ -128,7 +246,14 @@ export default function OrgMembers() {
       const u = res?.data ?? res;
       setMode('edit');
       setEditingId(u.id);
-      setInitial({ name: u.name || '', email: u.email || '', password: '', role: FIXED_ROLE });
+      setInitial({ 
+        name: u.name || '', 
+        email: u.email || '', 
+        password: '', 
+        role: FIXED_ROLE,
+        occupation: u.occupation || '',
+        occupation_other: u.occupation_other || ''
+      });
       setOpen(true);
     } catch (e) {
       Swal.fire('Failed to load contributor', e?.response?.data?.message || '', 'error');
@@ -141,11 +266,48 @@ export default function OrgMembers() {
   // Submit
   const submitForm = async (payload) => {
     if (!tenantId) return;
+    
+    // Validate all fields
+    const nameError = validateFullName(payload.name);
+    const emailError = validateEmail(payload.email);
+    let passwordError = null;
+    
+    if (mode === 'create' || payload.password) {
+      passwordError = validatePassword(payload.password);
+    }
+    
+    // Show validation errors
+    if (nameError) {
+      Swal.fire('Invalid Name', nameError, 'error');
+      return;
+    }
+    if (emailError) {
+      Swal.fire('Invalid Email', emailError, 'error');
+      return;
+    }
+    if (passwordError) {
+      Swal.fire('Invalid Password', passwordError, 'error');
+      return;
+    }
+    
+    // Check password confirmation match
+    if ((mode === 'create' || payload.password) && payload.password !== payload.password_confirmation) {
+      Swal.fire('Password Mismatch', 'Passwords do not match.', 'error');
+      return;
+    }
+    
     const verb = mode === 'edit' ? 'Update' : 'Create';
     const body = { name: payload.name, email: payload.email };
     if (payload.password) {
       body.password = payload.password;
       if (payload.password_confirmation) body.password_confirmation = payload.password_confirmation;
+    }
+    // Include occupation
+    if (payload.occupation) {
+      body.occupation = payload.occupation;
+      if (payload.occupation === "other" && payload.occupation_other) {
+        body.occupation_other = payload.occupation_other;
+      }
     }
 
     const { isConfirmed } = await Swal.fire({ title: `${verb} contributor?`, text: payload.email, icon:'question', showCancelButton:true, confirmButtonText: verb, confirmButtonColor:'#2563eb' });
@@ -191,21 +353,17 @@ export default function OrgMembers() {
   // Normalized rows (for TableLayout)
   const normalized = useMemo(() => normalizeMembers(rows), [rows]);
 
-  // Apply search client-side
+  // Debounce search input and trigger server-side fetch (mirrors adminUsers)
   const debounceRef = useRef(null);
-  const [filtered, setFiltered] = useState([]);
-  useEffect(() => { setFiltered(normalized); }, [normalized]);
   useEffect(() => {
+    if (!tenantId) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const term = q.trim().toLowerCase();
-      setFiltered(normalized.filter(r => {
-        if (term && !(r.name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term))) return false;
-        return true;
-      }));
-    }, 300);
+      fetchMembers(tenantId, buildParams({ page: 1 }));
+    }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, normalized]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, tenantId]);
 
   // Column picker adapter
   const columnPickerAdapter = {
@@ -244,24 +402,28 @@ export default function OrgMembers() {
           filters={[]}
           columnPicker={columnPickerAdapter}
           onRefresh={reload}
+          onAdd={openCreate}
         />
         {error && <div className="lv-error" style={{ marginTop:8, color:'#b91c1c' }}>{error}</div>}
       </div>
 
       <div className="card" style={{ padding:12, borderRadius:12 }}>
-        {loading && <div className="lv-empty" style={{ padding:16 }}>Loading…</div>}
-        {!loading && (
-          <TableLayout
-            tableId={TABLE_ID}
-            columns={visibleColumns}
-            data={filtered}
-            pageSize={15}
-            actions={actions}
-            resetSignal={0}
-            columnPicker={false}
-          />
-        )}
-        <div style={{ marginTop:8, fontSize:12, color:'#6b7280' }}>{filtered.length} member{filtered.length!==1?'s':''} shown</div>
+        <TableLayout
+          tableId={TABLE_ID}
+          columns={visibleColumns}
+          data={normalized}
+          pageSize={perPage}
+          loading={loading}
+          actions={actions}
+          resetSignal={0}
+          columnPicker={false}
+          hidePager={false}
+          serverSide={true}
+          pagination={{ page: pagination.page, totalPages: pagination.lastPage }}
+          onPageChange={goPage}
+          sort={sort}
+          onSortChange={handleSortChange}
+        />
       </div>
 
       <Modal
@@ -285,20 +447,169 @@ export default function OrgMembers() {
         >
           <label className="lv-field" style={{ gridColumn: isMobileStack ? '1/-1' : '1/2' }}>
             <span>Name *</span>
-            <input required value={initial.name} onChange={(e)=>setInitial(i=>({...i,name:e.target.value}))} />
+            <input 
+              required 
+              value={initial.name} 
+              onChange={(e)=>setInitial(i=>({...i,name:e.target.value}))} 
+              maxLength={50}
+            />
+            {initial.name.length > 0 && !validFullName && (
+              <div className="auth-error" role="alert" style={{ marginTop: 4, fontSize: '0.875rem', color: '#dc2626' }}>
+                {validateFullName(initial.name)}
+              </div>
+            )}
           </label>
           <label className="lv-field" style={{ gridColumn: isMobileStack ? '1/-1' : '2/3' }}>
             <span>Email *</span>
-            <input required type="email" value={initial.email} onChange={(e)=>setInitial(i=>({...i,email:e.target.value}))} />
+            <input 
+              required 
+              type="email" 
+              value={initial.email} 
+              onChange={(e)=>setInitial(i=>({...i,email:e.target.value}))} 
+              maxLength={254}
+            />
+            {initial.email.length > 0 && !validEmail && (
+              <div className="auth-error" role="alert" style={{ marginTop: 4, fontSize: '0.875rem', color: '#dc2626' }}>
+                {validateEmail(initial.email)}
+              </div>
+            )}
           </label>
           <label className="lv-field" style={{ gridColumn: isMobileStack ? '1/-1' : '1/2' }}>
             <span>{mode==='edit' ? 'New Password (optional)' : 'Password *'}</span>
-            <input type="password" required={mode!=='edit'} value={initial.password||''} onChange={(e)=>setInitial(i=>({...i,password:e.target.value}))} />
+            <div style={{ position: 'relative' }}>
+              <input 
+                type={showPwd.password ? "text" : "password"} 
+                required={mode!=='edit'} 
+                value={initial.password||''} 
+                onChange={(e)=>setInitial(i=>({...i,password:e.target.value}))} 
+                maxLength={64}
+                style={{ paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((p) => ({ ...p, password: !p.password }))}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                aria-label={showPwd.password ? "Hide password" : "Show password"}
+              >
+                {showPwd.password ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+              </button>
+            </div>
           </label>
           <label className="lv-field" style={{ gridColumn: isMobileStack ? '1/-1' : '2/3' }}>
             <span>{mode==='edit' ? 'Confirm New Password' : 'Confirm Password *'}</span>
-            <input type="password" required={mode!=='edit'} value={initial.password_confirmation||''} onChange={(e)=>setInitial(i=>({...i,password_confirmation:e.target.value}))} />
+            <div style={{ position: 'relative' }}>
+              <input 
+                type={showPwd.confirm ? "text" : "password"} 
+                required={mode!=='edit'} 
+                value={initial.password_confirmation||''} 
+                onChange={(e)=>setInitial(i=>({...i,password_confirmation:e.target.value}))} 
+                maxLength={64}
+                style={{ paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((p) => ({ ...p, confirm: !p.confirm }))}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                aria-label={showPwd.confirm ? "Hide confirm password" : "Show confirm password"}
+              >
+                {showPwd.confirm ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+              </button>
+            </div>
+            {!passwordsMatch && (initial.password_confirmation?.length || 0) > 0 && (initial.password?.length || 0) > 0 && (
+              <div className="auth-error" role="alert" style={{ marginTop: 4, fontSize: '0.875rem', color: '#dc2626' }}>
+                Passwords do not match.
+              </div>
+            )}
           </label>
+
+          {/* Password strength & criteria */}
+          {(mode === 'create' || (initial.password?.length || 0) > 0) && (
+            <div className="lv-field" style={{ gridColumn: '1 / -1' }}>
+              <div className="password-strength" aria-live="polite" style={{ marginTop: 8 }}>
+                <div style={{
+                  height: '4px',
+                  borderRadius: '2px',
+                  background: strongPassword ? '#22c55e' : '#e5e7eb',
+                  marginBottom: '8px',
+                  transition: 'background 0.3s'
+                }}></div>
+                <ul style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  margin: 0,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '4px',
+                  fontSize: '0.875rem'
+                }}>
+                  {passwordCriteria.map(c => (
+                    <li key={c.label} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      color: c.ok ? '#22c55e' : '#94a3b8'
+                    }}>
+                      {c.ok ? <FiCheck size={14} /> : <FiAlertCircle size={14} />} {c.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <label className="lv-field" style={{ gridColumn: '1/-1' }}>
+            <span>Occupation</span>
+            <select
+              value={initial.occupation || ""}
+              onChange={(e)=>setInitial(i=>({...i,occupation:e.target.value}))}
+            >
+              <option value="">Select occupation</option>
+              <option value="student">Student</option>
+              <option value="researcher">Researcher</option>
+              <option value="government">Government</option>
+              <option value="ngo">NGO</option>
+              <option value="fisherfolk">Fisherfolk / Coop</option>
+              <option value="local_resident">Local resident</option>
+              <option value="faculty">Academic / Faculty</option>
+              <option value="consultant">Private sector / Consultant</option>
+              <option value="tourist">Tourist / Visitor</option>
+              <option value="other">Other (specify)</option>
+            </select>
+          </label>
+
+          {initial.occupation === "other" && (
+            <label className="lv-field" style={{ gridColumn: '1/-1' }}>
+              <span>Please specify your occupation</span>
+              <input
+                type="text"
+                placeholder="Enter your occupation"
+                value={initial.occupation_other || ""}
+                onChange={(e)=>setInitial(i=>({...i,occupation_other:e.target.value}))}
+              />
+            </label>
+          )}
         </form>
       </Modal>
     </div>

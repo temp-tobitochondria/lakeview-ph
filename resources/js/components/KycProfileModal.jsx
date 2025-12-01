@@ -3,6 +3,21 @@ import Modal from './Modal';
 import api from '../lib/api';
 
 /**
+ * Convert backend ID type values to human-readable labels
+ */
+const formatIdType = (idType) => {
+  if (!idType) return '—';
+  const type = String(idType).toLowerCase().trim();
+  const mapping = {
+    'passport': 'Passport',
+    'national_id': 'National ID',
+    'drivers_license': 'Driver\'s License',
+    'driver_license': 'Driver\'s License',
+  };
+  return mapping[type] || idType; // fallback to original if not in mapping
+};
+
+/**
  * KycProfileModal
  * Shows Step 2 (Profile details) of the KYC wizard for a given user.
  * Fields: full_name, dob, id_type, id_number, address_line1, city, province, postal_code
@@ -77,7 +92,7 @@ export default function KycProfileModal({ open, onClose, userId, orgTenantId = n
               <Field label="Date of Birth" value={profile.dob} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Field label="ID Type" value={profile.id_type} />
+              <Field label="ID Type" value={formatIdType(profile.id_type)} />
               <Field label="ID Number" value={profile.id_number} />
             </div>
             <div style={{ display: 'grid', gap: 16 }}>
@@ -89,42 +104,45 @@ export default function KycProfileModal({ open, onClose, userId, orgTenantId = n
               </div>
             </div>
 
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Documents</div>
-              {(docs || []).length === 0 ? (
-                <div className="muted" style={{ fontSize: 13 }}>No documents uploaded.</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                  {docs.map(doc => {
-                    const isImage = (doc.mime || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(String(doc.path || ''));
-                    const isPdf = /pdf$/i.test(String(doc.mime || '')) || /\.pdf$/i.test(String(doc.path || ''));
-                    const url = doc.url || (doc.path ? (String(doc.path).startsWith('/storage') ? doc.path : `/storage/${doc.path}`) : '#');
-                    return (
-                      <div key={doc.id} className="kyc-doc-card" style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-                        <div style={{ height: 140, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {isImage ? (
-                            // eslint-disable-next-line jsx-a11y/alt-text
-                            <img src={url} alt={doc.type} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                          ) : isPdf ? (
-                            <span style={{ color: '#64748b' }}>PDF</span>
-                          ) : (
-                            <span style={{ color: '#64748b' }}>File</span>
-                          )}
-                        </div>
-                        <div style={{ padding: 10, fontSize: 13 }}>
-                          <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{String(doc.type || '').replace('_',' ')}</div>
-                          <div className="muted" style={{ fontSize: 12, margin: '6px 0 8px' }}>{doc.created_at ? new Date(doc.created_at).toLocaleString() : ''}</div>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <a className="pill-btn ghost sm" href={url} target="_blank" rel="noreferrer">Open</a>
-                            <a className="pill-btn sm" href={url} download>Download</a>
+            {/* Only show documents section for organization admins, not system admins */}
+            {orgTenantId && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Documents</div>
+                {(docs || []).length === 0 ? (
+                  <div className="muted" style={{ fontSize: 13 }}>No documents uploaded.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                    {docs.map(doc => {
+                      const isImage = (doc.mime || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(String(doc.path || ''));
+                      const isPdf = /pdf$/i.test(String(doc.mime || '')) || /\.pdf$/i.test(String(doc.path || ''));
+                      const url = doc.url || (doc.path ? (String(doc.path).startsWith('/storage') ? doc.path : `/storage/${doc.path}`) : '#');
+                      return (
+                        <div key={doc.id} className="kyc-doc-card" style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                          <div style={{ height: 140, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {isImage ? (
+                              // eslint-disable-next-line jsx-a11y/alt-text
+                              <img src={url} alt={doc.type} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                            ) : isPdf ? (
+                              <span style={{ color: '#64748b' }}>PDF</span>
+                            ) : (
+                              <span style={{ color: '#64748b' }}>File</span>
+                            )}
+                          </div>
+                          <div style={{ padding: 10, fontSize: 13 }}>
+                            <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{String(doc.type || '').replace('_',' ')}</div>
+                            <div className="muted" style={{ fontSize: 12, margin: '6px 0 8px' }}>{doc.created_at ? new Date(doc.created_at).toLocaleString() : ''}</div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <a className="pill-btn ghost sm" href={url} target="_blank" rel="noreferrer">Open</a>
+                              <a className="pill-btn sm" href={url} download>Download</a>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="muted">Information for this User is Unavailable</div>

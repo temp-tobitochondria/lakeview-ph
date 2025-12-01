@@ -1,7 +1,7 @@
 // resources/js/pages/shared/AuditLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api, { buildQuery, me as fetchMe } from '../../lib/api';
-import { cachedGet } from '../../lib/httpCache';
+import { cachedGet, invalidateHttpCache } from '../../lib/httpCache';
 import TableLayout from '../../layouts/TableLayout';
 import TableToolbar from '../../components/table/TableToolbar';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -115,7 +115,9 @@ export default function AuditLogs({ scope = 'admin' }) {
     if (!effectiveBase) return; // org scope without tenant/admin access
     setLoading(true); setError(null);
     try {
-      const res = await cachedGet(effectiveBase, { params, ttlMs: opts.force ? 0 : (2 * 60 * 1000) });
+      // Shorter TTL for org audit logs (30s) vs admin (2min) for fresher tenant-scoped data
+      const ttl = opts.force ? 0 : (isAdminScope ? (2 * 60 * 1000) : (30 * 1000));
+      const res = await cachedGet(effectiveBase, { params, ttlMs: ttl });
       const body = res;
       let items = Array.isArray(body) ? body : (Array.isArray(body?.data) ? body.data : []);
       if (Array.isArray(items)) {
@@ -260,7 +262,16 @@ export default function AuditLogs({ scope = 'admin' }) {
 
   // Initial load
   useEffect(() => { (async () => { await fetchMeCached(); })(); }, []);
-  useEffect(() => { if (me) { fetchLogs(buildParams({ page: 1 })); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me, isAdminScope]);
+  
+  // Clear cache and reload when scope or tenant changes
+  useEffect(() => { 
+    if (me) { 
+      // Invalidate cache to ensure fresh data after security fix or context change
+      invalidateHttpCache(['/admin/audit-logs', '/org/']);
+      fetchLogs(buildParams({ page: 1 })); 
+    } 
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */ 
+  }, [me?.id, me?.tenant_id, isAdminScope]);
 
   // Auto refetch when base changes (debounced)
   useEffect(() => {

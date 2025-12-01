@@ -117,14 +117,33 @@ trait Auditable
 
     protected static function resolveTenantId(Model $model): ?int
     {
-        // Priority: model attribute -> relation -> actor context
-        if (isset($model->tenant_id)) { return $model->tenant_id ?: null; }
-        if (method_exists($model, 'tenant')) {
-            try {
-                $rel = $model->tenant();
-                if ($rel && $rel->getResults()) { return $rel->getResults()->id ?? null; }
-            } catch (\Throwable) { /* ignore */ }
+        // CRITICAL: tenant_id represents audit visibility scope (actor's context),
+        // NOT the target record's tenant_id.
+        // This ensures superadmin actions remain invisible to org_admins.
+        
+        // First priority: use the actor's tenant context
+        $actorTenantId = AuditContext::tenantId();
+        if ($actorTenantId !== null) {
+            return $actorTenantId;
         }
-        return AuditContext::tenantId();
+        
+        // Fallback for models that inherently belong to a tenant
+        // (e.g., org-scoped resources like Lakes, Stations)
+        // Skip this for User model to prevent leaking superadmin actions
+        if (get_class($model) !== \App\Models\User::class) {
+            if (isset($model->tenant_id)) { 
+                return $model->tenant_id ?: null; 
+            }
+            if (method_exists($model, 'tenant')) {
+                try {
+                    $rel = $model->tenant();
+                    if ($rel && $rel->getResults()) { 
+                        return $rel->getResults()->id ?? null; 
+                    }
+                } catch (\Throwable) { /* ignore */ }
+            }
+        }
+        
+        return null; // System-level action (superadmin with no tenant context)
     }
 }

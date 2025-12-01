@@ -435,7 +435,6 @@ export default function AdminOrgApplications() {
                           );
                         })()}
                       </div>
-                      <div className="muted" style={{ fontSize: 13 }}>Desired role: {app.desired_role || '—'}</div>
                       <div className="muted" style={{ fontSize: 13 }}>
                         Applied: {app.created_at ? new Date(app.created_at).toLocaleString(undefined, {
                           year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true
