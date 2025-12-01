@@ -147,6 +147,14 @@ export default function useMultiParamTimeSeriesData({ events, bucket, classCode 
 
       const datasets = [];
       const statsByDepth = new Map();
+      // Threshold for this parameter (used for point compliance styling and overlays)
+      const thr = thrByCode?.[String(entry.code)] || null;
+      const isOutOfCompliance = (v) => {
+        if (v == null || !Number.isFinite(v)) return false;
+        if (thr && thr.min != null && v < Number(thr.min)) return true;
+        if (thr && thr.max != null && v > Number(thr.max)) return true;
+        return false;
+      };
       const depthNums = Array.from(entry.depths.keys()).sort((a,b) => a - b); // shallow to deep
       depthNums.forEach((depthNum, idx) => {
         const dep = entry.depths.get(depthNum);
@@ -161,6 +169,8 @@ export default function useMultiParamTimeSeriesData({ events, bucket, classCode 
           backgroundColor: fill,
           pointRadius: 3,
           pointHoverRadius: 4,
+          pointBackgroundColor: data.map((v) => (isOutOfCompliance(v) ? 'rgba(239,68,68,1)' : border)),
+          pointBorderColor: data.map((v) => (isOutOfCompliance(v) ? 'rgba(239,68,68,1)' : border)),
           tension: 0.2,
           // attach stats per point for tooltips
           metaStats: stats,
@@ -168,7 +178,6 @@ export default function useMultiParamTimeSeriesData({ events, bucket, classCode 
       });
 
       // Threshold overlays from current standard (if available per parameter code)
-      const thr = thrByCode?.[String(entry.code)] || null;
       if (thr && thr.min != null) {
         datasets.push({
           label: 'Min',
