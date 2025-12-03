@@ -19,7 +19,7 @@ export default function AdminFeedback() {
   const [lastPage, setLastPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, perPage: 10, current: 1, last: 1 });
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('open'); // Default to 'open' status
   const [category, setCategory] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   // searchScope options: name | title | message | name_title | name_message | title_message | all
@@ -203,6 +203,11 @@ export default function AdminFeedback() {
     return fetchPromise;
   }, [page, search, searchScope, status, category, roleFilter, sort?.id, sort?.dir]);
 
+  // Initial data fetch on mount
+  useEffect(() => {
+    fetchData(1, false);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Debounced search effect
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -263,8 +268,23 @@ export default function AdminFeedback() {
 
   const openDetail = (row) => { setSelected(row); setDetailOpen(true); };
   const handleSaved = (updated) => {
-    setRows(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+    // Check if the updated item still matches current filter
+    const shouldRemove = status && updated.status !== status;
+    
+    setRows(prev => {
+      if (shouldRemove) {
+        // Remove from list if status no longer matches filter
+        return prev.filter(r => r.id !== updated.id);
+      }
+      // Update the item in place
+      return prev.map(r => r.id === updated.id ? { ...r, ...updated } : r);
+    });
     cacheRef.current.clear(); // Invalidate cache after update
+    
+    // Close modal if item was removed from current view
+    if (shouldRemove) {
+      setDetailOpen(false);
+    }
   };
   // Sorting logic (client-side on current page set) — now uses early-defined `sort`
 
@@ -446,7 +466,7 @@ export default function AdminFeedback() {
         <div className="advanced-filters-header" style={{ marginBottom:10 }}>
           <strong>Filters</strong>
           <div style={{ display:'flex', gap:8 }}>
-            <button className="pill-btn ghost sm" onClick={() => { setSearch(''); setStatus(''); setCategory(''); setRoleFilter(''); setSearchScope('all'); fetchData(1); }} disabled={loading}>Reset</button>
+            <button className="pill-btn ghost sm" onClick={() => { setSearch(''); setStatus('open'); setCategory(''); setRoleFilter(''); setSearchScope('all'); fetchData(1); }} disabled={loading}>Reset</button>
           </div>
         </div>
         {/* Removed duplicate search bar from Filters panel (toolbar search remains) */}
@@ -454,7 +474,7 @@ export default function AdminFeedback() {
         <div className="advanced-filters-grid">
           <div className="org-filter">
             <select value={status} onChange={e=>setStatus(e.target.value)} style={{ height: 32 }}>
-              <option value="">Status (all)</option>
+              <option value="">All Statuses</option>
               {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>
           </div>

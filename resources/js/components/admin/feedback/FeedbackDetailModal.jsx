@@ -23,6 +23,7 @@ export default function FeedbackDetailModal({ open, onClose, item, onSave }) {
 
   if (!open || !item) return null;
 
+  const isLocked = item.status === 'resolved' || item.status === 'wont_fix';
   const imgs = Array.isArray(item.images) ? item.images : [];
   const count = imgs.length;
   const getUrl = (src) => (src && typeof src === 'string' && src.startsWith('http') ? src : `/storage/${src || ''}`);
@@ -177,7 +178,8 @@ export default function FeedbackDetailModal({ open, onClose, item, onSave }) {
               id="fb-detail-status"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 10px', background: '#fff', fontSize: 14, height: 32 }}
+              disabled={isLocked}
+              style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 10px', background: isLocked ? '#f8fafc' : '#fff', fontSize: 14, height: 32, cursor: isLocked ? 'not-allowed' : 'default' }}
             >
               {STATUS_ORDER.map((s) => (
                 <option key={s} value={s}>{STATUS_LABEL[s]}</option>
@@ -190,15 +192,23 @@ export default function FeedbackDetailModal({ open, onClose, item, onSave }) {
               id="fb-detail-response"
               value={adminResponse}
               onChange={(e) => setAdminResponse(e.target.value)}
+              disabled={isLocked}
               rows={8}
               maxLength={4000}
-              placeholder="Provide context, resolution notes, or rationale."
-              style={{ resize: 'vertical', border: '1px solid #d1d5db', borderRadius: 6, padding: '8px 10px', fontSize: 14, lineHeight: 1.4, background: '#fff' }}
+              placeholder={isLocked ? "This feedback is locked and cannot be edited." : "Provide context, resolution notes, or rationale."}
+              style={{ resize: 'vertical', border: '1px solid #d1d5db', borderRadius: 6, padding: '8px 10px', fontSize: 14, lineHeight: 1.4, background: isLocked ? '#f8fafc' : '#fff', cursor: isLocked ? 'not-allowed' : 'text' }}
             />
           </div>
+          {isLocked && (
+            <div style={{ padding: '8px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, color: '#475569' }}>
+              Feedback marked as "{STATUS_LABEL[item.status]}" cannot be edited.
+            </div>
+          )}
           <div className="settings-actions" style={{ justifyContent: 'flex-end' }}>
-            <button className="pill-btn ghost" type="button" onClick={onClose} disabled={saving}>Cancel</button>
-            <button className="btn-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : 'Save Changes'}</button>
+            <button className="pill-btn ghost" type="button" onClick={onClose} disabled={saving}>Close</button>
+            {!isLocked && (
+              <button className="btn-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : 'Save Changes'}</button>
+            )}
           </div>
         </div>
       </div>
