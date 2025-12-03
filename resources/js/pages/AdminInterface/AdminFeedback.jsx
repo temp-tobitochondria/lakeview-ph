@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { FiEye, FiMessageSquare, FiFileText } from 'react-icons/fi';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import api from '../../lib/api';
@@ -33,6 +33,11 @@ export default function AdminFeedback() {
   const [docsOpen, setDocsOpen] = useState(false);
   const [docsItem, setDocsItem] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Refs for optimization
+  const searchDebounceRef = useRef(null);
+  const pendingRequestRef = useRef(null);
+  const cacheRef = useRef(new Map());
 
   // Sorting logic (client-side on current page set) — define early to avoid TDZ
   const SORT_KEY = 'admin-feedback::sort';
@@ -123,14 +128,11 @@ export default function AdminFeedback() {
     };
   };
 
-  const fetchData = useCallback(async (targetPage) => {
+  const fetchData = useCallback(async (targetPage, useCache = true) => {
     const p = Math.max(1, Number(targetPage ?? page) || 1);
-    setLoading(true);
-    setError('');
     const params = new URLSearchParams();
     params.set('page', p);
     params.set('per_page', 10);
-    // Send server-side sort params to ensure paginator consistency
     if (sort?.id) {
       params.set('sort_by', sort.id);
       params.set('sort_dir', sort.dir === 'asc' ? 'asc' : 'desc');
@@ -144,68 +146,112 @@ export default function AdminFeedback() {
     if (status) params.set('status', status);
     if (category) params.set('category', category);
     if (roleFilter) params.set('role', roleFilter);
-    try {
-      // Bypass cache to ensure accurate pagination metadata
-      try { invalidateHttpCache('/admin/feedback'); } catch {}
-      const res = await api.get(`/admin/feedback`, { params: Object.fromEntries(params.entries()) });
-      // api.get returns parsed JSON directly (not wrapped like Axios)
-      // Backend returns: { data: [...], current_page, last_page, total, per_page }
-      const payload = res;
-      const parsed = parsePagination(payload, p);
-      setRows(parsed.items);
-      setSelectedIds([]);
-      setPage(parsed.current);
-      setLastPage(parsed.last);
-      setMeta({ total: parsed.total, perPage: parsed.perPage, current: parsed.current, last: parsed.last });
-    } catch (e) {
-      console.error('[AdminFeedback] fetch error:', e);
-      setError('Failed to load feedback.');
-    } finally {
-      setLoading(false);
+    
+    const cacheKey = params.toString();
+    
+    // Deduplication: cancel pending request for same params
+    if (pendingRequestRef.current?.key === cacheKey) {
+      return pendingRequestRef.current.promise;
     }
+    
+    // Stale-while-revalidate: show cached data immediately
+    if (useCache && cacheRef.current.has(cacheKey)) {
+      const cached = cacheRef.current.get(cacheKey);
+      if (Date.now() - cached.timestamp < 60000) { // 1 minute fresh
+        setRows(cached.items);
+        setPage(cached.current);
+        setLastPage(cached.last);
+        setMeta(cached.meta);
+        setError('');
+        return;
+      }
+    }
+    
+    setLoading(true);
+    setError('');
+    
+    const fetchPromise = (async () => {
+      try {
+        const res = await cachedGet(`/admin/feedback?${params.toString()}`, 30000);
+        const payload = res;
+        const parsed = parsePagination(payload, p);
+        
+        // Cache the result
+        cacheRef.current.set(cacheKey, {
+          items: parsed.items,
+          current: parsed.current,
+          last: parsed.last,
+          meta: { total: parsed.total, perPage: parsed.perPage, current: parsed.current, last: parsed.last },
+          timestamp: Date.now()
+        });
+        
+        setRows(parsed.items);
+        setSelectedIds([]);
+        setPage(parsed.current);
+        setLastPage(parsed.last);
+        setMeta({ total: parsed.total, perPage: parsed.perPage, current: parsed.current, last: parsed.last });
+      } catch (e) {
+        console.error('[AdminFeedback] fetch error:', e);
+        setError('Failed to load feedback.');
+      } finally {
+        setLoading(false);
+        pendingRequestRef.current = null;
+      }
+    })();
+    
+    pendingRequestRef.current = { key: cacheKey, promise: fetchPromise };
+    return fetchPromise;
   }, [page, search, searchScope, status, category, roleFilter, sort?.id, sort?.dir]);
 
-  // Refetch when sort changes to use backend ordering
-  useEffect(() => { fetchData(1); }, [sort?.id, sort?.dir]);
+  // Debounced search effect
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      fetchData(1, false); // Don't use cache for new searches
+    }, 400);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [search]);
 
-  useEffect(() => { fetchData(1); }, [search, status, category, roleFilter]);
+  // Filter changes (instant, no debounce)
+  useEffect(() => { fetchData(1, false); }, [status, category, roleFilter, sort?.id, sort?.dir]);
 
   // Real-time updates via Server-Sent Events (SSE) with graceful fallback to polling
   const [sseEnabled, setSseEnabled] = useState(true);
+  const maxIdRef = useRef(0);
+  
   useEffect(() => {
-    if (!sseEnabled) return; // disabled after first fatal error
+    if (!sseEnabled) return;
+    const newMaxId = rows.reduce((m, r) => r.id > m ? r.id : m, 0);
+    if (newMaxId > 0) maxIdRef.current = newMaxId;
+    
     let es;
-    const connect = () => {
-      const maxId = rows.reduce((m, r) => r.id > m ? r.id : m, 0);
-      try { invalidateHttpCache('/admin/feedback'); } catch {}
-      try {
-        es = new EventSource(`/api/admin/feedback/stream?last_id=${maxId}`);
-        es.addEventListener('feedback-created', () => {
-          try { invalidateHttpCache('/admin/feedback'); } catch {}
-          fetchData(1);
-        });
-        es.onerror = () => {
-          if (es) es.close();
-          // If server doesn't return text/event-stream, the browser aborts; stop retrying
-          setSseEnabled(false);
-        };
-      } catch {
+    try {
+      es = new EventSource(`/api/admin/feedback/stream?last_id=${maxIdRef.current}`);
+      es.addEventListener('feedback-created', () => {
+        cacheRef.current.clear();
+        try { invalidateHttpCache('/admin/feedback'); } catch {}
+        fetchData(1, false);
+      });
+      es.onerror = () => {
+        if (es) es.close();
         setSseEnabled(false);
-      }
-    };
-    connect();
+      };
+    } catch {
+      setSseEnabled(false);
+    }
     return () => { if (es) es.close(); };
-  }, [rows, fetchData, sseEnabled]);
+  }, [sseEnabled, fetchData]);
 
   // Auto-refresh the list periodically when the tab is visible
   useEffect(() => {
     let timer = null;
-    const intervalMs = 30000; // 30 seconds
+    const intervalMs = 60000; // 1 minute (reduced from 30s)
     const tick = async () => {
       try {
         if (document.visibilityState === 'visible') {
-          try { invalidateHttpCache('/admin/feedback'); } catch {}
-          await fetchData(1);
+          await fetchData(1, true); // Use cache for background refresh
         }
       } finally {
         timer = setTimeout(tick, intervalMs);
@@ -218,10 +264,11 @@ export default function AdminFeedback() {
   const openDetail = (row) => { setSelected(row); setDetailOpen(true); };
   const handleSaved = (updated) => {
     setRows(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+    cacheRef.current.clear(); // Invalidate cache after update
   };
   // Sorting logic (client-side on current page set) — now uses early-defined `sort`
 
-  const getSortValue = (row, id) => {
+  const getSortValue = useCallback((row, id) => {
     switch (id) {
       case 'title': return row.title?.toLowerCase?.() || '';
       case 'user': return (row.user?.name || '').toLowerCase();
@@ -233,7 +280,7 @@ export default function AdminFeedback() {
       case 'created': return row.created_at ? new Date(row.created_at).getTime() : 0;
       default: return '';
     }
-  };
+  }, []);
 
   const sortedRows = useMemo(() => {
     if (!sort.id) return rows;
@@ -249,13 +296,14 @@ export default function AdminFeedback() {
       return 0;
     });
     return copy;
-  }, [rows, sort]);
+  }, [rows, sort, getSortValue]);
 
   const applySort = (colId) => {
     setSort(prev => {
       if (prev.id !== colId) return { id: colId, dir: 'asc' };
-      // Toggle sorting direction
-      return { id: colId, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      // Cycle: asc → desc → no sort
+      if (prev.dir === 'asc') return { id: colId, dir: 'desc' };
+      return { id: null, dir: 'asc' }; // Reset to no sort
     });
   };
 
@@ -279,6 +327,7 @@ export default function AdminFeedback() {
       }));
       setSelectedIds([]);
       setBulkStatus('');
+      cacheRef.current.clear();
       try { invalidateHttpCache('/admin/feedback'); } catch {}
     } catch (e) { /* ignore */ } finally { setBulkApplying(false); }
   };

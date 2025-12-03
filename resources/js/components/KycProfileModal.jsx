@@ -91,10 +91,17 @@ export default function KycProfileModal({ open, onClose, userId, orgTenantId = n
               <Field label="Full Name" value={profile.full_name} />
               <Field label="Date of Birth" value={profile.dob} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Field label="ID Type" value={formatIdType(profile.id_type)} />
-              <Field label="ID Number" value={profile.id_number} />
-            </div>
+            {/* ID Type and ID Number: Only visible to org admins (when orgTenantId is provided) */}
+            {orgTenantId ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <Field label="ID Type" value={formatIdType(profile.id_type)} />
+                <Field label="ID Number" value={profile.id_number} />
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+                <Field label="ID Type" value={formatIdType(profile.id_type)} />
+              </div>
+            )}
             <div style={{ display: 'grid', gap: 16 }}>
               <Field label="Address" value={profile.address_line1} />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
