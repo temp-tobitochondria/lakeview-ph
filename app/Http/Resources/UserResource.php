@@ -13,6 +13,7 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            'email_verified_at' => optional($this->email_verified_at)->toIso8601String(),
             'role' => $this->role?->name,
             'tenant' => $this->whenLoaded('tenant', function () {
                 return $this->tenant ? [
@@ -21,7 +22,7 @@ class UserResource extends JsonResource
                     'slug' => $this->tenant->slug,
                 ] : null;
             }),
-            'email_verified_at' => optional($this->email_verified_at)->toIso8601String(),
+
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),
         ];

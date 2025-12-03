@@ -188,7 +188,7 @@ class EmailOtpController extends Controller
             'name'              => $payload['name'] ?? 'User',
             'email'             => $r->email,
             'password'          => $payload['password_hash'] ?? Hash::make(Str::uuid()->toString()),
-            'email_verified_at' => now(),
+            'email_verified_at' => now(), // OTP verification implies email is verified
             'role_id'           => $publicRoleId,   // expected default role
             'tenant_id'         => null,            // enforce null for system role
         ]);
