@@ -204,7 +204,7 @@ function OverviewTab({
 
         <div><strong>Water Body Classification:</strong></div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div title={lake?.water_quality_class?.name || lake?.denr_classification || lake?.class_code || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lake?.water_quality_class?.name || lake?.denr_classification || lake?.class_code || '–'}</div>
+          <div title={lake?.water_quality_class?.name || lake?.denr_classification || lake?.class_code || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lake?.water_quality_class?.name || lake?.denr_classification || lake?.class_code || 'Unclassified'}</div>
           <a
             href="https://water.emb.gov.ph/?page_id=849"
             target="_blank"
@@ -228,13 +228,13 @@ function OverviewTab({
         </div>
 
         <div><strong>Surface Area:</strong></div>
-        <div>{areaStr}</div>
+        <div>{areaStr === '–' ? <span style={{ opacity: 0.8 }}>Not yet recorded</span> : areaStr}</div>
 
         <div><strong>Surface Elevation:</strong></div>
-        <div>{elevationStr}</div>
+        <div>{elevationStr === '–' ? <span style={{ opacity: 0.8 }}>Not yet recorded</span> : elevationStr}</div>
 
         <div><strong>Average Depth:</strong></div>
-        <div>{meanDepthStr}</div>
+        <div>{meanDepthStr === '–' ? <span style={{ opacity: 0.8 }}>Not yet recorded</span> : meanDepthStr}</div>
 
         <div><strong>Tributaries:</strong></div>
         {flowsStatus === 'present' ? (

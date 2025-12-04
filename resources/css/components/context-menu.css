@@ -10,6 +10,10 @@
   list-style: none;
   z-index: 2000;
   pointer-events: auto !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
 .context-item {
   padding: 6px 10px;
@@ -20,23 +24,23 @@
   cursor: pointer;
   background: transparent !important;
   transition: background 0.2s, color 0.2s;
+  color: #000000 !important;
 }
 .context-icon {
   font-size: 14px;
   min-width: 14px;
   transition: color 0.2s ease;
+  color: inherit;
 }
-.map-light .context-item:hover {
-  background: rgba(0, 0, 0, 0.08) !important;
+.context-item:hover {
   color: #0077ff !important;
 }
-.map-light .context-item:hover .context-icon {
-  color: #0077ff !important;
-}
-.map-dark .context-item:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
-  color: #00e5ff !important;
-}
-.map-dark .context-item:hover .context-icon {
-  color: #00e5ff !important;
+
+/* Solid white tooltip style used by MeasureTool and ContextMenu pins */
+.leaflet-tooltip.solid-tooltip {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
 }

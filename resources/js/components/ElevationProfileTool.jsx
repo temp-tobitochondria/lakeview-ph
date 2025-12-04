@@ -294,7 +294,7 @@ export default function ElevationProfileTool({ active, onClose, initialPoints })
           }}
           icon={new L.DivIcon({ className: "", html: '<div style="width:10px;height:10px;background:#1976d2;border:2px solid #fff;border-radius:50%"></div>', iconSize: [12, 12], iconAnchor: [6, 6] })}
         >
-          <LeafletTooltip direction="top" opacity={1} className="glass-panel">
+          <LeafletTooltip direction="top" opacity={1} className="solid-tooltip">
             Drag to move • Right-click to delete • Esc to pause • Esc again to close
           </LeafletTooltip>
         </Marker>

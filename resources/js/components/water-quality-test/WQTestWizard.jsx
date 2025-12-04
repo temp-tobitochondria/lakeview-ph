@@ -45,6 +45,9 @@ const isNotLaterThanTodayDate = (dtStr) => {
   return d <= td;
 };
 
+// Letters/spaces-only check for names
+const isLettersOnly = (s) => typeof s === 'string' && /^[A-Za-z\s]+$/.test(s.trim());
+
 const INITIAL_DATA = {
   organization_id: null,
   organization_name: "",
@@ -471,6 +474,12 @@ export default function WQTestWizard({
       err.code = 'VALIDATION';
       throw err;
     }
+    if (!isLettersOnly(data.sampler_name || '')) {
+      alertError('Invalid sampler name', 'Sampler name should contain letters only.');
+      const err = new Error('Invalid sampler_name');
+      err.code = 'VALIDATION';
+      throw err;
+    }
     // Ensure applied standard falls back to current standard when not explicitly chosen
     const fallbackStdId = standardsList.find(s => s.is_current)?.id || null;
     const appliedStdId = data.applied_standard_id || fallbackStdId || null;
@@ -735,10 +744,11 @@ export default function WQTestWizard({
         if (!isNotLaterThanTodayDate(data.sampled_at)) return alertError('Invalid date', 'The sampling date must not be later than today.');
         if (!data.method) return alertError('Missing method', 'Please choose a sampling method.');
         if (!data.sampler_name) return alertError('Missing sampler', 'Please enter the sampler\'s name.');
+        if (data.sampler_name && !isLettersOnly(data.sampler_name)) return alertError('Invalid sampler name', 'Sampler name should contain letters only.');
         if (!data.weather) return alertError('Missing weather', 'Please select the weather during sampling.');
         return null;
       },
-      canNext: (d) => !!d.sampled_at && isNotLaterThanTodayDate(d.sampled_at) && !!d.method && !!d.weather && !!d.sampler_name,
+      canNext: (d) => !!d.sampled_at && isNotLaterThanTodayDate(d.sampled_at) && !!d.method && !!d.weather && !!d.sampler_name && isLettersOnly(d.sampler_name),
       render: ({ data, setData }) => {
         const maxDt = fmtDate(new Date());
         const dateInvalid = !!data.sampled_at && !isNotLaterThanTodayDate(data.sampled_at);
@@ -769,7 +779,13 @@ export default function WQTestWizard({
             <FG label="Sampler Name*">
               <input
                 value={data.sampler_name}
-                onChange={(e) => setData({ ...data, sampler_name: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value || '';
+                  const filtered = val.replace(/[^A-Za-z\s]/g, '');
+                  setData({ ...data, sampler_name: filtered });
+                }}
+                placeholder="Juan dela Cruz"
+                title="Letters and spaces only"
               />
             </FG>
             <FG label="Weather*">
@@ -995,6 +1011,7 @@ export default function WQTestWizard({
         if (!isNotLaterThanTodayDate(data.sampled_at)) { alertError('Invalid date', 'The sampling date must not be later than today.'); return false; }
         if (!data.method) { alertError('Missing method', 'Please choose a sampling method.'); return false; }
         if (!data.sampler_name) { alertError('Missing sampler', 'Please enter the sampler name.'); return false; }
+        if (!isLettersOnly(data.sampler_name)) { alertError('Invalid sampler name', 'Sampler name should contain letters only.'); return false; }
         if (!data.weather) { alertError('Missing weather', 'Please select the weather during sampling.'); return false; }
         const rows = data.results || [];
         if (!rows.length) { alertError('No parameters', 'Add at least one parameter row before submitting.'); return false; }

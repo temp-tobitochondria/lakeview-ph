@@ -159,10 +159,10 @@ export default function MeasureTool({ active, mode = "distance", onFinish }) {
     else if (mode === "area" && !closed) renderPoints = [...points, mousePos];
   }
 
-  const makeGlassIcon = (text) =>
+  const makeSolidIcon = (text) =>
     L.divIcon({
-      className: "measure-label glass-panel",
-      html: `<div>${text}</div>`,
+      className: "measure-label",
+      html: `<div style="background:#ffffff;color:#000;border:1px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;line-height:1.2;">${text}</div>`,
       iconSize: "auto",
     });
 
@@ -208,7 +208,7 @@ export default function MeasureTool({ active, mode = "distance", onFinish }) {
             },
           }}
         >
-          <Tooltip direction="top" opacity={1} className="glass-panel">
+          <Tooltip direction="top" opacity={1} className="solid-tooltip">
             Drag to move • Right-click to delete
           </Tooltip>
         </Marker>
@@ -218,7 +218,7 @@ export default function MeasureTool({ active, mode = "distance", onFinish }) {
         <Pane name="measure-labels" style={{ zIndex: 1000 }}>
           <Marker
             position={points[points.length - 1]}
-            icon={makeGlassIcon(`Total: ${formatDistance(totalDistance)}`)}
+            icon={makeSolidIcon(`Total: ${formatDistance(totalDistance)}`)}
             interactive={false}
           />
         </Pane>
@@ -228,7 +228,7 @@ export default function MeasureTool({ active, mode = "distance", onFinish }) {
         <Pane name="measure-labels" style={{ zIndex: 1000 }}>
           <Marker
             position={centroid}
-            icon={makeGlassIcon(`Area: ${formatArea(polygonAreaM2)}`)}
+            icon={makeSolidIcon(`Area: ${formatArea(polygonAreaM2)}`)}
             interactive={false}
           />
         </Pane>

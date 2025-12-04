@@ -27,18 +27,29 @@ class Layer extends Model
     protected $casts = [
         'body_id'   => 'integer',
         'srid'      => 'integer',
+        // Keep cast for common paths; accessor below ensures strict boolean semantics
         'is_downloadable' => 'boolean',
         'created_at'=> 'datetime',
         'updated_at'=> 'datetime',
     ];
 
     /**
-     * Force boolean-friendly storage for Postgres.
+     * Ensure we persist native booleans (or 0/1) and read strict booleans.
      */
     public function setIsDownloadableAttribute($value): void
     {
-        $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN);
-        $this->attributes['is_downloadable'] = $bool ? 'true' : 'false';
+        $this->attributes['is_downloadable'] = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+    }
+
+    public function getIsDownloadableAttribute($value): bool
+    {
+        if (is_bool($value)) return $value;
+        if (is_int($value)) return $value === 1;
+        if (is_string($value)) {
+            $v = strtolower($value);
+            return in_array($v, ['1','true','t','yes','on'], true);
+        }
+        return (bool) $value;
     }
 
     /* -------------------------- Relationships -------------------------- */

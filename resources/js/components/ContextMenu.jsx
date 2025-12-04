@@ -125,7 +125,7 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile
       {/* Context Menu */}
       {position && (
         <ul
-          className="context-menu glass-panel"
+          className="context-menu"
           style={{ top: position.y, left: position.x, position: "absolute" }}
           ref={menuRef}
           // Ensure interactions within the menu don't bubble to the map
@@ -181,7 +181,7 @@ const ContextMenu = ({ map, onMeasureDistance, onMeasureArea, onElevationProfile
           }}
         >
           <Tooltip
-            className="glass-panel"
+            className="solid-tooltip"
             direction="top"
             offset={[0, -30]}
             permanent
