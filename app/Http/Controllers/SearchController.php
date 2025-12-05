@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Semantic\SemanticSearch;
 use App\Services\Search\AnalyticalSearchService;
 use App\Services\Search\AttributeSearchService;
+use App\Support\SearchSynonyms;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -27,6 +28,10 @@ class SearchController extends Controller
         $limitParam = (int) $request->input('limit', 20);
         $limit = max(1, min(100, $limitParam));
         $qlc = strtolower(trim($q));
+        
+        // Normalize query with synonyms
+        $normalizedQuery = SearchSynonyms::normalize($q);
+        $normalizedLower = strtolower($normalizedQuery);
 
         // Helper: extract place after "in ..."
         $extractPlace = function(string $text): ?string {
@@ -46,8 +51,8 @@ class SearchController extends Controller
         if (in_array($requestedEntity, ['lakes','parameters','layers','municipalities'], true)) {
             $entity = $requestedEntity;
         } else {
-            if (str_contains($qlc, 'parameter')) $entity = 'parameters';
-            elseif (str_contains($qlc, 'layer')) $entity = 'layers';
+            if (str_contains($normalizedLower, 'parameter')) $entity = 'parameters';
+            elseif (str_contains($normalizedLower, 'layer')) $entity = 'layers';
         }
 
         // Treat municipality as lakes search constrained by place
@@ -56,13 +61,13 @@ class SearchController extends Controller
             $entity = 'lakes';
         }
 
-        // Analytical keywords & top-N
-        $hasLargest  = str_contains($qlc, 'largest') || str_contains($qlc, 'biggest') || str_contains($qlc, 'top');
-        $hasSmallest = str_contains($qlc, 'smallest');
-        $hasDeepest  = str_contains($qlc, 'deepest');
-        $hasHighest  = str_contains($qlc, 'highest');
-        $hasLowest   = str_contains($qlc, 'lowest');
-        $hasLongest  = str_contains($qlc, 'longest');
+        // Analytical keywords & top-N (using synonyms - check ORIGINAL query for synonym variants)
+        $hasLargest  = SearchSynonyms::containsAny($q, SearchSynonyms::getLargeSynonyms());
+        $hasSmallest = SearchSynonyms::containsAny($q, SearchSynonyms::getSmallSynonyms());
+        $hasDeepest  = SearchSynonyms::containsAny($q, SearchSynonyms::getDeepSynonyms());
+        $hasHighest  = SearchSynonyms::containsAny($q, SearchSynonyms::getHighSynonyms());
+        $hasLowest   = SearchSynonyms::containsAny($q, SearchSynonyms::getLowSynonyms());
+        $hasLongest  = SearchSynonyms::containsAny($q, SearchSynonyms::getLongSynonyms());
 
         $topLimit = null;
         if (preg_match('/top\s+(\d{1,3})/i', $q, $m)) {

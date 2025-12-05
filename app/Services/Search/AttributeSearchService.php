@@ -74,38 +74,21 @@ SQL;
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'layers', null, $place);
             } elseif ($entity === 'parameters') {
-                $hasAliases = Schema::hasTable('parameter_aliases');
-                if ($hasAliases) {
-                    $sql = <<<SQL
+                $sql = <<<SQL
 SELECT DISTINCT p.id,
        p.name AS name,
-       p.category, p.unit
+       p.unit,
+       p.desc
 FROM parameters p
-LEFT JOIN parameter_aliases pa ON pa.parameter_id = p.id
 WHERE (
-    p.name ILIKE :kw OR p.code ILIKE :kw OR
-    COALESCE(p.category,'') ILIKE :kw OR
+    p.name ILIKE :kw OR
+    p.code ILIKE :kw OR
     COALESCE(p.unit,'') ILIKE :kw OR
-    COALESCE(pa.alias,'') ILIKE :kw
+    COALESCE(p.desc,'') ILIKE :kw
 )
 ORDER BY name ASC
 LIMIT :limit
 SQL;
-                } else {
-                    $sql = <<<SQL
-SELECT DISTINCT p.id,
-       p.name AS name,
-       p.category, p.unit
-FROM parameters p
-WHERE (
-    p.name ILIKE :kw OR p.code ILIKE :kw OR
-    COALESCE(p.category,'') ILIKE :kw OR
-    COALESCE(p.unit,'') ILIKE :kw
-)
-ORDER BY name ASC
-LIMIT :limit
-SQL;
-                }
                 $params = ['kw' => $kw, 'limit' => $limit];
                 $rows = DB::select($sql, $params);
                 return $this->mapper->mapRows($rows, 'parameters', null, $place);

@@ -27,7 +27,7 @@ export default function SearchResultsPopover({ open, results, loading, error, on
       {loading && <div style={{ padding: 12, fontSize: 13, color: '#374151' }}>Searching…</div>}
       {error && !loading && <div style={{ padding: 12, fontSize: 13, color: '#b91c1c' }}>{String(error)}</div>}
       {!loading && !error && Array.isArray(results) && results.length === 0 && (
-        <div style={{ padding: 12, fontSize: 13 }}>No results.</div>
+        <div style={{ padding: 12, fontSize: 13, color: '#6B7280' }}>No results found.</div>
       )}
       <div>
         {(results || []).map((r, idx) => {
